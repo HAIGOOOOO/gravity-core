@@ -1,4 +1,4 @@
-// 熱量の状態（SPEC.md 5.1）。表示と演出の切り替えに使う。全担当が使ってよい。
+// 熱量の状態。表示と演出の切り替えに使う。全担当が使ってよい。
 
 import type { HeatState } from '../contracts/app';
 import { HEAT_STATE_LIMITS } from '../game/constants';

@@ -4,7 +4,6 @@
 import type {
   AimView,
   AppState,
-  GuideView,
   OverlayData,
   ResultView,
   RunRecord,
@@ -17,27 +16,20 @@ import { createEffectsLayer } from '../effects';
 import {
   DT,
   GAMEOVER_SECONDS,
-  GUIDE_INWARD_DEGREES,
-  GUIDE_LEAD_DEGREES,
-  GUIDE_MAX_SHOTS,
-  GUIDE_SPEED,
   HEAT_STATE_LIMITS,
   MAX_FRAME_SECONDS,
   MAX_STEPS_PER_FRAME,
   TICK_HZ,
   TIER_NAMES,
 } from '../game/constants';
-import { clockwiseTangent } from '../game/physics';
 import { chainMultiplier, createSimulation } from '../game/simulation';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
-import { speedToDrag } from '../shared/launch';
 import { createRankingStore, createSaveStore } from '../storage';
 import { createHud, createLayout, createOverlays } from '../ui';
 import { STRINGS, resultText } from '../ui/strings';
 
 const GAME_VERSION = '0.1.0';
-const HINT_REPEAT = 3;
 
 function newSeed(): number {
   const fromUrl = new URLSearchParams(location.search).get('seed');
@@ -71,7 +63,6 @@ export function startApp(): void {
   let pendingLaunch: LaunchCommand | null = null;
   let endingLeft = 0;
   let result: ResultView | undefined;
-  let lastFateHint: string | null = null;
 
   const reducedMotion = () =>
     save.settings.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -97,25 +88,13 @@ export function startApp(): void {
     getSnapshot: () => sim.getSnapshot(),
     predict: (command) => sim.predict(command),
     onAim(next) {
-      if (next && !aim && save.hints.previewNoteShown < HINT_REPEAT) {
-        save.hints.previewNoteShown++;
-        persist();
-        hud.showToast(STRINGS.hintPreview);
-      }
       aim = next;
-      const fate = next?.prediction?.fate;
-      const hint = fate === 'core' ? STRINGS.hintFateCore : fate === 'outside' ? STRINGS.hintFateOutside : null;
-      if (hint && hint !== lastFateHint) hud.showToast(hint, 2);
-      lastFateHint = hint;
     },
     onLaunch(command) {
       if (state !== 'playing') return;
       const res = sim.submitLaunch(command);
       // 待ち時間中に離した場合は、待ち時間が明けた瞬間に撃つ（先行入力は 1 件まで）
       if (!res.accepted && res.reason === 'cooldown') pendingLaunch = command;
-    },
-    onTapOnly() {
-      hud.showToast(STRINGS.hintTapOnly, 2);
     },
   });
 
@@ -152,6 +131,7 @@ export function startApp(): void {
     effects.clear();
     audio.setCritical(false);
     setState('playing');
+    if (!save.hints.firstMergeDone) hud.showToast(STRINGS.hintStart, 6);
   }
 
   function finishRun(): void {
@@ -166,9 +146,6 @@ export function startApp(): void {
       launches: snap.stats.launches,
       merges: snap.stats.merges,
       supernovas: snap.stats.supernovas,
-      heatFromAbsorb: snap.stats.heatFromAbsorb,
-      heatFromEscape: snap.stats.heatFromEscape,
-      heatFromPurge: snap.stats.heatFromPurge,
       seed: snap.seed,
       playedAt: new Date().toISOString(),
       gameVersion: GAME_VERSION,
@@ -196,6 +173,10 @@ export function startApp(): void {
         if (!save.hints.firstMergeDone) {
           save.hints.firstMergeDone = true;
           persist();
+        } else if (!save.hints.throwShown && snap.stats.merges >= 3) {
+          save.hints.throwShown = true;
+          persist();
+          hud.showToast(STRINGS.hintThrow, 5);
         }
         if ((e.chain ?? 1) >= 2) {
           hud.showChain(e.chain!);
@@ -205,14 +186,10 @@ export function startApp(): void {
             hud.showToast(STRINGS.hintChain, 4);
           }
         }
-      } else if (e.kind === 'bounce' && e.tooFast && save.hints.tooFastShown < HINT_REPEAT) {
-        save.hints.tooFastShown++;
+      } else if (e.kind === 'overLimitStart' && !save.hints.limitShown) {
+        save.hints.limitShown = true;
         persist();
-        hud.showToast(STRINGS.hintTooFast);
-      } else if (e.kind === 'absorb' && !save.hints.coreFallShown) {
-        save.hints.coreFallShown = true;
-        persist();
-        hud.showToast(STRINGS.hintCoreFall);
+        hud.showToast(STRINGS.hintLimit, 5);
       } else if (e.kind === 'gameOver') {
         input.setEnabled(false);
         state = 'ending';
@@ -224,23 +201,6 @@ export function startApp(): void {
     }
     if (before.heat < HEAT_STATE_LIMITS[1] && snap.heat >= HEAT_STATE_LIMITS[1]) hud.showToast(STRINGS.hintOverheat);
     if (state === 'playing') audio.setCritical(snap.heat >= HEAT_STATE_LIMITS[2]);
-  }
-
-  /** 初回の案内（SPEC.md 7.6）。最初の融合が起きるまで、最大 5 射まで出す。 */
-  function guideView(snap: GameSnapshot): GuideView | null {
-    if (state !== 'playing' || save.hints.firstMergeDone) return null;
-    if (snap.stats.launches >= GUIDE_MAX_SHOTS || snap.bestTierThisRun > 0) return null;
-    const target = snap.bodies.find((b) => b.tier === 0 && b.bornTick === 0);
-    if (!target) return null;
-    const angle = Math.atan2(target.y, target.x) + (GUIDE_LEAD_DEGREES * Math.PI) / 180;
-    const t = clockwiseTangent(angle);
-    const th = (GUIDE_INWARD_DEGREES * Math.PI) / 180;
-    return {
-      originAngleRadians: angle,
-      dirX: Math.cos(th) * t.x - Math.sin(th) * Math.cos(angle),
-      dirY: Math.cos(th) * t.y - Math.sin(th) * Math.sin(angle),
-      dragPx: speedToDrag(GUIDE_SPEED),
-    };
   }
 
   function frame(now: number): void {
@@ -279,9 +239,8 @@ export function startApp(): void {
       alpha: state === 'playing' || state === 'title' ? Math.min(1, acc / DT) : 1,
       timeSeconds,
       aim: state === 'playing' ? aim : null,
-      guide: guideView(curr),
       reducedMotion: reducedMotion(),
-      timeMarkers: save.settings.timeMarkers,
+      aimGuide: save.settings.aimGuide,
       dimmed: state === 'paused' || state === 'result',
     });
     effects.draw();

@@ -94,8 +94,7 @@ export function createOverlays(root: HTMLElement, onIntent: (intent: UiIntent) =
       const p = document.createElement('p');
       p.textContent =
         `${STRINGS.score} ${r.score.toLocaleString('ja-JP')}${data.result.isBest ? `　${STRINGS.bestUpdated}` : ''}` +
-        `　最高 ${TIER_NAMES[r.bestTier]}　最大連鎖 ${r.maxChain}　${Math.round(r.seconds)} 秒` +
-        `　熱: ${STRINGS.heatAbsorb} +${r.heatFromAbsorb}／${STRINGS.heatEscape} +${r.heatFromEscape}／${STRINGS.heatPurge} +${r.heatFromPurge}`;
+        `　最高 ${TIER_NAMES[r.bestTier]}　最大連鎖 ${r.maxChain}　${Math.round(r.seconds)} 秒`;
       card.append(
         p,
         button(STRINGS.retry, { kind: 'restart' }),

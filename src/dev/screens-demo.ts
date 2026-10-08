@@ -5,7 +5,7 @@
 import '../styles/game.css';
 import type { OverlayData, OverlayScreen, ResultView, Settings } from '../contracts/app';
 import type { GameSnapshot, SimulationPort } from '../contracts/game';
-import { SAMPLE_RECORDS, SAMPLE_RESULT, SAMPLE_RESULT_BEST, createAutoPlay, setupAllTiers } from '../fixtures';
+import { SAMPLE_RECORDS, SAMPLE_RESULT, SAMPLE_RESULT_BEST, createAutoPlay } from '../fixtures';
 import { DT } from '../game/constants';
 import { createBoardRenderer } from '../render';
 import { createRankingStore, createSaveStore } from '../storage';
@@ -37,7 +37,7 @@ createLayout(document.getElementById('app')!, (size) => {
   log(`盤面の一辺: ${size}px`);
 });
 
-let auto = createAutoPlay(3, setupAllTiers(15));
+let auto = createAutoPlay(3, undefined, 60);
 let sim: SimulationPort = auto.sim;
 let prev: GameSnapshot = sim.getSnapshot();
 let heatOverride: number | null = null;
@@ -55,7 +55,7 @@ function frame(now: number): void {
   }
   const snap = sim.getSnapshot();
   const shown = heatOverride === null ? snap : { ...snap, heat: heatOverride };
-  renderer.draw({ prev, curr: shown, alpha: acc / DT, timeSeconds: now / 1000, aim: null, guide: null, reducedMotion: false, timeMarkers: true, dimmed: overlays.current() !== null });
+  renderer.draw({ prev, curr: shown, alpha: acc / DT, timeSeconds: now / 1000, aim: null, reducedMotion: false, aimGuide: true, dimmed: overlays.current() !== null });
   hud.update(shown, saveStore.load().bestScore);
   requestAnimationFrame(frame);
 }
@@ -79,12 +79,12 @@ addButton('結果（ベスト更新）', () => {
 });
 
 addGroup('HUD');
-addSlider('熱量', 0, 100, 15, (v) => (heatOverride = v));
+addSlider('熱量', 0, 100, 0, (v) => (heatOverride = v));
 addButton('熱量を自動に戻す', () => (heatOverride = null));
-addButton('ヒント', () => hud.showToast('速すぎる衝突。同じ向きに回すと融合しやすい'));
+addButton('ヒント', () => hud.showToast('押したまま横に引っぱると、曲げて投げられます'));
 addButton('連鎖 ×3', () => hud.showChain(3));
 addButton('盤面をやり直す', () => {
-  auto = createAutoPlay(Date.now() % 1000, setupAllTiers(15));
+  auto = createAutoPlay(Date.now() % 1000, undefined, 60);
   sim = auto.sim;
   prev = sim.getSnapshot();
 });

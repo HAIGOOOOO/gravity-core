@@ -4,7 +4,7 @@
 import type { GameEvent, GameEventKind, GameSnapshot, SimulationPort, Tier } from '../contracts/game';
 import { createAudioManager } from '../audio';
 import { createEffectsLayer } from '../effects';
-import { createAutoPlay, sampleEvent, setupAllTiers, setupCrowded } from '../fixtures';
+import { createAutoPlay, sampleEvent, setupAllTiers } from '../fixtures';
 import { DT, HEAT_STATE_LIMITS } from '../game/constants';
 import { createSimulation } from '../game/simulation';
 import { createBoardRenderer } from '../render';
@@ -32,7 +32,7 @@ function fire(events: readonly GameEvent[]): void {
   effects.handleEvents(events, snap);
   audio.handleEvents(events, snap);
   for (const e of events) {
-    if (e.kind !== 'bounce') log(`${e.kind} tier=${e.sourceTier ?? '-'} chain=${e.chain ?? '-'} heat=${e.heatDelta ?? '-'}`);
+    if (e.kind !== 'land') log(`${e.kind} tier=${e.sourceTier ?? '-'} chain=${e.chain ?? '-'} heat=${e.heatDelta ?? '-'}`);
     if (e.kind === 'gameOver') effects.playGameOver();
   }
   audio.setCritical(snap.phase === 'active' && snap.heat >= HEAT_STATE_LIMITS[2]);
@@ -49,7 +49,7 @@ function frame(now: number): void {
     acc -= DT;
   }
   effects.update(delta);
-  renderer.draw({ prev, curr: sim.getSnapshot(), alpha: acc / DT, timeSeconds, aim: null, guide: null, reducedMotion: false, timeMarkers: true, dimmed: false });
+  renderer.draw({ prev, curr: sim.getSnapshot(), alpha: acc / DT, timeSeconds, aim: null, reducedMotion: false, aimGuide: true, dimmed: false });
   effects.draw();
   requestAnimationFrame(frame);
 }
@@ -77,16 +77,14 @@ addSlider('Tier', 0, 8, 2, (v) => (tier = v as Tier));
 addSlider('連鎖', 1, 5, 1, (v) => (chain = v));
 const kinds: [string, GameEventKind][] = [
   ['射出', 'launch'],
-  ['反発', 'bounce'],
-  ['融合', 'merge'],
-  ['核へ落下', 'absorb'],
-  ['流出', 'escape'],
-  ['過密', 'densityPurge'],
+  ['着地', 'land'],
+  ['合体', 'merge'],
   ['超新星', 'supernova'],
+  ['限界を越えた', 'overLimitStart'],
+  ['限界の内側に戻った', 'overLimitEnd'],
   ['終了', 'gameOver'],
 ];
-for (const [label, kind] of kinds) addButton(label, () => fire([sampleEvent(kind, tier, 200, -120, chain)]));
-addButton('速すぎる反発', () => fire([{ ...sampleEvent('bounce', tier), tooFast: true }]));
+for (const [label, kind] of kinds) addButton(label, () => fire([sampleEvent(kind, tier, 160, -120, chain)]));
 
 addGroup('盤面');
 addButton('自動プレイ', () => {
@@ -95,8 +93,8 @@ addButton('自動プレイ', () => {
   prev = sim.getSnapshot();
   effects.clear();
 });
-addButton('自動プレイ（混雑）', () => {
-  auto = createAutoPlay(Date.now() % 1000, setupCrowded(60));
+addButton('自動プレイ（山ができた後）', () => {
+  auto = createAutoPlay(Date.now() % 1000, undefined, 120);
   sim = auto.sim;
   prev = sim.getSnapshot();
   effects.clear();

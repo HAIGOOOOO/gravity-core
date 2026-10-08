@@ -1,15 +1,47 @@
-// ドラッグ距離と射出速度の変換（SPEC.md 3.4）。全担当が使ってよい。
+// 押した位置とドラッグから、射出の速度を決める。全担当が使ってよい。
+//
+// ・ドラッグが短い（DRAG_MIN_PX 未満）: 核へまっすぐ落とす
+// ・それ以上: ドラッグした向きへ投げる。長く引くほど速い。外向きには投げられない
 
-import { DRAG_MAX_PX, DRAG_MIN_PX, SPEED_MAX, SPEED_MIN } from '../game/constants';
+import { DRAG_MAX_PX, DRAG_MIN_PX, DROP_SPEED, SPEED_MAX, SPEED_MIN } from '../game/constants';
 
-/** ドラッグ距離（CSS px）から射出速度を求める。DRAG_MIN_PX 未満は null。 */
-export function dragToSpeed(dragPx: number): number | null {
-  if (dragPx < DRAG_MIN_PX) return null;
-  const clamped = Math.min(dragPx, DRAG_MAX_PX);
-  return SPEED_MIN + ((SPEED_MAX - SPEED_MIN) * (clamped - DRAG_MIN_PX)) / (DRAG_MAX_PX - DRAG_MIN_PX);
-}
+export type AimVelocity = {
+  vx: number;
+  vy: number;
+  speed: number;
+  /** まっすぐ落とす（ドラッグが短い） */
+  straight: boolean;
+};
 
-/** 射出速度から、それに相当するドラッグ距離（CSS px）を求める。 */
-export function speedToDrag(speed: number): number {
-  return DRAG_MIN_PX + ((speed - SPEED_MIN) * (DRAG_MAX_PX - DRAG_MIN_PX)) / (SPEED_MAX - SPEED_MIN);
+/**
+ * @param originAngle 射出点の角度（ラジアン）
+ * @param dragX ドラッグの移動量（CSS px。画面の右が +）
+ * @param dragY ドラッグの移動量（CSS px。画面の下が +）
+ */
+export function aimVelocity(originAngle: number, dragX: number, dragY: number): AimVelocity {
+  const outX = Math.cos(originAngle);
+  const outY = Math.sin(originAngle);
+  const dragPx = Math.hypot(dragX, dragY);
+  if (dragPx < DRAG_MIN_PX) {
+    return { vx: -outX * DROP_SPEED, vy: -outY * DROP_SPEED, speed: DROP_SPEED, straight: true };
+  }
+  const t = (Math.min(dragPx, DRAG_MAX_PX) - DRAG_MIN_PX) / (DRAG_MAX_PX - DRAG_MIN_PX);
+  const speed = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * t;
+  let dx = dragX / dragPx;
+  let dy = dragY / dragPx;
+  // 外向きの成分は取り除く（輪に沿う向きまでしか投げられない）
+  const outward = dx * outX + dy * outY;
+  if (outward > 0) {
+    dx -= outward * outX;
+    dy -= outward * outY;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) {
+      dx = -outX;
+      dy = -outY;
+    } else {
+      dx /= len;
+      dy /= len;
+    }
+  }
+  return { vx: dx * speed, vy: dy * speed, speed, straight: false };
 }

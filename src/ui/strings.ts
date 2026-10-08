@@ -1,9 +1,9 @@
-// 画面の文字はすべてここに集める（SPEC.md 6.8）。担当 D が管理する。
+// 画面の文字はすべてここに集める。担当 D が管理する。
 // 既にあるキーはアプリ（src/app/）が使っているので、名前を変えたり消したりしないこと。足すのは自由。
 
 export const STRINGS = {
   title: 'GRAVITY CORE',
-  tagline: '重力を読んで、同じ天体を融合させよう。',
+  tagline: '核のまわりに天体を積み、同じ天体を合体させよう。',
   start: 'はじめる',
   howto: '遊び方',
   ranking: 'ランキング',
@@ -25,19 +25,11 @@ export const STRINGS = {
   heat: '核熱量',
   next: '次の天体',
 
-  hintGuide: '印の位置から、矢印の向きにドラッグして離そう。',
-  hintTapOnly: 'ドラッグして射出',
-  hintPreview: '予測線は衝突を含みません',
-  hintFateCore: 'この軌道は核へ落ちます',
-  hintFateOutside: 'この軌道は場外へ出ます',
-  hintTooFast: '速すぎる衝突。同じ向きに回すと融合しやすい',
-  hintCoreFall: '横向きに撃つと軌道に乗ります',
-  hintChain: '連鎖！生まれた天体がすぐ融合すると得点が増えます',
+  hintStart: '盤面を押すと、その方角から玉が落ちる。同じ玉に当てて合体させよう。',
+  hintThrow: '押したまま横に引っぱると、曲げて投げられます',
+  hintChain: '連鎖！生まれた天体がすぐ合体すると得点が増えます',
+  hintLimit: '山が限界リングを越えています。越えている間、核の熱量が上がります',
   hintOverheat: '核が過熱しています',
-
-  heatAbsorb: '核へ落下',
-  heatEscape: '軌道から流出',
-  heatPurge: '過密',
 } as const;
 
 /** 「連鎖 ×3（2.0 倍）」 */

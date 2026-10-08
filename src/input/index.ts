@@ -1,43 +1,37 @@
-// 【仮実装】担当 B が SPEC.md 7.1〜7.4 のとおりに作り直す。
+// 【仮実装】担当 B が作り直す（docs/tasks/B.md）。
 // いまは「押す・動かす・離す」の最小だけ（取り消し、2 本目の指、計算の間引きなどは未対応）。
 // 関数名と引数は変えないこと。
 
 import type { AimView, PointerInput, PointerInputDeps } from '../contracts/app';
-import { AIM_MIN_RADIUS, DRAG_MIN_PX } from '../game/constants';
+import { AIM_MIN_RADIUS } from '../game/constants';
 import { clientToLogical } from '../shared/coords';
-import { dragToSpeed } from '../shared/launch';
+import { aimVelocity } from '../shared/launch';
 
 export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInputDeps): PointerInput {
   let enabled = false;
   let active: { id: number; startX: number; startY: number; angle: number } | null = null;
-  let last: AimView | null = null;
 
   function build(clientX: number, clientY: number): AimView {
     const a = active!;
     const dx = clientX - a.startX;
     const dy = clientY - a.startY;
-    const dragPx = Math.hypot(dx, dy);
-    const dirX = dragPx > 0 ? dx / dragPx : 0;
-    const dirY = dragPx > 0 ? dy / dragPx : 0;
-    const speed = dragToSpeed(dragPx);
-    const snapshot = deps.getSnapshot();
-    const prediction =
-      speed === null ? null : deps.predict({ originAngleRadians: a.angle, vx: dirX * speed, vy: dirY * speed });
+    const v = aimVelocity(a.angle, dx, dy);
+    const prediction = deps.predict({ originAngleRadians: a.angle, vx: v.vx, vy: v.vy });
     return {
       originAngleRadians: a.angle,
-      tier: snapshot.nextQueue[0],
-      dragPx,
-      dirX,
-      dirY,
-      speed,
+      tier: deps.getSnapshot().nextQueue[0],
+      dragPx: Math.hypot(dx, dy),
+      vx: v.vx,
+      vy: v.vy,
+      speed: v.speed,
+      straight: v.straight,
       prediction,
-      invalid: prediction?.rejectReason === 'overlap' || prediction?.rejectReason === 'speed',
+      invalid: prediction.rejectReason === 'overlap' || prediction.rejectReason === 'speed',
     };
   }
 
   function stop(): void {
     active = null;
-    last = null;
     deps.onAim(null);
   }
 
@@ -47,29 +41,19 @@ export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInput
     if (Math.hypot(p.x, p.y) < AIM_MIN_RADIUS) return;
     active = { id: e.pointerId, startX: e.clientX, startY: e.clientY, angle: Math.atan2(p.y, p.x) };
     canvas.setPointerCapture(e.pointerId);
-    last = build(e.clientX, e.clientY);
-    deps.onAim(last);
+    deps.onAim(build(e.clientX, e.clientY));
   }
 
   function onMove(e: PointerEvent): void {
     if (!active || e.pointerId !== active.id) return;
-    last = build(e.clientX, e.clientY);
-    deps.onAim(last);
+    deps.onAim(build(e.clientX, e.clientY));
   }
 
   function onUp(e: PointerEvent): void {
     if (!active || e.pointerId !== active.id) return;
     const aim = build(e.clientX, e.clientY);
     stop();
-    if (aim.dragPx < DRAG_MIN_PX || aim.speed === null) {
-      deps.onTapOnly();
-    } else if (!aim.invalid) {
-      deps.onLaunch({
-        originAngleRadians: aim.originAngleRadians,
-        vx: aim.dirX * aim.speed,
-        vy: aim.dirY * aim.speed,
-      });
-    }
+    if (!aim.invalid) deps.onLaunch({ originAngleRadians: aim.originAngleRadians, vx: aim.vx, vy: aim.vy });
   }
 
   function onCancel(): void {

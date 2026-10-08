@@ -31,7 +31,7 @@ export type Settings = {
   volume: number;
   /** null は端末の設定に従う */
   reducedMotion: boolean | null;
-  timeMarkers: boolean;
+  aimGuide: boolean;
 };
 
 // ───────── 担当 B: 盤面と照準 ─────────
@@ -42,22 +42,15 @@ export type AimView = Readonly<{
   tier: Tier;
   /** ドラッグ距離（CSS px） */
   dragPx: number;
-  /** 飛ぶ向きの単位ベクトル。ドラッグが 0 のときは (0, 0) */
-  dirX: number;
-  dirY: number;
-  /** ドラッグが DRAG_MIN_PX 未満のときは null */
-  speed: number | null;
+  /** 撃ったときの速度（論理 px/秒） */
+  vx: number;
+  vy: number;
+  speed: number;
+  /** ドラッグが短く、核へまっすぐ落とす状態 */
+  straight: boolean;
   prediction: Prediction | null;
   /** 射出点が他の天体と重なるなど、離しても撃てない */
   invalid: boolean;
-}>;
-
-/** 初回の案内（SPEC.md 7.6）。アプリが計算して渡す。 */
-export type GuideView = Readonly<{
-  originAngleRadians: number;
-  dirX: number;
-  dirY: number;
-  dragPx: number;
 }>;
 
 export type BoardFrame = Readonly<{
@@ -68,9 +61,8 @@ export type BoardFrame = Readonly<{
   /** 表示用の経過秒（脈動などに使う。一時停止中は進まない） */
   timeSeconds: number;
   aim: AimView | null;
-  guide: GuideView | null;
   reducedMotion: boolean;
-  timeMarkers: boolean;
+  aimGuide: boolean;
   /** 一時停止・結果の表示中は true（盤面を暗くする） */
   dimmed: boolean;
 }>;
@@ -94,10 +86,8 @@ export type PointerInputDeps = {
   predict(command: LaunchCommand): Prediction;
   /** 照準の表示が変わるたびに呼ぶ。照準をやめたら null */
   onAim(aim: AimView | null): void;
-  /** 有効な照準で離したときに呼ぶ */
+  /** 有効な照準で離したときに呼ぶ（ドラッグなしで離した場合も、まっすぐ落とす射出として呼ぶ） */
   onLaunch(command: LaunchCommand): void;
-  /** ドラッグせずに離したとき（「ドラッグして射出」のヒント用） */
-  onTapOnly(): void;
 };
 
 export interface PointerInput {
@@ -132,7 +122,7 @@ export interface AudioManager {
   unlock(): void;
   setSettings(settings: Pick<Settings, 'sfx' | 'volume'>): void;
   handleEvents(events: readonly GameEvent[], snapshot: GameSnapshot): void;
-  /** 熱量 90 以上の間 true。臨界の警告音を鳴らす */
+  /** 熱量が「臨界」の間 true。警告音を鳴らす */
   setCritical(on: boolean): void;
   play(sound: UiSound): void;
   /** 一時停止などで音を止める */
@@ -152,9 +142,6 @@ export type RunRecord = {
   launches: number;
   merges: number;
   supernovas: number;
-  heatFromAbsorb: number;
-  heatFromEscape: number;
-  heatFromPurge: number;
   seed: number;
   /** ISO 8601 */
   playedAt: string;
@@ -170,10 +157,12 @@ export type SaveDataV1 = {
   lastRecordId: string | null;
   settings: Settings;
   hints: {
+    /** 最初の合体を見たか（開始時の案内を出すかどうか） */
     firstMergeDone: boolean;
-    previewNoteShown: number;
-    tooFastShown: number;
-    coreFallShown: boolean;
+    /** 「引っぱると曲げて投げられる」を出したか */
+    throwShown: boolean;
+    /** 「限界リングを越えると熱量が上がる」を出したか */
+    limitShown: boolean;
     chainShown: boolean;
   };
 };

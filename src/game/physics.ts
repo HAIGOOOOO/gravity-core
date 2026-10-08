@@ -1,40 +1,29 @@
-// 重力と移動（SPEC.md 3.3）。天体どうしは引き合わない。引力を持つのは中央の核だけ。
+// 重力と動き。引力を持つのは中央の核だけで、強さは距離によらず一定。
 
-import {
-  DT,
-  MERGE_SPEED_BASE,
-  MERGE_SPEED_FLOOR,
-  MERGE_SPEED_PER_TIER,
-  MU,
-  SOFTENING,
-} from './constants';
+import { AIR_DAMPING, DT, GRAVITY } from './constants';
 
 export type Mover = { x: number; y: number; vx: number; vy: number };
 
-const SOFT2 = SOFTENING * SOFTENING;
-
-/** 1 tick 進める。速度を先に更新してから位置を進める（軌道が長時間ずれにくい）。 */
-export function stepGravity(body: Mover): void {
-  const d2 = body.x * body.x + body.y * body.y + SOFT2;
-  const k = -MU / (d2 * Math.sqrt(d2));
-  body.vx += k * body.x * DT;
-  body.vy += k * body.y * DT;
-  body.x += body.vx * DT;
-  body.y += body.vy * DT;
+/** 重力と空気の減速を速度に反映する（位置はまだ動かさない）。 */
+export function applyGravity(body: Mover): void {
+  const r = Math.hypot(body.x, body.y);
+  if (r > 1e-6) {
+    body.vx -= (GRAVITY * body.x * DT) / r;
+    body.vy -= (GRAVITY * body.y * DT) / r;
+  }
+  const keep = 1 - AIR_DAMPING * DT;
+  body.vx *= keep;
+  body.vy *= keep;
 }
 
-/** 半径 r の円軌道の速さ。 */
-export function circularSpeed(r: number): number {
-  const d2 = r * r + SOFT2;
-  return Math.sqrt((MU * r * r) / (d2 * Math.sqrt(d2)));
+/** 何にも触れずに 1 tick 進める（予測用）。 */
+export function stepFree(body: Mover): void {
+  applyGravity(body);
+  body.x += body.vx * DT;
+  body.y += body.vy * DT;
 }
 
 /** 時計回り（画面上）の接線の単位ベクトル。 */
 export function clockwiseTangent(angle: number): { x: number; y: number } {
   return { x: -Math.sin(angle), y: Math.cos(angle) };
-}
-
-/** その Tier どうしが融合できる相対速度の上限。 */
-export function mergeSpeedLimit(tier: number): number {
-  return Math.max(MERGE_SPEED_FLOOR, MERGE_SPEED_BASE - MERGE_SPEED_PER_TIER * tier);
 }

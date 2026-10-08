@@ -10,14 +10,8 @@ export function defaultSaveData(): SaveDataV1 {
     bestScore: 0,
     records: [],
     lastRecordId: null,
-    settings: { sfx: true, volume: 70, reducedMotion: null, timeMarkers: true },
-    hints: {
-      firstMergeDone: false,
-      previewNoteShown: 0,
-      tooFastShown: 0,
-      coreFallShown: false,
-      chainShown: false,
-    },
+    settings: { sfx: true, volume: 70, reducedMotion: null, aimGuide: true },
+    hints: { firstMergeDone: false, throwShown: false, limitShown: false, chainShown: false },
   };
 }
 

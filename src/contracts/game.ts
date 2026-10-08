@@ -1,5 +1,5 @@
 // ゲームの計算（src/game/）と、それ以外の全部分が共有する型。
-// 正本は SPEC.md の 11.5。変更できるのはリーダーだけ（AGENTS.md 参照）。
+// 変更できるのはリーダーだけ（AGENTS.md 参照）。
 
 export type Tier = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type BodyId = number;
@@ -13,10 +13,13 @@ export type BodyView = Readonly<{
   y: number;
   vx: number;
   vy: number;
+  /** 今の半径。合体で生まれた直後は、本来の大きさへ育つ途中 */
   radius: number;
   bornTick: Tick;
   chain: number;
   chainUntilTick: Tick;
+  /** 外側の端が限界リングを越えていて、熱量を上げている */
+  overLimit: boolean;
 }>;
 
 export type RunStats = Readonly<{
@@ -24,9 +27,6 @@ export type RunStats = Readonly<{
   merges: number;
   supernovas: number;
   maxChain: number;
-  heatFromAbsorb: number;
-  heatFromEscape: number;
-  heatFromPurge: number;
 }>;
 
 export type GameSnapshot = Readonly<{
@@ -34,6 +34,8 @@ export type GameSnapshot = Readonly<{
   phase: 'active' | 'over';
   bodies: readonly BodyView[];
   heat: number;
+  /** 限界リングを越えた天体が 1 つ以上ある（熱量が上がっている） */
+  overLimit: boolean;
   score: number;
   bestTierThisRun: Tier;
   nextQueue: readonly [Tier, Tier, Tier];
@@ -56,13 +58,18 @@ export type LaunchResult =
   | { accepted: false; reason: LaunchRejectReason };
 
 export type GameEventKind =
+  /** 撃った */
   | 'launch'
-  | 'bounce'
+  /** 撃った天体が、初めて何かに触れた */
+  | 'land'
+  /** 同じ Tier が合体して 1 つ上の Tier が生まれた */
   | 'merge'
-  | 'absorb'
-  | 'escape'
-  | 'densityPurge'
+  /** Tier 8 どうしが合体して消えた */
   | 'supernova'
+  /** 山が限界リングを越えた（熱量が上がり始めた） */
+  | 'overLimitStart'
+  /** 越えた天体がなくなった（熱量が下がり始めた） */
+  | 'overLimitEnd'
   | 'gameOver';
 
 export type GameEvent = Readonly<{
@@ -77,36 +84,23 @@ export type GameEvent = Readonly<{
   scoreDelta?: number;
   heatDelta?: number;
   chain?: number;
-  tooFast?: boolean;
+  /** land のとき: ぶつかった速さ（音や演出の強さに使う） */
+  impactSpeed?: number;
 }>;
-
-export type Fate = 'orbit' | 'core' | 'outside';
 
 export type PathPoint = Readonly<{ x: number; y: number; t: number }>;
 
-export type RivalPrediction = Readonly<{
-  bodyId: BodyId;
-  markers: readonly PathPoint[];
-  /** 出会う時刻（秒）。出会わなければ null */
-  meetAt: number | null;
-  /** 出会う場所（2 体の中間）。meetAt が null のときは 0 */
-  meetX: number;
-  meetY: number;
-  /** 出会う時刻の相対速度が融合しきい速度以下か */
-  canMerge: boolean;
-}>;
-
+/** いまの盤面が止まっていると仮定して、撃った天体が最初に何かへ触れるまでの道すじ。 */
 export type Prediction = Readonly<{
   valid: boolean;
   rejectReason?: LaunchRejectReason;
-  /** 0.05 秒刻み、最大 2.5 秒 */
   points: readonly PathPoint[];
-  end: 'timeLimit' | 'core' | 'outside';
-  /** 20 秒先までの判定 */
-  fate: Fate;
-  /** 0.5 秒おき */
-  markers: readonly PathPoint[];
-  rivals: readonly RivalPrediction[];
+  /** core: 核に着く / body: 天体に当たる / timeLimit: 時間内にどこにも着かない */
+  end: 'core' | 'body' | 'timeLimit';
+  /** 最初に当たる天体。当たらなければ null */
+  hitBodyId: BodyId | null;
+  /** 最初に当たる天体が同じ Tier（当たれば合体する） */
+  willMerge: boolean;
 }>;
 
 export type LaunchInput = Readonly<{
