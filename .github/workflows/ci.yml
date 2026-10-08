@@ -1,0 +1,28 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 担当の場所だけを変えているか
+        if: github.event_name == 'pull_request'
+        run: npm run check:ownership
+      - name: 型のチェック
+        run: npm run typecheck
+      - name: テスト
+        run: npm run test
+      - name: ビルド
+        run: npm run build

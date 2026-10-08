@@ -1,0 +1,36 @@
+/* 色と寸法の変数（SPEC.md 6.1）。変更できるのはリーダーだけ。全ページがこれを読み込む。 */
+:root {
+  --bg: #070b18;
+  --bg-2: #101a30;
+  --line: #39506a;
+  --text: #f7f7f2;
+  --text-sub: #91a0b8;
+  --core: #ffb45e;
+  --core-hot: #fff6d7;
+  --cool: #83d9ff;
+  --warn: #ffd66b;
+  --overheat: #ffa978;
+  --danger: #ff7d83;
+  --chain: #a38bff;
+
+  --font: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  --radius-panel: 12px;
+  --radius-button: 999px;
+  --button-height: 48px;
+  --gap: 24px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}

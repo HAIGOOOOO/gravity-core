@@ -1,0 +1,63 @@
+/* 見本ページ共通の見た目（リーダー担当）。本番には含まれない。 */
+#demo-controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  background: rgba(16, 26, 48, 0.92);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+#demo-controls button {
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+#demo-controls label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--text-sub);
+}
+#demo-controls .group {
+  color: var(--core);
+  font-weight: 700;
+  margin-left: 8px;
+}
+#demo-log {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  z-index: 100;
+  width: 320px;
+  max-height: 160px;
+  overflow: hidden;
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  color: var(--text-sub);
+  background: rgba(16, 26, 48, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.demo-stage {
+  position: relative;
+  margin: 110px auto 0;
+}
+.demo-stage canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}

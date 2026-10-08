@@ -1,0 +1,9 @@
+/* 【仮実装】ランキングページの見た目。担当 D が SPEC.md 6.7 のとおりに作る。 */
+#ranking-root {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+#ranking-root a {
+  color: var(--cool);
+}

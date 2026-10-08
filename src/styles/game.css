@@ -1,0 +1,85 @@
+/* 【仮実装】ゲームページの見た目。担当 D が SPEC.md 6.2〜6.6 のとおりに作り直す。
+   #board-wrap の中の 2 枚の Canvas を重ねる部分（下の「変えない」印）だけは残すこと。 */
+
+body {
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ── 変えない: 盤面と演出の Canvas を同じ場所に重ねる ── */
+#board-wrap {
+  position: relative;
+  width: var(--board-size);
+  height: var(--board-size);
+}
+#board-wrap canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+#board {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#effects {
+  pointer-events: none;
+}
+/* ── ここまで ── */
+
+#hud {
+  min-height: 3em;
+  text-align: center;
+  color: var(--text-sub);
+}
+#hud .toast {
+  color: var(--text);
+  min-height: 1.5em;
+}
+
+#overlay-root {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 11, 24, 0.78);
+}
+#overlay-root[hidden] {
+  display: none;
+}
+.card {
+  max-width: 420px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--bg-2);
+  display: grid;
+  gap: 12px;
+}
+.card h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.card button {
+  height: var(--button-height);
+  border-radius: var(--radius-button);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.card button:first-of-type {
+  background: var(--core);
+  border-color: var(--core);
+  color: var(--bg);
+}
