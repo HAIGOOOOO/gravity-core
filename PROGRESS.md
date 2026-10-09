@@ -8,6 +8,7 @@
 - 担当ごとの手順書: `docs/tasks/B.md` `C.md` `D.md`
 - 担当ごとの進み具合: `docs/progress/LEAD.md` `B.md` `C.md` `D.md`
 - チームの人向けの始め方: `docs/はじめに.md`
+- 誰がどの担当か: `docs/TEAM.md`
 
 ## 今の状態
 - 仮の見た目で、タイトルからゲームオーバー、再挑戦まで遊べる（`npm run dev`）
