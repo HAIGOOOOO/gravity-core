@@ -141,6 +141,20 @@ export function createEventEffects(pool: EffectPool, theme: EffectTheme) {
         } else {
           const p = lifeProgress(fusion.age - delay, VISUAL.flashSeconds);
           const radius = TIER_RADIUS[fusion.result] * (fusion.nova ? 1.6 : 0.6 + p * 0.4);
+          // 合体した場所のまわりを明るくにじませる（小さい天体の合体でも目に入るように）
+          const glowRadius = Math.max(VISUAL.minGlowRadius, TIER_RADIUS[fusion.result] * VISUAL.glowScale);
+          const glow = ctx.createRadialGradient(fusion.x, fusion.y, 0, fusion.x, fusion.y, glowRadius);
+          glow.addColorStop(0, theme.text);
+          glow.addColorStop(0.35, fusion.chain > 1 ? theme.chain : TIER_COLOR[fusion.result]);
+          glow.addColorStop(1, 'transparent');
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - p) * 0.7;
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(fusion.x, fusion.y, glowRadius, 0, VISUAL.turn);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
           if (!fusion.nova) drawBody(ctx, fusion.result, fusion.x, fusion.y, radius);
           ctx.globalAlpha = (1 - p) * 0.85;
           ctx.fillStyle = theme.text;

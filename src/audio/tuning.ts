@@ -1,8 +1,9 @@
-// TODO(依頼中): 共有したい音の定数（同時数・着地の間隔・全体倍率）を constants.ts へ移す。
-// 音色は担当 C 内に置く。小さな山で鳴らし、重なっても耳に刺さらないようにする。
+import { AUDIO_MASTER_GAIN, AUDIO_MAX_VOICES, LAND_SOUND_MAX, LAND_SOUND_WINDOW_SECONDS } from '../game/constants';
+
+// 同時数・着地の間隔・全体倍率は constants.ts の値を使う。音色は担当 C 内に置く。小さな山で鳴らし、重なっても耳に刺さらないようにする。
 export const AUDIO = {
-  maxVoices: 12, landWindow: 0.25, landCount: 4,
-  attack: 0.005, floor: 0.0001, master: 0.8, smoothing: 0.015,
+  maxVoices: AUDIO_MAX_VOICES, landWindow: LAND_SOUND_WINDOW_SECONDS, landCount: LAND_SOUND_MAX,
+  attack: 0.005, floor: 0.0001, master: AUDIO_MASTER_GAIN, smoothing: 0.015,
   novaSilence: 0.15, criticalHz: 70, criticalSeconds: 0.12, criticalInterval: 1000,
 };
 
