@@ -28,6 +28,38 @@ export const STRINGS = {
   pause: '一時停止',
   soundOn: '効果音を切る',
   soundOff: '効果音を入れる',
+  observatory: '重力観測室',
+  titleNote: 'ひとつ落とす。ふたつが出会う。小さな天体から、星を育てる。',
+  howtoSteps: [
+    '盤面を押して離すと、その方角から天体が落ちる。',
+    '同じ天体が触れると合体。引っぱって離すと、曲げて投げられる。',
+    '山が限界リングを越えると核熱量が上がる。100で終了。',
+  ],
+  volume: '音量',
+  reducedMotion: '動きを減らす',
+  deviceDefault: '端末に合わせる',
+  on: '入',
+  off: '切',
+  aimGuide: '予測線',
+  playerName: '名前',
+  nameHelp: '12文字まで。空欄は PLAYER として記録します。',
+  clearRecords: '記録を消す',
+  confirmClear: 'この端末のランキングとベストスコアを消します。よろしいですか？',
+  cancel: 'やめる',
+  confirm: '確定する',
+  bestTier: '最高 Tier',
+  maxChain: '最大連鎖',
+  playTime: 'プレイ時間',
+  launches: '射出数',
+  merges: '合体数',
+  resultReason: '積もった山が限界リングを越え、核熱量が100に達しました。',
+  rankingNote: 'この端末の上位10件',
+  emptyRanking: 'まだ記録がありません。最初の記録を作ろう。',
+  backToGame: 'ゲームへ戻る',
+  startGame: 'ゲームをはじめる',
+  rank: '順位',
+  date: '日付',
+  latestRecord: '直前のプレイ',
 
   hintStart: '盤面を押すと、その方角から玉が落ちる。同じ玉に当てて合体させよう。',
   hintThrow: '押したまま横に引っぱると、曲げて投げられます',
@@ -40,6 +72,8 @@ export const STRINGS = {
   effectSupernova: '超新星反応',
   effectHeat: '核熱量',
 } as const;
+
+export function rankLabel(rank: number): string { return `この端末で ${rank} 位`; }
 
 /** 「連鎖 ×3（2.0 倍）」 */
 export function chainLabel(chain: number, multiplier: number): string {

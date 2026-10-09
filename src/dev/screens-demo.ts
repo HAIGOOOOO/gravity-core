@@ -77,6 +77,11 @@ addButton('結果（ベスト更新）', () => {
   result = SAMPLE_RESULT_BEST;
   overlays.show('result', data());
 });
+addButton('順位を後から表示', () => {
+  if (!result) result = SAMPLE_RESULT;
+  result = { ...result, rank: 3 };
+  overlays.show('result', data());
+});
 
 addGroup('HUD');
 addSlider('熱量', 0, 100, 0, (v) => (heatOverride = v));
