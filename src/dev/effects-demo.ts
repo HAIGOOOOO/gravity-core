@@ -3,17 +3,35 @@
 
 import type { GameEvent, GameEventKind, GameSnapshot, SimulationPort, Tier } from '../contracts/game';
 import { createAudioManager } from '../audio';
-import { createEffectsLayer } from '../effects';
+import { createEffectsLayer, inspectEffects } from '../effects';
 import { createAutoPlay, sampleEvent, setupAllTiers } from '../fixtures';
-import { DT, HEAT_STATE_LIMITS } from '../game/constants';
+import { DT, FLOAT_TEXT_CAP, HEAT_STATE_LIMITS, MAX_FRAME_SECONDS, PARTICLE_CAP } from '../game/constants';
 import { createSimulation } from '../game/simulation';
 import { createBoardRenderer } from '../render';
 import { addButton, addGroup, addSlider, addToggle, log } from './demo-kit';
 
 const stage = document.getElementById('stage')!;
 const renderer = createBoardRenderer(document.getElementById('board') as HTMLCanvasElement);
-const effects = createEffectsLayer(document.getElementById('effects') as HTMLCanvasElement, stage);
+const effectsCanvas = document.getElementById('effects') as HTMLCanvasElement;
+const effects = createEffectsLayer(effectsCanvas, stage);
 const audio = createAudioManager();
+
+// TODO(依頼中): 共通の strings へ移してほしい見本ページの文言。
+const FOUNDATION = {
+  group: '演出の土台（手順 1）', sample: '粒子・輪・浮き文字の見本',
+  stress: '毎秒100回（10秒）', stop: '負荷テストを止める',
+  idle: '待機', running: '負荷テスト中', finished: '負荷テスト完了',
+  particles: '粒子', rings: '輪', texts: '浮き文字', events: '出来事',
+};
+const STRESS_RATE = 100;
+const STRESS_SECONDS = 10;
+const COUNTER_SECONDS = 0.1;
+const CONTROLS_GAP = 24;
+let stressLeft = 0;
+let stressEvents = 0;
+let counterAccumulator = COUNTER_SECONDS;
+let status = FOUNDATION.idle;
+const counter = document.getElementById('effect-counts')!;
 
 let sim: SimulationPort = createSimulation(1, setupAllTiers());
 let auto: ReturnType<typeof createAutoPlay> | null = null;
@@ -39,7 +57,7 @@ function fire(events: readonly GameEvent[]): void {
 }
 
 function frame(now: number): void {
-  const delta = Math.min((now - last) / 1000, 0.05);
+  const delta = Math.min((now - last) / 1000, MAX_FRAME_SECONDS);
   last = now;
   timeSeconds += delta;
   acc += delta;
@@ -49,8 +67,25 @@ function frame(now: number): void {
     acc -= DT;
   }
   effects.update(delta);
+  if (stressLeft > 0) {
+    const elapsed = Math.min(delta, stressLeft);
+    stressLeft = Math.max(0, stressLeft - elapsed);
+    const targetEvents = stressLeft === 0 ? STRESS_RATE * STRESS_SECONDS
+      : Math.floor((STRESS_SECONDS - stressLeft) * STRESS_RATE);
+    while (stressEvents < targetEvents) {
+      effects.handleEvents([sampleEvent('merge', tier, 160, -120, chain)], sim.getSnapshot());
+      stressEvents++;
+    }
+    if (stressLeft === 0) status = FOUNDATION.finished;
+  }
   renderer.draw({ prev, curr: sim.getSnapshot(), alpha: acc / DT, timeSeconds, aim: null, reducedMotion: false, aimGuide: true, dimmed: false });
   effects.draw();
+  counterAccumulator += delta;
+  if (counterAccumulator >= COUNTER_SECONDS) {
+    counterAccumulator = 0;
+    const counts = inspectEffects(effectsCanvas);
+    counter.textContent = `${status} · ${FOUNDATION.events} ${stressEvents} · ${FOUNDATION.particles} ${counts.particles}/${PARTICLE_CAP} · ${FOUNDATION.rings} ${counts.rings} · ${FOUNDATION.texts} ${counts.texts}/${FLOAT_TEXT_CAP}`;
+  }
   requestAnimationFrame(frame);
 }
 
@@ -60,6 +95,20 @@ function resize(size: number): void {
   renderer.resize(size);
   effects.resize(size);
 }
+
+addGroup(FOUNDATION.group);
+addButton(FOUNDATION.sample, () => fire([sampleEvent('merge', tier, 160, -120, chain)]));
+addButton(FOUNDATION.stress, () => {
+  effects.clear();
+  stressLeft = STRESS_SECONDS;
+  stressEvents = 0;
+  status = FOUNDATION.running;
+});
+addButton(FOUNDATION.stop, () => {
+  stressLeft = 0;
+  status = FOUNDATION.idle;
+  effects.clear();
+});
 
 addGroup('音');
 addButton('音を有効にする（最初に押す）', () => {
@@ -106,7 +155,23 @@ addButton('静かな盤面', () => {
   effects.clear();
 });
 addToggle('動きを減らす', false, (on) => effects.setReducedMotion(on));
-addButton('演出を全部消す', () => effects.clear());
+addButton('演出を全部消す', () => {
+  stressLeft = 0;
+  status = FOUNDATION.idle;
+  effects.clear();
+});
+
+document.addEventListener('visibilitychange', () => {
+  // 隠れていた秒数をまとめて進めず、復帰後は新しいフレームから始める。
+  last = performance.now();
+  acc = 0;
+});
+
+const controls = document.getElementById('demo-controls')!;
+new ResizeObserver(() => {
+  // ボタンが折り返されても、盤面を操作欄の下に置く。
+  stage.style.marginTop = `${controls.getBoundingClientRect().height + CONTROLS_GAP}px`;
+}).observe(controls);
 
 resize(560);
 requestAnimationFrame(frame);
