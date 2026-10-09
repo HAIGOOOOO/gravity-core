@@ -2,60 +2,13 @@
 // いまは「遊べることを確かめる」ための最小の画面だけ（文字だけの HUD、ボタンだけのカード）。
 // 関数名と引数は変えないこと。ファイルを分けるのは自由（hud.ts、overlays.ts、layout.ts など）。
 
-import type { Hud, Layout, OverlayData, OverlayScreen, Overlays, UiIntent } from '../contracts/app';
+import type { OverlayData, OverlayScreen, Overlays, UiIntent } from '../contracts/app';
 import { TIER_NAMES } from '../game/constants';
-import { HEAT_STATE_LABEL, heatState } from '../shared/heat';
 import { STRINGS } from './strings';
 
-/**
- * 盤面の大きさを決め、画面サイズが変わるたびに onResize を呼ぶ（SPEC.md 6.2）。
- * @param root index.html の #app
- */
-export function createLayout(root: HTMLElement, onResize: (boardCssSize: number) => void): Layout {
-  let size = 0;
-  function measure(): void {
-    const next = Math.max(240, Math.floor(Math.min(window.innerWidth - 16, window.innerHeight - 120)));
-    if (next === size) return;
-    size = next;
-    root.style.setProperty('--board-size', `${size}px`);
-    onResize(size);
-  }
-  window.addEventListener('resize', measure);
-  measure();
-  return {
-    getBoardSize: () => size,
-    dispose: () => window.removeEventListener('resize', measure),
-  };
-}
+export { createLayout } from './layout';
 
-/** @param root index.html の #hud */
-export function createHud(root: HTMLElement, onIntent: (intent: UiIntent) => void): Hud {
-  void onIntent; // 一時停止・音の入切・ランキングのボタンで使う
-  const line = document.createElement('div');
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  root.append(line, toast);
-  let toastTimer = 0;
-
-  return {
-    update(snapshot, bestScore) {
-      const heat = Math.floor(snapshot.heat);
-      const next = snapshot.nextQueue.map((t) => TIER_NAMES[t]).join(' → ');
-      line.textContent =
-        `${STRINGS.score} ${snapshot.score.toLocaleString('ja-JP')}（${STRINGS.best} ${bestScore.toLocaleString('ja-JP')}）` +
-        `　${STRINGS.heat} ${heat} / 100 ${HEAT_STATE_LABEL[heatState(snapshot.heat)]}　${STRINGS.next}: ${next}`;
-    },
-    showToast(text, seconds = 3) {
-      toast.textContent = text;
-      window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => (toast.textContent = ''), seconds * 1000);
-    },
-    showChain(chain) {
-      this.showToast(`連鎖 ×${chain}`, 2);
-    },
-    setSfxOn() {},
-  };
-}
+export { createHud } from './hud';
 
 /** @param root index.html の #overlay-root */
 export function createOverlays(root: HTMLElement, onIntent: (intent: UiIntent) => void): Overlays {

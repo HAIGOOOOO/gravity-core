@@ -7,12 +7,26 @@ body {
 
 #app {
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: var(--board-size) 280px;
+  align-content: center;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 24px;
+  padding: env(safe-area-inset-top) 8px env(safe-area-inset-bottom);
 }
+.safe-area-probe { position: absolute; visibility: hidden; pointer-events: none; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+#app[data-layout='landscape'] { grid-template-columns: var(--board-size) 200px; gap: 16px; }
+#app[data-layout='portrait'] { grid-template-columns: var(--board-size); grid-template-rows: 56px var(--board-size) 88px; gap: 0; }
+#app[data-layout='portrait'] #board-wrap { grid-area: 2 / 1; }
+#app[data-layout='portrait'] #hud { display: contents; }
+#app[data-layout='portrait'] .hud-score { grid-area: 1 / 1; justify-self: start; }
+#app[data-layout='portrait'] .hud-heat { grid-area: 1 / 1; justify-self: end; width: 140px; }
+#app[data-layout='portrait'] .hud-next { grid-area: 3 / 1; justify-self: start; width: 55%; }
+#app[data-layout='portrait'] .hud-controls { grid-area: 3 / 1; justify-self: end; width: auto; }
+#app[data-layout='portrait'] .hud-logo { display: none; }
+#app[data-layout='portrait'] .score-value { font-size: 22px; }
+#app[data-layout='portrait'] .best-value { display: none; }
 
 /* ── 変えない: 盤面と演出の Canvas を同じ場所に重ねる ── */
 #board-wrap {
@@ -36,10 +50,32 @@ body {
 /* ── ここまで ── */
 
 #hud {
-  min-height: 3em;
-  text-align: center;
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--bg-2);
   color: var(--text-sub);
+  min-width: 0;
 }
+.hud-logo { font-size: 14px; letter-spacing: .2em; }
+.hud-score, .hud-heat, .hud-next { display: grid; gap: 4px; min-width: 0; }
+.label { font-size: 12px; color: var(--text-sub); }
+.score-value { font-size: 32px; color: var(--text); line-height: 1.15; }
+.best-value { font-size: 13px; }
+.heat-value { color: var(--text); font-size: 12px; }
+.queue-values { font-size: 12px; }
+.hud-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+.hud-controls button { min-width: 44px; min-height: 44px; font: inherit; font-size: 12px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-button); }
+#app[data-layout='landscape'] #hud { gap: 10px; padding: 12px; }
+.toast { position: fixed; left: 50%; bottom: 94px; transform: translateX(-50%); max-width: calc(100% - 24px); pointer-events: none; }
+.toast:empty { display: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
+#screen-demo-tools { position: fixed; top: 0; left: 0; z-index: 110; font-size: 12px; max-width: 100%; }
+#screen-demo-tools summary { cursor: pointer; background: var(--bg-2); color: var(--text-sub); padding: 3px 8px; }
+#screen-demo-tools #demo-controls { position: static; max-height: 35vh; overflow: auto; }
+body:has(#screen-demo-tools) #demo-log { max-height: 22px; width: min(320px, 90vw); padding: 2px 8px; bottom: 0; }
 #hud .toast {
   color: var(--text);
   min-height: 1.5em;
