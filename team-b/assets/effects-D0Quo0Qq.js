@@ -1,0 +1,1 @@
+import{s as e}from"./render-YaApWicS.js";function t(){return{unlock(){},setSettings(){},handleEvents(){},setCritical(){},play(){},suspend(){},resume(){}}}function n(t,n){return{resize:n=>void e(t,n),handleEvents(){},update(){},draw(){},playGameOver(){},setReducedMotion(){},clear(){}}}export{t as n,n as t};
