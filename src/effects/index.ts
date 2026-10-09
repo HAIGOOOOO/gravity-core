@@ -4,6 +4,7 @@ import { drawPool } from './draw';
 import { createEventEffects } from './events';
 import { REDUCED_RING_SECONDS } from './motion';
 import { createEffectPool, type EffectPool } from './pool';
+import { createPresentation } from './presentation';
 import { readTheme } from './theme';
 
 const pools = new WeakMap<HTMLCanvasElement, EffectPool>();
@@ -20,12 +21,12 @@ export function inspectEffects(canvas: HTMLCanvasElement) {
 
 /** 盤面の上に重ねる演出。ゲームの状態・物理の進行には触らない。 */
 export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLElement): EffectsLayer {
-  void shakeTarget;
   const ctx = canvas.getContext('2d');
   const pool = createEffectPool();
   pools.set(canvas, pool);
   const theme = readTheme(canvas);
   const events = createEventEffects(pool, theme);
+  const presentation = createPresentation(shakeTarget, theme);
 
   return {
     resize(cssSize) {
@@ -34,11 +35,17 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     },
     handleEvents(batch, snapshot) {
       void snapshot;
-      for (const event of batch) events.handle(event);
+      for (const event of batch) {
+        events.handle(event);
+        if (event.kind === 'merge' || event.kind === 'supernova') {
+          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova');
+        }
+      }
     },
     update(seconds) {
       pool.update(seconds);
       events.update(seconds);
+      presentation.update(seconds);
     },
     draw() {
       if (!ctx) return;
@@ -48,12 +55,13 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       applyLogicalTransform(ctx);
       events.draw(ctx);
       drawPool(ctx, pool, theme);
+      presentation.draw(ctx);
       ctx.restore();
     },
-    // 終了演出は手順 3 で実装する。
-    playGameOver() {},
+    playGameOver() { presentation.gameOver(); },
     setReducedMotion(on) {
       events.setReduced(on);
+      presentation.setReduced(on);
       if (!on) return;
       for (const particle of pool.particles) particle.active = false;
       for (const ring of pool.rings) {
@@ -65,6 +73,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     },
     clear() {
       events.clear();
+      presentation.clear();
       pool.clear();
       if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);

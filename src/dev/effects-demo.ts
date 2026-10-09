@@ -42,6 +42,7 @@ let tier: Tier = 2;
 let chain = 1;
 let sfx = true;
 let volume = 70;
+let reducedMotion = false;
 let acc = 0;
 let timeSeconds = 0;
 let last = performance.now();
@@ -94,7 +95,7 @@ function frame(now: number): void {
     }
     if (stressLeft === 0) status = FOUNDATION.finished;
   }
-  renderer.draw({ prev, curr: sim.getSnapshot(), alpha: acc / DT, timeSeconds, aim: null, reducedMotion: false, aimGuide: true, dimmed: false });
+  renderer.draw({ prev, curr: sim.getSnapshot(), alpha: acc / DT, timeSeconds, aim: null, reducedMotion, aimGuide: true, dimmed: false });
   effects.draw();
   counterAccumulator += delta;
   if (counterAccumulator >= COUNTER_SECONDS) {
@@ -166,7 +167,10 @@ addButton('静かな盤面', () => {
   prev = sim.getSnapshot();
   effects.clear();
 });
-addToggle('動きを減らす', false, (on) => effects.setReducedMotion(on));
+addToggle('動きを減らす', false, (on) => {
+  reducedMotion = on;
+  effects.setReducedMotion(on);
+});
 addButton('演出を全部消す', () => {
   stressLeft = 0;
   status = FOUNDATION.idle;

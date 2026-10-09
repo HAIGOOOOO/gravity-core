@@ -110,7 +110,7 @@ export function createEventEffects(pool: EffectPool, theme: EffectTheme) {
       }
     },
     draw(ctx: CanvasRenderingContext2D): void {
-      const seconds = recovering ? VISUAL.recoverySeconds : VISUAL.warningSeconds;
+      const seconds = reduced ? REDUCED_RING_SECONDS : recovering ? VISUAL.recoverySeconds : VISUAL.warningSeconds;
       if (limitAge < seconds) {
         ctx.save();
         ctx.globalAlpha = fade(limitAge, seconds);
