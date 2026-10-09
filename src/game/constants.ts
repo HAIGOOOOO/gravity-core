@@ -119,4 +119,14 @@ export const TRAIL_POINTS = 16;
 export const PARTICLE_CAP = 400;
 export const FLOAT_TEXT_CAP = 12;
 export const GAMEOVER_SECONDS = 0.55;
+
+// 音（audio/ が参照する）
+/** 同時に鳴らす音の上限 */
+export const AUDIO_MAX_VOICES = 12;
+/** 着地音は、この秒数の間に LAND_SOUND_MAX 回まで */
+export const LAND_SOUND_WINDOW_SECONDS = 0.25;
+export const LAND_SOUND_MAX = 4;
+/** 設定の音量 100 のときの全体音量 */
+export const AUDIO_MASTER_GAIN = 0.8;
+
 export const DPR_CAP = 2;

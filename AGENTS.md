@@ -62,6 +62,7 @@ GRAVITY CORE は、中央の重力核のまわりに天体を積み、同じ階�
 # 毎回の最初
 git fetch origin
 git switch team-b || git switch -c team-b origin/main   # 自分の担当のブランチ名にする
+git pull --no-rebase origin team-b   # リーダーが自分のブランチに直しを入れていることがある
 git merge origin/main        # リーダーの最新を取り込む。衝突したら自分の担当の場所だけ直す
 npm ci                       # 初回と、package-lock.json が変わったとき
 ```
@@ -121,7 +122,7 @@ Pull Request は 1 つ開いていれば、あとは push するたびに自動�
 - TypeScript の `strict` を通す。`any` を使わない。`// @ts-ignore` を使わない。
 - **ライブラリを足さない。** 必要だと思ったら「リーダーへの依頼」に理由を書く。
 - **数値を直接書かない。** ゲームの数値は `src/game/constants.ts` から import する。足りない定数は依頼する（見た目だけの細かい寸法は、自分のファイルの先頭に定数としてまとめてよい）。
-- 画面に出す日本語は `src/ui/strings.ts`（担当 D）に集める。B と C が文字を出すときは、関数の引数で受け取るか、自分のファイルの先頭に定数でまとめ、progress に「strings へ移してほしい文言」として書く。
+- 画面に出す日本語は `src/ui/strings.ts`（担当 D）に集める。B と C が文字を出すときは、関数の引数で受け取るか、自分のファイルの先頭に定数でまとめ、progress に「strings へ移してほしい文言」として書く。**見本ページ（`src/dev/`）のボタンや説明の文字は、そのファイルに直接書いてよい**（本番に含まれないため、移さなくてよい）。
 - `src/contracts/app.ts` に書かれた関数名と引数を変えない。中身を作り直すのは自由。ファイルを分けるのも自由。
 - ゲームの状態を自分で持たない。受け取った `GameSnapshot` と `GameEvent` を表示するだけにする。判定（合体したか、撃てたか）を自分で推測しない。
 - 文字を画面に入れるときは `textContent` を使う（`innerHTML` に外から来た文字を入れない）。
@@ -174,14 +175,20 @@ Node.js は 22 以上。入っていなければ、ユーザーに「Node.js の
 1. 開発用サーバーが動いていなければ `npm run dev` を**裏で起動したまま**にする（報告の後も止めない）。
 2. 自分の担当の見本ページの URL を伝える（7 章の表。例: 担当 C は `http://localhost:5173/dev/effects.html`）。ブラウザを開ける環境なら、そのページを開く。
 3. クラウドなど、担当者が `localhost` を開けない環境で動いているときは、サーバーは起動せず、「手元で見るには `npm run dev` の後にこの URL」と伝える。
+4. **動画と公開ページは自動で作られる。** push すると、数分後に GitHub が見本ページを自動で操作した動画を撮り、触れるページと一緒に次の場所へ置く。自分で動画を撮る必要はない。報告には、自分のブランチの URL を必ず書く。
+   - 担当 B: `https://haigooooo.github.io/gravity-core/team-b/progress.html`
+   - 担当 C: `https://haigooooo.github.io/gravity-core/team-c/progress.html`
+   - 担当 D: `https://haigooooo.github.io/gravity-core/team-d/progress.html`
+   - 動画は、見本ページの操作バーにあるボタンを左から順に全部押して撮る。**新しく作った物を見せるボタンを見本ページに足しておくと、それも動画に入る。**動画に音は入らない。
 
 ### 8.2 報告（この形のまま、短く）
 
-担当者はコードを読まない。**下の 5 行だけ**を日本語で書く。経過の説明、ファイル名の列挙、謝罪、前置きは書かない。
+担当者はコードを読まない。**下の 6 行だけ**を日本語で書く。経過の説明、ファイル名の列挙、謝罪、前置きは書かない。
 
 ```
 できたこと: 合体の光と得点の表示を入れた（手順 2 / 6 まで完了）
 見る場所: http://localhost:5173/dev/effects.html
+動画: https://haigooooo.github.io/gravity-core/team-c/progress.html （数分後に更新されます）
 見てほしい点: 「合体」ボタンを押すと光って得点が出る。Tier を上げると派手になる
 次に打つ一言: 今日の作業をやって（続きから始まります）
 あなたがやること: なし

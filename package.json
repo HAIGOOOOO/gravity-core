@@ -9,9 +9,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check:ownership": "node scripts/check-ownership.mjs"
+    "check:ownership": "node scripts/check-ownership.mjs",
+    "build:preview": "vite build --config vite.preview.config.ts",
+    "capture": "node scripts/capture.mjs"
   },
   "devDependencies": {
+    "playwright": "^1.64.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vitest": "^5.0.3"

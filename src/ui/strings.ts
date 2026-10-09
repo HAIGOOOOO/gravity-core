@@ -30,6 +30,11 @@ export const STRINGS = {
   hintChain: '連鎖！生まれた天体がすぐ合体すると得点が増えます',
   hintLimit: '山が限界リングを越えています。越えている間、核の熱量が上がります',
   hintOverheat: '核が過熱しています',
+
+  // 盤面の上に出る演出の文字（担当 C が使う）
+  effectChain: '連鎖',
+  effectSupernova: '超新星反応',
+  effectHeat: '核熱量',
 } as const;
 
 /** 「連鎖 ×3（2.0 倍）」 */
