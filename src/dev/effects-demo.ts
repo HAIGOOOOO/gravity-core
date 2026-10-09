@@ -27,6 +27,7 @@ const STRESS_RATE = 100;
 const STRESS_SECONDS = 10;
 const COUNTER_SECONDS = 0.1;
 const CONTROLS_GAP = 24;
+const AUTO_WARMUP_SECONDS = 30;
 let stressLeft = 0;
 let stressEvents = 0;
 let counterAccumulator = COUNTER_SECONDS;
@@ -35,6 +36,7 @@ const counter = document.getElementById('effect-counts')!;
 
 let sim: SimulationPort = createSimulation(1, setupAllTiers());
 let auto: ReturnType<typeof createAutoPlay> | null = null;
+let autoWarmup = 0;
 let prev: GameSnapshot = sim.getSnapshot();
 let tier: Tier = 2;
 let chain = 1;
@@ -56,12 +58,26 @@ function fire(events: readonly GameEvent[]): void {
   audio.setCritical(snap.phase === 'active' && snap.heat >= HEAT_STATE_LIMITS[2]);
 }
 
+function resetAuto(warmup: number): void {
+  const seed = Date.now() % 1000;
+  auto = createAutoPlay(seed, undefined, warmup);
+  // 見本の準備中に終了した場合は、新しいプレイから出来事を流す。
+  if (auto.sim.getSnapshot().phase === 'over') auto = createAutoPlay(seed);
+  sim = auto.sim;
+  prev = sim.getSnapshot();
+  effects.clear();
+  audio.setCritical(false);
+}
+
 function frame(now: number): void {
   const delta = Math.min((now - last) / 1000, MAX_FRAME_SECONDS);
   last = now;
   timeSeconds += delta;
   acc += delta;
   while (acc >= DT) {
+    if (auto && sim.getSnapshot().phase === 'over') {
+      resetAuto(autoWarmup);
+    }
     prev = sim.getSnapshot();
     fire(auto ? auto.step() : sim.stepFixed());
     acc -= DT;
@@ -137,16 +153,12 @@ for (const [label, kind] of kinds) addButton(label, () => fire([sampleEvent(kind
 
 addGroup('盤面');
 addButton('自動プレイ', () => {
-  auto = createAutoPlay(Date.now() % 1000);
-  sim = auto.sim;
-  prev = sim.getSnapshot();
-  effects.clear();
+  autoWarmup = 0;
+  resetAuto(autoWarmup);
 });
 addButton('自動プレイ（山ができた後）', () => {
-  auto = createAutoPlay(Date.now() % 1000, undefined, 120);
-  sim = auto.sim;
-  prev = sim.getSnapshot();
-  effects.clear();
+  autoWarmup = AUTO_WARMUP_SECONDS;
+  resetAuto(autoWarmup);
 });
 addButton('静かな盤面', () => {
   auto = null;

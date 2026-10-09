@@ -12,7 +12,7 @@ export type Ring = Lifetime & {
   width: number; color: string; stationary: boolean;
 };
 export type FloatText = Lifetime & {
-  x: number; y: number; text: string; color: string;
+  x: number; y: number; text: string; color: string; size: number;
 };
 
 function unused<T extends Lifetime>(slots: T[]): T | undefined {
@@ -30,7 +30,7 @@ export function createEffectPool() {
     width: 0, color: '', stationary: false,
   }));
   const texts: FloatText[] = Array.from({ length: FLOAT_TEXT_CAP }, () => ({
-    active: false, age: 0, lifetime: FLOAT_SECONDS, x: 0, y: 0, text: '', color: '',
+    active: false, age: 0, lifetime: FLOAT_SECONDS, x: 0, y: 0, text: '', color: '', size: 24,
   }));
 
   function advanceLifetimes(slots: Lifetime[], dt: number): void {
@@ -59,11 +59,11 @@ export function createEffectPool() {
       slot.width = width; slot.color = color; slot.stationary = stationary;
       return true;
     },
-    text(x: number, y: number, text: string, color: string): boolean {
+    text(x: number, y: number, text: string, color: string, size = 24): boolean {
       const slot = unused(texts);
       if (!slot) return false;
       slot.active = true; slot.age = 0; slot.x = x; slot.y = y;
-      slot.text = text; slot.color = color;
+      slot.text = text; slot.color = color; slot.size = size;
       return true;
     },
     update(seconds: number): void {
