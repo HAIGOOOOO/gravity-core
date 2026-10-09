@@ -14,6 +14,7 @@ import { addButton, addGroup, addSlider, log } from './demo-kit';
 
 const saveStore = createSaveStore();
 const ranking = createRankingStore(saveStore);
+void ranking.list(10).then(records => log(`読み込み済みの記録: ${records.length} 件`));
 const renderer = createBoardRenderer(document.getElementById('board') as HTMLCanvasElement);
 const hud = createHud(document.getElementById('hud')!, (intent) => log(`意図: ${JSON.stringify(intent)}`));
 
@@ -28,7 +29,14 @@ const data = (): OverlayData => ({
 
 const overlays = createOverlays(document.getElementById('overlay-root')!, (intent) => {
   log(`意図: ${JSON.stringify(intent)}`);
-  if (intent.kind === 'settingsChanged') settings = intent.settings;
+  if (intent.kind === 'settingsChanged') {
+    settings = intent.settings;
+    const saved = saveStore.load(); saved.settings = settings; saveStore.save(saved);
+    hud.setSfxOn(settings.sfx);
+  }
+  if (intent.kind === 'rename') {
+    const saved = saveStore.load(); saved.playerName = intent.name; saveStore.save(saved);
+  }
   if (intent.kind === 'clearRecords') void ranking.clear();
 });
 
