@@ -11,10 +11,11 @@ on:
 permissions:
   contents: write
 
-# 置き場（gh-pages ブランチ）への書き込みが重ならないよう、順番に 1 つずつ動かす
+# 同じブランチに続けて push されたら、古いほうは打ち切って最新だけを作る。
+# 別の担当の push とは並んで動く（置き場への書き込みがぶつかったら、下の手順でやり直す）
 concurrency:
-  group: preview-deploy
-  cancel-in-progress: false
+  group: preview-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   preview:
@@ -34,17 +35,29 @@ jobs:
           npm run capture
       - name: 進み具合のページを作る
         run: node scripts/make-site-index.mjs
-      - name: 全体の一覧を置く
-        if: github.ref_name == 'main'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: site/_root
-          keep_files: true
-      - name: このブランチのページを置く
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: site
-          destination_dir: ${{ github.ref_name }}
-          exclude_assets: '_root'
+      - name: GitHub Pages の置き場（gh-pages ブランチ）へ置く
+        env:
+          BRANCH: ${{ github.ref_name }}
+          REPO: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5 6; do
+            rm -rf pages
+            if ! git clone --quiet --depth 1 --branch gh-pages "$REPO" pages; then
+              # 置き場がまだ無いときは作る
+              mkdir pages && git -C pages init --quiet -b gh-pages && git -C pages remote add origin "$REPO"
+            fi
+            touch pages/.nojekyll
+            rm -rf "pages/$BRANCH"
+            mkdir -p "pages/$BRANCH"
+            cp -r site/. "pages/$BRANCH/"
+            rm -rf "pages/$BRANCH/_root"
+            if [ "$BRANCH" = "main" ] || [ ! -f pages/index.html ]; then cp site/_root/index.html pages/index.html; fi
+            git -C pages add -A
+            git -C pages commit --quiet -m "preview: $BRANCH $GITHUB_SHA" || { echo "変更なし"; exit 0; }
+            if git -C pages push --quiet origin gh-pages; then echo "置きました（$attempt 回目）"; exit 0; fi
+            echo "ほかの担当の更新と重なったので、やり直します（$attempt 回目）"
+            sleep $((attempt * 7))
+          done
+          echo "置けませんでした"; exit 1
