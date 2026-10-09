@@ -9,6 +9,7 @@
 - 担当ごとの進み具合: `docs/progress/LEAD.md` `B.md` `C.md` `D.md`
 - チームの人向けの始め方: `docs/はじめに.md`
 - 誰がどの担当か: `docs/TEAM.md`
+- 全員ぶんの進み具合・触れるページ・動画: https://haigooooo.github.io/gravity-core/ （push のたびに自動更新。仕組みは `.github/workflows/preview.yml`）
 
 ## 今の状態
 - 仮の見た目で、タイトルからゲームオーバー、再挑戦まで遊べる（`npm run dev`）

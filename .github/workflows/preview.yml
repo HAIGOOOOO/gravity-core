@@ -1,0 +1,50 @@
+name: preview
+
+# main と各担当のブランチに保存（push）されるたびに、
+# 触れるページと動画を作って GitHub Pages に置く。
+#   https://haigooooo.github.io/gravity-core/            全体の一覧
+#   https://haigooooo.github.io/gravity-core/team-c/progress.html   担当 C の進み具合
+on:
+  push:
+    branches: [main, team-b, team-c, team-d]
+
+permissions:
+  contents: write
+
+# 置き場（gh-pages ブランチ）への書き込みが重ならないよう、順番に 1 つずつ動かす
+concurrency:
+  group: preview-deploy
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 触れるページを作る
+        run: npm run build:preview
+      - name: 動画を撮る
+        run: |
+          npx playwright install --with-deps chromium
+          npm run capture
+      - name: 進み具合のページを作る
+        run: node scripts/make-site-index.mjs
+      - name: 全体の一覧を置く
+        if: github.ref_name == 'main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site/_root
+          keep_files: true
+      - name: このブランチのページを置く
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
+          destination_dir: ${{ github.ref_name }}
+          exclude_assets: '_root'
