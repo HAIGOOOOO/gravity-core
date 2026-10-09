@@ -50,6 +50,7 @@ export function createHud(root: HTMLElement, onIntent: (intent: UiIntent) => voi
   let lastBest = -1;
   let lastHeat = -1;
   let lastQueue = '';
+  let lastTick = 0;
   function setScore(value: number): void {
     const text = Math.round(value).toLocaleString('ja-JP');
     if (score.textContent !== text) score.textContent = text;
@@ -72,6 +73,12 @@ export function createHud(root: HTMLElement, onIntent: (intent: UiIntent) => voi
   }
   const hud: Hud = {
     update(snapshot, bestScore) {
+      if (snapshot.tick < lastTick) {
+        chain.textContent = '';
+        // 開始の案内はアプリがすでに出しているので、消さない。
+        clearTimeout(chainTimer);
+      }
+      lastTick = snapshot.tick;
       if (snapshot.score !== target) countTo(snapshot.score);
       if (bestScore !== lastBest) {
         best.textContent = `${STRINGS.best} ${bestScore.toLocaleString('ja-JP')}`;
@@ -92,7 +99,6 @@ export function createHud(root: HTMLElement, onIntent: (intent: UiIntent) => voi
         snapshot.nextQueue.forEach((tier, index) => paintBodyIcon(icons[index]!, tier));
         lastQueue = key;
       }
-      if (snapshot.score === 0 && snapshot.tick === 0) { chain.textContent = ''; toast.textContent = ''; }
     },
     showToast(text, seconds = 3) {
       toast.textContent = text;
