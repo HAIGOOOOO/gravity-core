@@ -25,6 +25,9 @@ export const STRINGS = {
   heat: '核熱量',
   next: '次の天体',
   sound: '効果音',
+  pause: '一時停止',
+  soundOn: '効果音を切る',
+  soundOff: '効果音を入れる',
 
   hintStart: '盤面を押すと、その方角から玉が落ちる。同じ玉に当てて合体させよう。',
   hintThrow: '押したまま横に引っぱると、曲げて投げられます',
