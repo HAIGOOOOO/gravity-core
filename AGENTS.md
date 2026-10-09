@@ -62,6 +62,7 @@ GRAVITY CORE は、中央の重力核のまわりに天体を積み、同じ階�
 # 毎回の最初
 git fetch origin
 git switch team-b || git switch -c team-b origin/main   # 自分の担当のブランチ名にする
+git pull --no-rebase origin team-b   # リーダーが自分のブランチに直しを入れていることがある
 git merge origin/main        # リーダーの最新を取り込む。衝突したら自分の担当の場所だけ直す
 npm ci                       # 初回と、package-lock.json が変わったとき
 ```
@@ -121,7 +122,7 @@ Pull Request は 1 つ開いていれば、あとは push するたびに自動�
 - TypeScript の `strict` を通す。`any` を使わない。`// @ts-ignore` を使わない。
 - **ライブラリを足さない。** 必要だと思ったら「リーダーへの依頼」に理由を書く。
 - **数値を直接書かない。** ゲームの数値は `src/game/constants.ts` から import する。足りない定数は依頼する（見た目だけの細かい寸法は、自分のファイルの先頭に定数としてまとめてよい）。
-- 画面に出す日本語は `src/ui/strings.ts`（担当 D）に集める。B と C が文字を出すときは、関数の引数で受け取るか、自分のファイルの先頭に定数でまとめ、progress に「strings へ移してほしい文言」として書く。
+- 画面に出す日本語は `src/ui/strings.ts`（担当 D）に集める。B と C が文字を出すときは、関数の引数で受け取るか、自分のファイルの先頭に定数でまとめ、progress に「strings へ移してほしい文言」として書く。**見本ページ（`src/dev/`）のボタンや説明の文字は、そのファイルに直接書いてよい**（本番に含まれないため、移さなくてよい）。
 - `src/contracts/app.ts` に書かれた関数名と引数を変えない。中身を作り直すのは自由。ファイルを分けるのも自由。
 - ゲームの状態を自分で持たない。受け取った `GameSnapshot` と `GameEvent` を表示するだけにする。判定（合体したか、撃てたか）を自分で推測しない。
 - 文字を画面に入れるときは `textContent` を使う（`innerHTML` に外から来た文字を入れない）。
