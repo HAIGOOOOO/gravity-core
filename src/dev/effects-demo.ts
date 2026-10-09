@@ -2,7 +2,9 @@
 // ボタンで出来事を 1 つずつ起こすか、「自動プレイ」で本物の計算から出来事を流す。
 
 import type { GameEvent, GameEventKind, GameSnapshot, SimulationPort, Tier } from '../contracts/game';
-import { createAudioManager } from '../audio';
+import { createAudioManager, inspectAudio } from '../audio';
+import { verifySynthesis } from '../audio/verify';
+import { AUDIO } from '../audio/tuning';
 import { createEffectsLayer, inspectEffects } from '../effects';
 import { createAutoPlay, sampleEvent, setupAllTiers } from '../fixtures';
 import { DT, FLOAT_TEXT_CAP, HEAT_STATE_LIMITS, MAX_FRAME_SECONDS, PARTICLE_CAP } from '../game/constants';
@@ -22,6 +24,8 @@ const FOUNDATION = {
   stress: '毎秒100回（10秒）', stop: '負荷テストを止める',
   idle: '待機', running: '負荷テスト中', finished: '負荷テスト完了',
   particles: '粒子', rings: '輪', texts: '浮き文字', events: '出来事',
+  audio: '音', voices: '同時音', audioLocked: '未有効', audioRunning: '有効', audioSuspended: '一時停止',
+  verify: '音の波形を検証', verifying: '音を検証中', verified: '音の生成・上限・消去 OK', failed: '音の検証で問題あり',
 };
 const STRESS_RATE = 100;
 const STRESS_SECONDS = 10;
@@ -91,6 +95,7 @@ function frame(now: number): void {
       : Math.floor((STRESS_SECONDS - stressLeft) * STRESS_RATE);
     while (stressEvents < targetEvents) {
       effects.handleEvents([sampleEvent('merge', tier, 160, -120, chain)], sim.getSnapshot());
+      audio.handleEvents([sampleEvent('merge', tier, 160, -120, chain)], sim.getSnapshot());
       stressEvents++;
     }
     if (stressLeft === 0) status = FOUNDATION.finished;
@@ -101,7 +106,9 @@ function frame(now: number): void {
   if (counterAccumulator >= COUNTER_SECONDS) {
     counterAccumulator = 0;
     const counts = inspectEffects(effectsCanvas);
-    counter.textContent = `${status} · ${FOUNDATION.events} ${stressEvents} · ${FOUNDATION.particles} ${counts.particles}/${PARTICLE_CAP} · ${FOUNDATION.rings} ${counts.rings} · ${FOUNDATION.texts} ${counts.texts}/${FLOAT_TEXT_CAP}`;
+    const sound = inspectAudio(audio);
+    const soundState = sound.state === 'running' ? FOUNDATION.audioRunning : sound.state === 'suspended' ? FOUNDATION.audioSuspended : FOUNDATION.audioLocked;
+    counter.textContent = `${status} · ${FOUNDATION.events} ${stressEvents} · ${FOUNDATION.particles} ${counts.particles}/${PARTICLE_CAP} · ${FOUNDATION.rings} ${counts.rings} · ${FOUNDATION.texts} ${counts.texts}/${FLOAT_TEXT_CAP} · ${FOUNDATION.audio}: ${soundState} · ${FOUNDATION.voices} ${sound.voices}/${AUDIO.maxVoices}`;
   }
   requestAnimationFrame(frame);
 }
@@ -131,6 +138,14 @@ addGroup('音');
 addButton('音を有効にする（最初に押す）', () => {
   audio.unlock();
   audio.setSettings({ sfx, volume });
+});
+addButton(FOUNDATION.verify, () => {
+  log(FOUNDATION.verifying);
+  void verifySynthesis().then(({ results, capped, cleared }) => {
+    const ok = capped && cleared && results.every((r) => r.rms > 0 && r.peak < 1)
+      && results.find((r) => r.kind === 'supernova')?.silentLead;
+    log(`${ok ? FOUNDATION.verified : FOUNDATION.failed}\n${JSON.stringify({ results, capped, cleared })}`);
+  }).catch(() => log(FOUNDATION.failed));
 });
 addToggle('効果音', true, (on) => audio.setSettings({ sfx: (sfx = on), volume }));
 addSlider('音量', 0, 100, 70, (v) => audio.setSettings({ sfx, volume: (volume = v) }));
