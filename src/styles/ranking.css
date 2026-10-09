@@ -1,9 +1,44 @@
-/* 【仮実装】ランキングページの見た目。担当 D が SPEC.md 6.7 のとおりに作る。 */
-#ranking-root {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 24px 16px;
-}
-#ranking-root a {
-  color: var(--cool);
+#ranking-root { max-width: 960px; margin: 0 auto; padding: 32px 24px 48px; }
+.ranking-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+.ranking-logo { font-size: 14px; letter-spacing: .2em; color: var(--text-sub); }
+.back-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; border: 1px solid var(--line); border-radius: var(--radius-button); padding: 0 16px; white-space: nowrap; }
+.ranking-eyebrow { color: var(--core); font-size: 12px; margin: 32px 0 8px; letter-spacing: .18em; }
+#ranking-root h1 { margin: 0 0 8px; font-size: 32px; }
+.ranking-note { color: var(--text-sub); margin: 0 0 24px; }
+.ranking-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ranking-table th, .ranking-table td { padding: 12px 8px; border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.ranking-table thead th { color: var(--text-sub); font-size: 11px; font-weight: 400; }
+.ranking-table th:first-child { width: 6%; }
+.ranking-table th:nth-child(2) { width: 20%; }
+.ranking-table th:nth-child(3) { width: 15%; }
+.ranking-table th:nth-child(4) { width: 23%; }
+.ranking-table th:nth-child(5), .ranking-table th:nth-child(6) { width: 10%; }
+.ranking-table th:nth-child(7) { width: 16%; }
+.rank-number { font-size: 20px; font-weight: 400; }
+.medal { color: var(--core); font-weight: 700; }
+.record-score { font-weight: 700; font-size: 18px; }
+.ranking-tier { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ranking-tier .body-icon { width: 36px; height: 36px; flex: 0 0 auto; }
+.record-date { font-size: 12px; }
+.last-record { background: color-mix(in srgb, var(--bg-2) 90%, var(--cool)); box-shadow: inset 3px 0 var(--cool); }
+.latest-label { display: block; margin-top: 4px; color: var(--cool); font-size: 10px; }
+.ranking-empty { margin: 48px 0; padding: 32px 24px; border-block: 1px solid var(--line); }
+.ranking-empty p { color: var(--text-sub); line-height: 1.6; }
+.start-link { display: inline-flex; align-items: center; min-height: 48px; margin-top: 12px; padding: 0 24px; color: var(--bg); background: var(--core); text-decoration: none; border-radius: var(--radius-button); font-weight: 700; }
+a:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 599px) {
+  #ranking-root { padding: 20px 12px; }
+  .ranking-logo { font-size: 11px; letter-spacing: .1em; }
+  .back-link { font-size: 12px; padding: 0 12px; }
+  .extra-column { display: none; }
+  .ranking-table th, .ranking-table td { padding: 12px 6px; }
+  .ranking-table th:first-child { width: 12%; }
+  .ranking-table th:nth-child(2) { width: 27%; }
+  .ranking-table th:nth-child(3) { width: 27%; }
+  .ranking-table th:nth-child(4) { width: 34%; }
+  .record-score { font-size: 16px; }
+  .record-name { font-size: 12px; }
+  .ranking-tier { gap: 4px; font-size: 11px; }
+  .ranking-tier .body-icon { width: 24px; height: 24px; }
 }
