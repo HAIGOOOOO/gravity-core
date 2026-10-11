@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BACKUP_KEY, SAVE_KEY, createSaveStore } from './save';
 import { defaultSaveData } from './data';
 import { createRankingStore } from './ranking';
 import type { RunRecord } from '../contracts/app';
+
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function fakeStorage(raw: string | null = null) {
   const values = new Map<string,string>();
@@ -14,6 +16,25 @@ function record(id: string, score: number, playedAt = '2026-10-09T00:00:00Z'): R
     seed: 1, playedAt, gameVersion: '0.1.0' };
 }
 describe('保存データの復旧', () => {
+  it('localStorage の取得自体が拒否されてもメモリで続ける', () => {
+    vi.stubGlobal('window', { location: { search: '' }, get localStorage() { throw new Error('denied'); } });
+    const save = createSaveStore(); const data = save.load(); data.playerName = 'MEMORY';
+    save.save(data); expect(save.load().playerName).toBe('MEMORY');
+  });
+  it('開発用の保存拒否モードでは既存の端末記録に触らない', () => {
+    vi.stubEnv('DEV', true);
+    const storage = fakeStorage();
+    vi.stubGlobal('window', { location: { search: '?storage=denied' }, localStorage: storage });
+    const save = createSaveStore(); const data = save.load(); data.playerName = 'MEMORY'; save.save(data);
+    expect(save.load().playerName).toBe('MEMORY'); expect(storage.values.size).toBe(0);
+  });
+  it('本番では保存拒否モードの URL を無視する', () => {
+    vi.stubEnv('DEV', false);
+    const storage = fakeStorage();
+    vi.stubGlobal('window', { location: { search: '?storage=denied' }, localStorage: storage });
+    const save = createSaveStore(); const data = save.load(); data.playerName = 'SAVED'; save.save(data);
+    expect(storage.values.has(SAVE_KEY)).toBe(true);
+  });
   it('保存が無ければ初期値、再読み込みでは保存値を返す', () => {
     const storage = fakeStorage(); const save = createSaveStore(storage);
     expect(save.load()).toEqual(defaultSaveData());

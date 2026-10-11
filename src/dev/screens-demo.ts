@@ -19,6 +19,8 @@ const renderer = createBoardRenderer(document.getElementById('board') as HTMLCan
 const hud = createHud(document.getElementById('hud')!, (intent) => log(`意図: ${JSON.stringify(intent)}`));
 
 let settings: Settings = saveStore.load().settings;
+hud.setSfxOn(settings.sfx);
+document.documentElement.dataset.reducedMotion = String(settings.reducedMotion);
 let result: ResultView | undefined;
 const data = (): OverlayData => ({
   bestScore: saveStore.load().bestScore,
@@ -63,7 +65,9 @@ function frame(now: number): void {
   }
   const snap = sim.getSnapshot();
   const shown = heatOverride === null ? snap : { ...snap, heat: heatOverride };
-  renderer.draw({ prev, curr: shown, alpha: acc / DT, timeSeconds: now / 1000, aim: null, reducedMotion: false, aimGuide: true, dimmed: overlays.current() !== null });
+  renderer.draw({ prev, curr: shown, alpha: acc / DT, timeSeconds: now / 1000, aim: null,
+    reducedMotion: settings.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    aimGuide: settings.aimGuide, dimmed: overlays.current() !== null });
   hud.update(shown, saveStore.load().bestScore);
   requestAnimationFrame(frame);
 }
@@ -110,5 +114,12 @@ addButton('見本の記録を 10 件入れる', async () => {
 });
 addButton('記録を全部消す', () => void ranking.clear());
 addButton('ランキングページを開く', () => (location.href = '../ranking.html?from=result'));
+
+// 自動撮影ではページを離れず、必要なときだけ別のタブで確認する。
+const storageCheck = document.createElement('a');
+storageCheck.href = '../index.html?seed=3&storage=denied';
+storageCheck.target = '_blank'; storageCheck.rel = 'noopener';
+storageCheck.textContent = '保存不可でゲームを試す（開発用）';
+document.getElementById('demo-controls')!.append(storageCheck);
 
 requestAnimationFrame(frame);
