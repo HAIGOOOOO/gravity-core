@@ -2,6 +2,7 @@
 // GitHub の自動処理（.github/workflows/preview.yml）が、ビルドと動画の撮影の後に動かす。
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 const sh = (cmd) => {
@@ -20,9 +21,9 @@ const subject = sh('git log -1 --format=%s');
 
 const ROLES = {
   main: { name: '本線（取り込み済みの物）', file: 'LEAD', video: 'game' },
-  'team-b': { name: '担当 B: 盤面と照準', file: 'B', video: 'board' },
-  'team-c': { name: '担当 C: 演出と音', file: 'C', video: 'effects' },
-  'team-d': { name: '担当 D: 画面・保存・ランキング', file: 'D', video: 'screens' },
+  'team-b': { name: '担当 B: 続ける（再生・図鑑・記録）', file: 'B', video: 'meta' },
+  'team-c': { name: '担当 C: 感じる（演出・音・曲）', file: 'C', video: 'effects' },
+  'team-d': { name: '担当 D: 見る（天体・盤面・全画面）', file: 'D', video: 'look' },
 };
 const role = ROLES[branch] ?? { name: branch, file: 'LEAD', video: 'game' };
 
@@ -51,12 +52,21 @@ const STYLE = `
   .note { color: #91a0b8; font-size: 13px; }
 `;
 
-const videos = [
-  ['game', 'ゲーム本体（自動で遊ばせた物）'],
-  ['board', '見本ページ: 盤面と照準（担当 B）'],
-  ['effects', '見本ページ: 演出と音（担当 C）'],
-  ['screens', '見本ページ: 画面（担当 D）'],
-];
+const LABELS = {
+  game: 'ゲーム本体（自動で遊ばせた物）',
+  look: '見本: 見た目の案（担当 D）',
+  board: '見本: 盤面と照準（担当 D）',
+  screens: '見本: 画面（担当 D）',
+  effects: '見本: 演出（担当 C）',
+  sound: '見本: 音の画像と数字（担当 C）',
+  meta: '見本: 再生・図鑑・記録（担当 B）',
+};
+// 見本ページは担当が増やしていくので、実際に撮れた動画・できたページだけを並べる
+const videos = Object.entries(LABELS).filter(([file]) => existsSync(`site/videos/${file}.webm`));
+const devLinks = Object.keys(LABELS)
+  .filter((file) => existsSync(`site/dev/${file}.html`))
+  .map((file) => `  <a href="dev/${file}.html">${esc(LABELS[file])}</a>`)
+  .join('\n');
 // このブランチの担当の動画を先頭に出す
 videos.sort((a, b) => (b[0] === role.video ? 1 : 0) - (a[0] === role.video ? 1 : 0));
 
@@ -77,9 +87,7 @@ const page = `<!doctype html>
 <h2>触ってみる</h2>
 <p class="links">
   <a href="index.html">ゲーム本体</a>
-  <a href="dev/board.html">見本: 盤面と照準</a>
-  <a href="dev/effects.html">見本: 演出と音</a>
-  <a href="dev/screens.html">見本: 画面</a>
+${devLinks}
   <a href="ranking.html">ランキング</a>
 </p>
 <p class="note">その場で動きます。音は、ここで実際に触ると聞けます（動画には入りません）。</p>

@@ -12,6 +12,7 @@
 
 import { createServer } from 'node:http';
 import { readFile, mkdir, rename, rm, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -119,6 +120,16 @@ const scenarios = {
     await sleep(2500);
   },
 };
+// 担当が自分で足した見本ページ（あれば撮る）。操作バーのボタンを左から順に全部押す
+for (const name of ['look', 'sound', 'meta']) {
+  if (!existsSync(join(ROOT, 'dev', `${name}.html`))) continue;
+  scenarios[name] = async (page) => {
+    await page.goto(`${base}/dev/${name}.html`);
+    await sleep(800);
+    await pressAllButtons(page, 1500, 60000);
+    await sleep(2000);
+  };
+}
 
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });

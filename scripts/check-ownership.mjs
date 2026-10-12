@@ -3,18 +3,37 @@
 import { execSync } from 'node:child_process';
 
 const OWNERS = {
-  'team-b': ['src/render/', 'src/input/', 'src/dev/board-demo.ts', 'dev/board.html', 'docs/progress/B.md'],
-  'team-c': ['src/effects/', 'src/audio/', 'src/dev/effects-demo.ts', 'dev/effects.html', 'docs/progress/C.md'],
+  // 続ける: 再生、図鑑、解放、日替わり、記録、共有
+  'team-b': ['src/storage/', 'src/meta/', 'src/replay/', 'src/dev/meta-demo.ts', 'dev/meta.html', 'docs/progress/B.md', 'docs/notes/B/'],
+  // 感じる: 演出、効果音、曲、手触り
+  'team-c': [
+    'src/effects/',
+    'src/audio/',
+    'src/dev/effects-demo.ts',
+    'src/dev/sound-demo.ts',
+    'dev/effects.html',
+    'dev/sound.html',
+    'public/audio/',
+    'docs/progress/C.md',
+    'docs/notes/C/',
+  ],
+  // 見る: 天体の絵、盤面、照準、全画面、入口、文字
   'team-d': [
+    'src/render/',
+    'src/input/',
     'src/ui/',
-    'src/storage/',
-    'src/styles/game.css',
-    'src/styles/ranking.css',
+    'src/styles/',
     'src/ranking.ts',
     'ranking.html',
+    'src/dev/board-demo.ts',
     'src/dev/screens-demo.ts',
+    'src/dev/look-demo.ts',
+    'dev/board.html',
     'dev/screens.html',
+    'dev/look.html',
+    'public/look/',
     'docs/progress/D.md',
+    'docs/notes/D/',
   ],
 };
 

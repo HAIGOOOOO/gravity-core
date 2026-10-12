@@ -1,0 +1,43 @@
+name: stale
+
+# 担当のブランチが 3 日動いていなかったら、リーダーに知らせる（Issue を 1 つ作る）。
+# 動きが戻ったら、その Issue を自動で閉じる。
+on:
+  schedule:
+    - cron: '0 0 * * *' # 毎日 09:00（日本時間）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 動いていない担当を調べる
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LIMIT_DAYS: 3
+        run: |
+          now=$(date +%s)
+          for branch in team-b team-c team-d; do
+            title="動いていません: $branch"
+            last=$(git log -1 --format=%ct "origin/$branch" 2>/dev/null || echo 0)
+            # リーダーが入れた更新（main の取り込みなど）は数えない。担当本人のコミットだけを見る
+            mine=$(git log -1 --format=%ct --perl-regexp --author='^(?!${{ github.repository_owner }})' "origin/$branch" 2>/dev/null || true)
+            days=$(( (now - ${mine:-$last}) / 86400 ))
+            open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+            echo "$branch: 最後の動きから $days 日"
+            if [ "$days" -ge "$LIMIT_DAYS" ]; then
+              if [ -z "$open" ]; then
+                gh issue create --title "$title" --assignee "${{ github.repository_owner }}" \
+                  --body "$branch が $days 日動いていません。担当の人に一言打ってもらうか、リーダーが同じ手順書で代わりに進めてください。"
+              fi
+            elif [ -n "$open" ]; then
+              gh issue close "$open" --comment "動きが戻りました。"
+            fi
+          done
