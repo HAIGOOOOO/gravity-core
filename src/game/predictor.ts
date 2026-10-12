@@ -9,10 +9,12 @@ import {
   LAUNCH_RADIUS,
   PREDICT_SAMPLE_SECONDS,
   PREDICT_SECONDS,
+  PREDICT_UNSTABLE_SECONDS,
   SPEED_MAX,
   SPEED_MIN,
   TIER_RADIUS,
 } from './constants';
+import type { FlightModel } from './gravity';
 import { stepFree, type Mover } from './physics';
 
 const SPEED_TOLERANCE = 0.5;
@@ -40,8 +42,11 @@ export function launchRejectReason(snapshot: GameSnapshot, command: LaunchComman
 /**
  * 今の盤面でこの射出をした場合の予測を返す。
  * 待ち時間中（cooldown）でも線は返す。照準は待ち時間中に始められるため。
+ *
+ * @param flight 重力操作が効いているときの進め方。井戸と渦で曲がる道すじを出す。
+ *   山が大きく動いている（uncertain）ときは、道すじを短くし、当たり先を答えない。
  */
-export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): Prediction {
+export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand, flight?: FlightModel): Prediction {
   const reason = launchRejectReason(snapshot, command);
   if (reason !== null && reason !== 'cooldown') {
     return { valid: false, rejectReason: reason, points: [], end: 'timeLimit', hitBodyId: null, willMerge: false };
@@ -55,7 +60,8 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): P
     vx: command.vx,
     vy: command.vy,
   };
-  const ticks = Math.round(PREDICT_SECONDS / DT);
+  const uncertain = flight?.uncertain === true;
+  const ticks = Math.round((uncertain ? PREDICT_UNSTABLE_SECONDS : PREDICT_SECONDS) / DT);
   const sampleEvery = Math.max(1, Math.round(PREDICT_SAMPLE_SECONDS / DT));
   const points: PathPoint[] = [{ x: shot.x, y: shot.y, t: 0 }];
   let end: Prediction['end'] = 'timeLimit';
@@ -63,7 +69,8 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): P
   let willMerge = false;
 
   for (let i = 1; i <= ticks && end === 'timeLimit'; i++) {
-    stepFree(shot);
+    if (flight) flight.step(shot);
+    else stepFree(shot);
     for (const b of snapshot.bodies) {
       const reach = b.radius + radius;
       const dx = b.x - shot.x;
@@ -79,5 +86,8 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): P
     if (i % sampleEvery === 0 || end !== 'timeLimit') points.push({ x: shot.x, y: shot.y, t: i * DT });
   }
 
-  return { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points, end, hitBodyId, willMerge };
+  const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points };
+  // 山が動いているときは、線は途中まで出すが「何に当たるか」は答えない
+  if (uncertain) return { ...base, end: 'timeLimit', hitBodyId: null, willMerge: false, uncertain: true };
+  return { ...base, end, hitBodyId, willMerge };
 }

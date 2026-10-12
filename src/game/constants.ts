@@ -130,3 +130,77 @@ export const LAND_SOUND_MAX = 4;
 export const AUDIO_MASTER_GAIN = 0.8;
 
 export const DPR_CAP = 2;
+
+// ───────── 重力操作の試作（dev/gravity-lab.html）─────────
+// 既定では無効。createSimulation の第 3 引数を渡したときだけ効く。
+// ここの値は「既定値」で、見本ページのスライダーがその場で上書きする。
+
+// 握る: 押している間、山にかかる重力が外向きになってふくらむ。離すと締まり、同じ天体が寄る。
+/** 握っている間、山を外へ押す加速度 */
+export const GRIP_SWELL_ACCEL = 520;
+/** 握っている間の山の減速（毎秒の割合）。ふくらむ速さの上限 = 加速度 ÷ これ */
+export const GRIP_DRAG = 6;
+/** 握り続けられる最長の秒数。越えたら自動で離す（無限にふくらまないように） */
+export const GRIP_MAX_HOLD_SECONDS = 1.4;
+/** 握っている間に上がる熱量（毎秒）。握りの代償 */
+export const GRIP_HEAT_PER_SECOND = 26;
+/** 離した後、締まっている時間（秒）。この間は同じ天体が引き合い、熱量は冷めない */
+export const GRIP_SQUEEZE_SECONDS = 0.8;
+/** 締まっている間の、核への重力の倍率 */
+export const GRIP_SQUEEZE_GRAVITY = 1.4;
+/** 締まっている間、同じ Tier どうしが引き合う加速度 */
+export const GRIP_PULL_ACCEL = 1400;
+/** 最長まで握ったときに、同じ Tier が引き合う隙間の上限（短く握るとこれより狭い） */
+export const GRIP_PULL_RANGE = 80;
+/** 外側の端がこの半径を越えた天体は、それ以上は外へ押さない */
+export const GRIP_SWELL_LIMIT_RADIUS = 380;
+/** 握っている間と締まっている間の、山の天体の速さの上限（挟まれた天体が盤面の外まで弾かれないように） */
+export const GRIP_BODY_SPEED_CAP = 420;
+
+// 井戸: 盤面に数秒だけ効く 2 つ目の引力点を置く。
+/** 井戸の引く加速度の最大（撃った天体に対して） */
+export const WELL_ACCEL = 3000;
+/** 井戸が届く距離 */
+export const WELL_RADIUS = 240;
+/** 井戸の中心付近で力をなだらかにする距離（震えないように） */
+export const WELL_SOFT_RADIUS = 34;
+/** 井戸の中心付近にいる天体の減速（毎秒の割合）。行ったり来たりを止める */
+export const WELL_CORE_DAMPING = 7;
+/** 井戸が効く秒数 */
+export const WELL_SECONDS = 4;
+/** 消える前に力を弱めていく秒数（山が急に跳ねないように） */
+export const WELL_FADE_SECONDS = 0.6;
+/** 積もった山が井戸に引かれる割合（撃った天体を 1 として） */
+export const WELL_PILE_FACTOR = 1;
+/** 井戸の持ち数の上限と、開始時の数 */
+export const WELL_MAX_CHARGES = 2;
+export const WELL_START_CHARGES = 1;
+/** 合体を何回すると井戸が 1 個たまるか。井戸の代償（回数制） */
+export const WELL_MERGES_PER_CHARGE = 3;
+/** 井戸がある間に上がる熱量（毎秒）。既定は 0（ある間は冷めないだけ） */
+export const WELL_HEAT_PER_SECOND = 0;
+
+// 渦: 重力に横向きの成分を足して、山を核のまわりに回す。
+// 全体を同じだけ回しても、丸い盤面では何も変わらない。そこで「限界リングに近い天体ほど強く流す」形にして、
+// 山の高い所だけが横へ流れて低い所へ落ちるようにしている。
+/** 限界リングの位置で、流れが目指す横向きの速さ（回転が最大のとき） */
+export const VORTEX_SPEED = 260;
+/** 限界リングの位置での横向きの加速度の上限。重力の 0.6 倍くらいを越えると、天体が隣を乗り越え始める */
+export const VORTEX_ACCEL = 1100;
+/** 限界リングからこの深さまで流れが届く（それより内側の天体は流されない） */
+export const VORTEX_DEPTH = 170;
+/** 流れが届かない内側にも効かせる割合（1 にすると全体が同じ強さで回る。比べる用で、既定は 0） */
+export const VORTEX_INNER_FACTOR = 0;
+/** 天体の横向きの速さが、流れの速さへ近づく強さ（毎秒の割合） */
+export const VORTEX_FOLLOW = 8;
+/** 押してから回転が最大になるまでの秒数 */
+export const VORTEX_SPIN_UP_SECONDS = 0.25;
+/** 離してから回転が止まるまでの秒数（惰性。すぐには止まらない） */
+export const VORTEX_SPIN_DOWN_SECONDS = 0.9;
+/** 回転が最大のときに上がる熱量（毎秒）。回転の強さに比例する。渦の代償 */
+export const VORTEX_HEAT_PER_SECOND = 18;
+
+/** 重力操作で山が動いている間、限界の判定に持たせる幅（判定がちらつかないように） */
+export const LIMIT_HYSTERESIS = 5;
+/** 山が大きく動いている間の予測線の長さ（秒）。当たり先は言い切れないので短くする */
+export const PREDICT_UNSTABLE_SECONDS = 0.45;

@@ -8,6 +8,8 @@ import type {
   BodyId,
   GameEvent,
   GameSnapshot,
+  GravityCommand,
+  GravityResult,
   LaunchCommand,
   LaunchInput,
   LaunchResult,
@@ -32,6 +34,7 @@ import {
   LAUNCH_COOLDOWN,
   LAUNCH_RADIUS,
   LIMIT_GRACE_SECONDS,
+  LIMIT_HYSTERESIS,
   LIMIT_RADIUS,
   SLEEP_SPEED,
   SOLVER_ITERATIONS,
@@ -40,6 +43,7 @@ import {
   TIER_BASE_SCORE,
   TIER_RADIUS,
 } from './constants';
+import { createGravity, type GravityTuning } from './gravity';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch } from './predictor';
 import { createRng } from './rng';
@@ -85,8 +89,13 @@ export function chainMultiplier(chain: number): number {
   return Math.min(CHAIN_MULT_MAX, 1 + CHAIN_STEP * (chain - 1));
 }
 
-export function createSimulation(seed: number, setup?: SimulationSetup): SimulationPort {
+/**
+ * @param gravityTuning 重力操作（試作）の数値。渡したときだけ submitGravity が効く。
+ *   渡さなければ、今までとまったく同じ計算になる。
+ */
+export function createSimulation(seed: number, setup?: SimulationSetup, gravityTuning?: GravityTuning): SimulationPort {
   const rng = createRng(seed);
+  const gravity = gravityTuning ? createGravity(gravityTuning) : null;
   let tick = 0;
   let nextId = 1;
   let sequence = 0;
@@ -165,6 +174,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
       launchCooldownLeftSeconds: Math.max(0, cooldown),
       seed,
       stats: { ...stats },
+      ...(gravity ? { gravity: gravity.view() } : {}),
     };
     return snapshotCache;
   }
@@ -206,6 +216,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
     const chainA = tick <= a.chainUntilTick ? a.chain : 0;
     const chainB = tick <= b.chainUntilTick ? b.chain : 0;
     const chain = Math.max(chainA, chainB) + 1;
+    gravity?.onMerge();
     stats.maxChain = Math.max(stats.maxChain, chain);
     const gained = Math.round(TIER_BASE_SCORE[a.tier] * chainMultiplier(chain));
     score += gained;
@@ -252,6 +263,9 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
     // 1. 時間を進める
     tick++;
     if (cooldown > 0) cooldown -= DT;
+    gravity?.advance();
+    // 重力操作が何も効いていない tick は、元の計算をそのまま通す
+    const bent = gravity !== null && gravity.active();
 
     // 2. 生まれたばかりの天体を育て、全天体の「進めたい位置」を出す
     for (const b of bodies) {
@@ -260,7 +274,10 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
         const target = TIER_RADIUS[b.tier];
         b.radius = target - (target - b.growFrom) * (b.growLeft / GROW_SECONDS);
       }
-      applyGravity(b);
+    }
+    if (gravity && bent) gravity.applyForces(bodies);
+    else for (const b of bodies) applyGravity(b);
+    for (const b of bodies) {
       b.px = b.x + b.vx * DT;
       b.py = b.y + b.vy * DT;
       b.touching = false;
@@ -329,6 +346,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
     }
 
     // 5. 動いた結果から速度を求め直す
+    const pileCap = gravity && bent ? gravity.pileSpeedCap(MAX_SPEED) : MAX_SPEED;
     for (const b of bodies) {
       const before = Math.hypot(b.vx, b.vy);
       b.vx = (b.px - b.x) / DT;
@@ -349,23 +367,32 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
         }
       }
       const speed = Math.hypot(b.vx, b.vy);
-      if (speed > MAX_SPEED) {
-        b.vx *= MAX_SPEED / speed;
-        b.vy *= MAX_SPEED / speed;
+      const cap = b.landed ? pileCap : MAX_SPEED;
+      if (speed > cap) {
+        b.vx *= cap / speed;
+        b.vy *= cap / speed;
       }
     }
 
     // 6. 限界リングと熱量
+    // 重力操作で山が動いている間だけ、すでに越えている天体には少し幅を持たせる（判定のちらつき防止）
+    const slack = bent ? LIMIT_HYSTERESIS : 0;
     let anyOver = false;
     for (const b of bodies) {
-      b.overLimit = tick - b.bornTick >= LIMIT_GRACE_TICKS && Math.hypot(b.x, b.y) + b.radius > LIMIT_RADIUS;
+      const limit = b.overLimit ? LIMIT_RADIUS - slack : LIMIT_RADIUS;
+      b.overLimit = tick - b.bornTick >= LIMIT_GRACE_TICKS && Math.hypot(b.x, b.y) + b.radius > limit;
       if (b.overLimit) anyOver = true;
     }
     if (anyOver !== overLimit) {
       overLimit = anyOver;
       emit({ kind: anyOver ? 'overLimitStart' : 'overLimitEnd' });
     }
-    const rate = anyOver ? HEAT_RISE_PER_SECOND : -HEAT_COOL_PER_SECOND;
+    let rate = anyOver ? HEAT_RISE_PER_SECOND : -HEAT_COOL_PER_SECOND;
+    if (gravity && bent) {
+      // 重力操作の代償: 効いている間は冷めず、操作ごとの熱量が足される
+      if (!anyOver && gravity.coolingBlocked()) rate = 0;
+      rate += gravity.heatPerSecond();
+    }
     heat = Math.min(HEAT_MAX, Math.max(0, heat + rate * DT));
 
     // 7. 終了判定
@@ -380,8 +407,24 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
   }
 
   function predict(command: LaunchCommand): Prediction {
+    if (gravity && gravity.active()) return predictLaunch(getSnapshot(), command, gravity.flight());
     return predictLaunch(getSnapshot(), command);
   }
 
-  return { getSnapshot, submitLaunch, stepFixed, predict, getInputLog: () => inputLog };
+  function submitGravity(command: GravityCommand): GravityResult {
+    if (!gravity) return { accepted: false, reason: 'disabled' };
+    const result = gravity.submit(command, tick, over);
+    if (result.accepted) snapshotCache = null;
+    return result;
+  }
+
+  return {
+    getSnapshot,
+    submitLaunch,
+    stepFixed,
+    predict,
+    getInputLog: () => inputLog,
+    submitGravity,
+    getGravityLog: () => gravity?.log ?? [],
+  };
 }
