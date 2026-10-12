@@ -1,1 +1,0 @@
-import{c as e}from"./render-DbKJlbN1.js";function t(){return{unlock(){},setSettings(){},handleEvents(){},setCritical(){},play(){},suspend(){},resume(){}}}function n(t,n){return{resize:n=>void e(t,n),handleEvents(){},update(){},draw(){},playGameOver(){},setReducedMotion(){},clear(){}}}export{t as n,n as t};
