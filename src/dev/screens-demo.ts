@@ -14,10 +14,13 @@ import { addButton, addGroup, addSlider, log } from './demo-kit';
 
 const saveStore = createSaveStore();
 const ranking = createRankingStore(saveStore);
+void ranking.list(10).then(records => log(`読み込み済みの記録: ${records.length} 件`));
 const renderer = createBoardRenderer(document.getElementById('board') as HTMLCanvasElement);
 const hud = createHud(document.getElementById('hud')!, (intent) => log(`意図: ${JSON.stringify(intent)}`));
 
 let settings: Settings = saveStore.load().settings;
+hud.setSfxOn(settings.sfx);
+document.documentElement.dataset.reducedMotion = String(settings.reducedMotion);
 let result: ResultView | undefined;
 const data = (): OverlayData => ({
   bestScore: saveStore.load().bestScore,
@@ -28,7 +31,14 @@ const data = (): OverlayData => ({
 
 const overlays = createOverlays(document.getElementById('overlay-root')!, (intent) => {
   log(`意図: ${JSON.stringify(intent)}`);
-  if (intent.kind === 'settingsChanged') settings = intent.settings;
+  if (intent.kind === 'settingsChanged') {
+    settings = intent.settings;
+    const saved = saveStore.load(); saved.settings = settings; saveStore.save(saved);
+    hud.setSfxOn(settings.sfx);
+  }
+  if (intent.kind === 'rename') {
+    const saved = saveStore.load(); saved.playerName = intent.name; saveStore.save(saved);
+  }
   if (intent.kind === 'clearRecords') void ranking.clear();
 });
 
@@ -55,7 +65,9 @@ function frame(now: number): void {
   }
   const snap = sim.getSnapshot();
   const shown = heatOverride === null ? snap : { ...snap, heat: heatOverride };
-  renderer.draw({ prev, curr: shown, alpha: acc / DT, timeSeconds: now / 1000, aim: null, reducedMotion: false, aimGuide: true, dimmed: overlays.current() !== null });
+  renderer.draw({ prev, curr: shown, alpha: acc / DT, timeSeconds: now / 1000, aim: null,
+    reducedMotion: settings.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    aimGuide: settings.aimGuide, dimmed: overlays.current() !== null });
   hud.update(shown, saveStore.load().bestScore);
   requestAnimationFrame(frame);
 }
@@ -75,6 +87,11 @@ addButton('結果', () => {
 });
 addButton('結果（ベスト更新）', () => {
   result = SAMPLE_RESULT_BEST;
+  overlays.show('result', data());
+});
+addButton('順位を後から表示', () => {
+  if (!result) result = SAMPLE_RESULT;
+  result = { ...result, rank: 3 };
   overlays.show('result', data());
 });
 
@@ -97,5 +114,12 @@ addButton('見本の記録を 10 件入れる', async () => {
 });
 addButton('記録を全部消す', () => void ranking.clear());
 addButton('ランキングページを開く', () => (location.href = '../ranking.html?from=result'));
+
+// 自動撮影ではページを離れず、必要なときだけ別のタブで確認する。
+const storageCheck = document.createElement('a');
+storageCheck.href = '../index.html?seed=3&storage=denied';
+storageCheck.target = '_blank'; storageCheck.rel = 'noopener';
+storageCheck.textContent = '保存不可でゲームを試す（開発用）';
+document.getElementById('demo-controls')!.append(storageCheck);
 
 requestAnimationFrame(frame);

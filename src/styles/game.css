@@ -1,4 +1,4 @@
-/* 【仮実装】ゲームページの見た目。担当 D が SPEC.md 6.2〜6.6 のとおりに作り直す。
+/* ゲームページの見た目。
    #board-wrap の中の 2 枚の Canvas を重ねる部分（下の「変えない」印）だけは残すこと。 */
 
 body {
@@ -7,12 +7,26 @@ body {
 
 #app {
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: var(--board-size) 280px;
+  align-content: center;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 24px;
+  padding: env(safe-area-inset-top) 8px env(safe-area-inset-bottom);
 }
+.safe-area-probe { position: absolute; visibility: hidden; pointer-events: none; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+#app[data-layout='landscape'] { grid-template-columns: var(--board-size) 200px; gap: 16px; }
+#app[data-layout='portrait'] { grid-template-columns: var(--board-size); grid-template-rows: 56px var(--board-size) 88px; gap: 0; }
+#app[data-layout='portrait'] #board-wrap { grid-area: 2 / 1; }
+#app[data-layout='portrait'] #hud { display: contents; }
+#app[data-layout='portrait'] .hud-score { grid-area: 1 / 1; justify-self: start; }
+#app[data-layout='portrait'] .hud-heat { grid-area: 1 / 1; justify-self: end; width: 140px; }
+#app[data-layout='portrait'] .hud-next { grid-area: 3 / 1; justify-self: start; width: 55%; }
+#app[data-layout='portrait'] .hud-controls { grid-area: 3 / 1; justify-self: end; width: auto; }
+#app[data-layout='portrait'] .hud-logo { display: none; }
+#app[data-layout='portrait'] .score-value { font-size: 22px; }
+#app[data-layout='portrait'] .best-value { display: none; }
 
 /* ── 変えない: 盤面と演出の Canvas を同じ場所に重ねる ── */
 #board-wrap {
@@ -36,10 +50,46 @@ body {
 /* ── ここまで ── */
 
 #hud {
-  min-height: 3em;
-  text-align: center;
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--bg-2);
   color: var(--text-sub);
+  min-width: 0;
 }
+.hud-logo { font-size: 14px; letter-spacing: .2em; }
+.hud-score, .hud-heat, .hud-next { display: grid; gap: 4px; min-width: 0; }
+.label { font-size: 12px; color: var(--text-sub); }
+.score-value { font-size: 32px; color: var(--text); line-height: 1.15; }
+.best-value { font-size: 13px; }
+.heat-value { color: var(--text); font-size: 12px; }
+.queue-values { display: flex; align-items: center; gap: 8px; }
+.body-icon { width: 40px; height: 40px; flex: 0 0 auto; }
+.queue-values .body-icon:first-child { width: 64px; height: 64px; border: 1px solid var(--line); border-radius: 50%; }
+.heat-meter { height: 16px; border: 1px solid var(--line); overflow: hidden; background: var(--bg); }
+.heat-fill { height: 100%; background: var(--heat-color, var(--cool)); width: 0; }
+.heat-value { color: var(--heat-color, var(--text)); }
+.chain-notice { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); color: var(--chain); white-space: nowrap; pointer-events: none; font-weight: 700; }
+.chain-notice:empty { display: none; }
+#app[data-layout='portrait'] .queue-values { gap: 4px; }
+#app[data-layout='portrait'] .queue-values .body-icon { width: 32px; height: 32px; }
+#app[data-layout='portrait'] .queue-values .body-icon:first-child { width: 48px; height: 48px; }
+#app[data-layout='portrait'] .hud-next { width: auto; }
+#app[data-layout='portrait'] .hud-heat { gap: 2px; }
+#app[data-layout='portrait'] .heat-meter { height: 8px; }
+#app[data-layout='portrait'] .hud-ranking, #app[data-layout='landscape'] .hud-ranking { display: none; }
+.hud-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+.hud-controls button { min-width: 44px; min-height: 44px; font: inherit; font-size: 12px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-button); }
+#app[data-layout='landscape'] #hud { gap: 10px; padding: 12px; }
+.toast { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); pointer-events: none; background: var(--bg-2); border: 1px solid var(--line); padding: 8px 12px; border-radius: var(--radius-panel); font-size: 12px; }
+.toast:empty { display: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
+#screen-demo-tools { position: fixed; top: 0; left: 0; z-index: 110; font-size: 12px; max-width: 100%; }
+#screen-demo-tools summary { cursor: pointer; background: var(--bg-2); color: var(--text-sub); padding: 3px 8px; }
+#screen-demo-tools #demo-controls { position: static; max-height: 35vh; overflow: auto; }
+body:has(#screen-demo-tools) #demo-log { max-height: 22px; width: min(320px, 90vw); padding: 2px 8px; bottom: 0; }
 #hud .toast {
   color: var(--text);
   min-height: 1.5em;
@@ -51,12 +101,18 @@ body {
   display: grid;
   place-items: center;
   background: rgba(7, 11, 24, 0.78);
+  z-index: 20;
+  padding: 20px 12px;
 }
 #overlay-root[hidden] {
   display: none;
 }
 .card {
+  position: relative;
+  width: min(420px, 100%);
   max-width: 420px;
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
   padding: 24px;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
@@ -77,9 +133,44 @@ body {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  width: 100%;
+  flex-shrink: 0;
 }
-.card button:first-of-type {
+.card button.primary {
   background: var(--core);
   border-color: var(--core);
   color: var(--bg);
 }
+.card p { margin: 0; line-height: 1.6; }
+.screen-title { gap: 16px; text-align: left; border-top: 3px solid var(--core); }
+.screen-title h1 { font-size: 40px; line-height: 1.05; letter-spacing: -.035em; max-width: 240px; }
+.eyebrow { color: var(--core); letter-spacing: .18em; font-size: 11px; }
+.title-note, .title-best { color: var(--text-sub); font-size: 13px; }
+.title-tagline { max-width: 280px; }
+.title-instrument { position: relative; height: 76px; overflow: hidden; border-bottom: 1px solid var(--line); }
+.title-instrument::before { content: ''; position: absolute; right: 40px; top: -19px; width: 150px; height: 150px; border: 1px solid var(--line); border-left: 4px solid var(--core); border-radius: 50%; transform: rotate(32deg); }
+.title-instrument::after { content: ''; position: absolute; right: 87px; top: 30px; width: 44px; height: 44px; border: 1px solid var(--core-hot); background: var(--core); border-radius: 50%; box-shadow: -76px -22px 0 -17px var(--cool), 47px 12px 0 -15px var(--chain); }
+.overlay-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.overlay-actions .primary { grid-column: 1 / -1; }
+.howto-step { display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.howto-art { width: 96px; height: 72px; object-fit: contain; }
+.howto-step p { font-size: 13px; }
+.setting-row { display: flex; justify-content: space-between; align-items: center; min-height: 44px; gap: 8px; }
+.setting-row input[type='checkbox'] { width: 24px; height: 24px; accent-color: var(--core); }
+.volume-row { display: grid; grid-template-columns: 48px 1fr 42px; }
+.volume-row input { min-width: 0; width: 100%; accent-color: var(--core); }
+.card select, .card input[type='text'] { min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; min-width: 0; }
+.name-field { display: grid; gap: 6px; font-size: 13px; }
+.name-field small { color: var(--text-sub); font-size: 11px; }
+.card .danger-action { color: var(--danger); }
+.confirmation { position: absolute; inset: 0; z-index: 2; padding: 24px; background: var(--bg-2); display: grid; gap: 12px; align-content: center; }
+.result-score { display: block; font-size: 48px; color: var(--core-hot); line-height: 1.1; }
+.result-best { color: var(--core); font-weight: 700; }
+.result-rank { color: var(--cool); }
+.result-tier { display: flex; align-items: center; gap: 12px; }
+.result-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; padding: 12px 0; border-block: 1px solid var(--line); }
+.result-stats dt { color: var(--text-sub); font-size: 12px; }
+.result-stats dd { font-size: 20px; margin: 0; }
+.result-reason { color: var(--text-sub); font-size: 12px; }
+@media (max-width: 600px) { .screen-title h1 { font-size: 28px; } .card { padding: 20px; } .card h1 { font-size: 22px; } .card.screen-title h1 { font-size: 28px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
