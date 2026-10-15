@@ -1,0 +1,79 @@
+{
+  "measurements": [
+    {
+      "id": "drop-mineral",
+      "metrics": "最大 0.249 · RMS 0.013 · 割れ 0\n立上り 9.7ms · 減衰 229ms\n低 / 中 / 高 0 / 98 / 2%"
+    },
+    {
+      "id": "drop-pressure",
+      "metrics": "最大 0.055 · RMS 0.004 · 割れ 0\n立上り 33.6ms · 減衰 259ms\n低 / 中 / 高 3 / 85 / 12%"
+    },
+    {
+      "id": "drop-musical",
+      "metrics": "最大 0.238 · RMS 0.021 · 割れ 0\n立上り 62.1ms · 減衰 427ms\n低 / 中 / 高 0 / 99 / 1%"
+    },
+    {
+      "id": "impact-mineral",
+      "metrics": "最大 0.257 · RMS 0.015 · 割れ 0\n立上り 15.1ms · 減衰 289ms\n低 / 中 / 高 0 / 100 / 0%"
+    },
+    {
+      "id": "impact-pressure",
+      "metrics": "最大 0.189 · RMS 0.008 · 割れ 0\n立上り 11.6ms · 減衰 167ms\n低 / 中 / 高 54 / 32 / 14%"
+    },
+    {
+      "id": "impact-musical",
+      "metrics": "最大 0.163 · RMS 0.015 · 割れ 0\n立上り 8.8ms · 減衰 371ms\n低 / 中 / 高 9 / 91 / 0%"
+    },
+    {
+      "id": "small-mineral",
+      "metrics": "最大 0.306 · RMS 0.026 · 割れ 0\n立上り 12.5ms · 減衰 759ms\n低 / 中 / 高 0 / 99 / 1%"
+    },
+    {
+      "id": "small-pressure",
+      "metrics": "最大 0.267 · RMS 0.014 · 割れ 0\n立上り 11.6ms · 減衰 533ms\n低 / 中 / 高 66 / 20 / 14%"
+    },
+    {
+      "id": "small-musical",
+      "metrics": "最大 0.293 · RMS 0.026 · 割れ 0\n立上り 119.8ms · 減衰 482ms\n低 / 中 / 高 0 / 98 / 2%"
+    },
+    {
+      "id": "large-mineral",
+      "metrics": "最大 0.427 · RMS 0.045 · 割れ 0\n立上り 33.9ms · 減衰 1807ms\n低 / 中 / 高 76 / 24 / 0%"
+    },
+    {
+      "id": "large-pressure",
+      "metrics": "最大 0.190 · RMS 0.023 · 割れ 0\n立上り 27.3ms · 減衰 1491ms\n低 / 中 / 高 85 / 13 / 3%"
+    },
+    {
+      "id": "large-musical",
+      "metrics": "最大 0.376 · RMS 0.041 · 割れ 0\n立上り 172.8ms · 減衰 1347ms\n低 / 中 / 高 20 / 79 / 1%"
+    },
+    {
+      "id": "limit-mineral",
+      "metrics": "最大 0.304 · RMS 0.028 · 割れ 0\n立上り 11.4ms · 減衰 1037ms\n低 / 中 / 高 0 / 100 / 0%"
+    },
+    {
+      "id": "limit-pressure",
+      "metrics": "最大 0.225 · RMS 0.020 · 割れ 0\n立上り 53.3ms · 減衰 1175ms\n低 / 中 / 高 81 / 14 / 5%"
+    },
+    {
+      "id": "limit-musical",
+      "metrics": "最大 0.185 · RMS 0.030 · 割れ 0\n立上り 187.9ms · 減衰 912ms\n低 / 中 / 高 0 / 100 / 0%"
+    },
+    {
+      "id": "ending-mineral",
+      "metrics": "最大 0.388 · RMS 0.039 · 割れ 0\n立上り 24.8ms · 減衰 1637ms\n低 / 中 / 高 61 / 39 / 0%"
+    },
+    {
+      "id": "ending-pressure",
+      "metrics": "最大 0.272 · RMS 0.023 · 割れ 0\n立上り 32.0ms · 減衰 966ms\n低 / 中 / 高 69 / 21 / 9%"
+    },
+    {
+      "id": "ending-musical",
+      "metrics": "最大 0.307 · RMS 0.056 · 割れ 0\n立上り 310.2ms · 減衰 1640ms\n低 / 中 / 高 27 / 72 / 0%"
+    }
+  ],
+  "stopped": true,
+  "overflow": false,
+  "errors": []
+}
