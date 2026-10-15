@@ -40,7 +40,7 @@ export function createVoices(context: BaseAudioContext) {
         oscillator.frequency.setValueAtTime(tone.frequency, start);
         if (tone.endFrequency !== undefined) oscillator.frequency.exponentialRampToValueAtTime(tone.endFrequency, end);
         envelope.gain.setValueAtTime(0, start);
-        envelope.gain.linearRampToValueAtTime(tone.gain, start + AUDIO.attack);
+        envelope.gain.linearRampToValueAtTime(tone.gain, start + (tone.attackSeconds ?? AUDIO.attack));
         envelope.gain.exponentialRampToValueAtTime(AUDIO.floor, end);
         oscillator.connect(envelope);
         envelope.connect(master);

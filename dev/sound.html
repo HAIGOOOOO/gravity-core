@@ -50,6 +50,7 @@
   <div id="demo-controls">
     <button id="compare" disabled>この場面を A → B → C で再生</button>
     <button id="timeline" disabled>連続場面を A → B → C で再生</button>
+    <button id="runtime-verify" disabled>本番の落とす音を測る</button>
     <label>場面 <select id="scene"></select></label>
     <span id="quick"><button data-direction="mineral" disabled>A 共鳴</button><button data-direction="pressure" disabled>B 粒</button><button data-direction="musical" disabled>C 音階</button></span>
     <button id="stop">停止</button>
@@ -66,6 +67,7 @@
   </details>
   <p><label><input id="all-scenes" type="checkbox" /> 全場面の図を並べる</label>　<label><input id="zoom" type="checkbox" /> 冒頭0.3秒を拡大</label></p>
   <main id="comparisons"></main>
+  <section id="runtime-study" hidden><h2>本番の落とす音</h2><p>ゲームに接続した音を、音量100%・比較補正なしで測っています。</p><p id="runtime-report" role="status"></p><div id="runtime-samples" class="cards"></div></section>
   <script type="module" src="../src/dev/sound-demo.ts"></script>
 </body>
 </html>
