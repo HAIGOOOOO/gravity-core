@@ -28,6 +28,14 @@
     canvas { display: block; width: 100%; height: auto; margin: 14px 0 10px; }
     pre { white-space: pre-wrap; font: 12px/1.8 ui-monospace, monospace; color: #c4d7e6; margin-bottom: 0; }
     .eyebrow { font: 12px ui-monospace, monospace; letter-spacing: .18em; color: #8fe6d3; }
+    .plot { position: relative; display: flow-root; }
+    .playhead { position: absolute; top: 14px; bottom: 10px; width: 2px; background: #ffefb5; pointer-events: none; }
+    #cue-strip { display: flex; gap: 8px; flex-wrap: wrap; padding: 0; list-style: none; }
+    #cue-strip li { font-size: 12px; padding: 6px 8px; border: 1px solid #334557; border-radius: 5px; }
+    #cue-strip li[aria-current="step"] { border-color: #ffda85; color: #ffda85; }
+    #sequence .cards { grid-template-columns: 1fr; }
+    .sequence-mode #scene-preview { max-width: 280px !important; }
+    .sequence-mode .intro { display: none; }
     details { margin-block: 18px; color: #b7c8d8; }
     #quick { display: flex; gap: 8px; }
     @media(max-width: 760px) { body { padding: 16px; } .cards { grid-template-columns: 1fr; } #demo-controls { gap: 8px; padding: 8px 0; } #demo-controls button { padding: 7px 10px; } #scene-preview { max-height: 120px; width: auto; max-width: 100%; } }
@@ -36,10 +44,12 @@
 <body>
   <span class="eyebrow">GRAVITY CORE / SOUND STUDY 01</span>
   <h1>同じ出来事、3つの響き。</h1>
-  <p>場面ごとに A → B → C の順で聴き比べられます。A は鉱石の共鳴、B は圧力と粒、C は星を弾く音。ゲームに採用する前の試作です。</p>
+  <p class="intro">場面ごとに A → B → C の順で聴き比べられます。A は鉱石の共鳴、B は圧力と粒、C は星を弾く音。ゲームに採用する前の試作です。</p>
   <nav><a href="./effects.html">演出の見本へ</a></nav>
+  <p class="intro">おすすめは A「鉱石の共鳴」。2つの響きが1つへ寄る動きで、合体したことを伝えます。</p>
   <div id="demo-controls">
     <button id="compare" disabled>この場面を A → B → C で再生</button>
+    <button id="timeline" disabled>連続場面を A → B → C で再生</button>
     <label>場面 <select id="scene"></select></label>
     <span id="quick"><button data-direction="mineral" disabled>A 共鳴</button><button data-direction="pressure" disabled>B 粒</button><button data-direction="musical" disabled>C 音階</button></span>
     <button id="stop">停止</button>
@@ -48,9 +58,11 @@
   </div>
   <p id="status" role="status" aria-live="polite">18個の音と測定画像を準備しています…</p>
   <canvas id="scene-preview" width="420" height="180" style="max-width:420px" aria-label="再生中の出来事の場面図" role="img"></canvas>
+  <div id="sequence-guide" hidden><p>単発と同じ基本音量で比べるには「平均レベルを揃える」をオフ。警告と終了を聞き分けられるか比べてください。</p><ol id="cue-strip"></ol></div>
   <details><summary>図と測定値の読み方</summary>
-    <p>音源は48kHz・2.4秒。図の表示時間は場面ごとに3案共通です。上は振幅±1の波形、下は時間×周波数（40Hz〜12kHz）の図です。明るいほど強い音。色の基準は全カード共通です。図と測定値は「平均レベルを揃える」の状態に従い、試聴音量スライダーを掛ける前の音を示します。最大90%到達は開始から最大振幅の90%へ初めて届く時間、減衰は−60dBFS以上の最後のサンプルまで。帯域は250Hz未満 / 250〜2000Hz / 2000Hz以上のエネルギー比です。数字だけでは聞き心地や聞き分けの良さは確定できません。</p>
-    <p>「平均レベルを揃える」は同じ場面の2.4秒全区間RMSを合わせます。知覚音量の完全な一致ではありません。補正後もピークは0.8以下です。「最大90%到達」は音形の指標で、操作から発音までの遅延ではありません。</p>
+    <p>音源は48kHz・単発2.4秒、連続5.45秒。図の表示時間は場面ごとに3案共通です。上は振幅±1の波形、下は時間×周波数（40Hz〜12kHz）の図です。明るいほど強い音。色の基準は全カード共通です。図と測定値は「平均レベルを揃える」の状態に従い、試聴音量スライダーを掛ける前の音を示します。最大90%到達は開始から最大振幅の90%へ初めて届く時間、減衰は−60dBFS以上の最後のサンプルまで。帯域は250Hz未満 / 250〜2000Hz / 2000Hz以上のエネルギー比です。数字だけでは聞き心地や聞き分けの良さは確定できません。</p>
+    <p>「平均レベルを揃える」は同じ場面の全区間RMSを合わせます。知覚音量の完全な一致ではありません。補正後もピークは0.8以下です。「最大90%到達」は音形の指標で、操作から発音までの遅延ではありません。</p>
+    <p>連続場面は0秒に落下、0.4秒に衝突、0.54/0.95秒に小合体、1.35秒に大合体、2.2秒に警告、3.05秒に終了。重要な次の音が出ると、古い余韻を25msかけて下げます。全3案で同じ処理です。</p>
   </details>
   <p><label><input id="all-scenes" type="checkbox" /> 全場面の図を並べる</label>　<label><input id="zoom" type="checkbox" /> 冒頭0.3秒を拡大</label></p>
   <main id="comparisons"></main>

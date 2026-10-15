@@ -6,7 +6,7 @@ export const LAB_RATE = 48000;
 export const LAB_SECONDS = 2.4;
 const TAU = Math.PI * 2;
 
-type Partial = { hz: number; endHz?: number; gain: number; length: number; at?: number; attack?: number; wobble?: number };
+type Partial = { hz: number; endHz?: number; gain: number; length: number; at?: number; attack?: number; wobble?: number; glideSeconds?: number };
 
 /** 全音の立ち上がり・末尾を連続にし、打撃の強さをクリックで代用しない。 */
 function envelope(t: number, length: number, attack: number): number {
@@ -20,7 +20,7 @@ function addPartial(data: Float32Array, rate: number, part: Partial): void {
   let phase = 0;
   for (let i = 0; i < part.length * rate && i + offset < data.length; i++) {
     const t = i / rate;
-    const hz = part.hz * ((part.endHz ?? part.hz) / part.hz) ** (t / part.length);
+    const hz = part.hz * ((part.endHz ?? part.hz) / part.hz) ** Math.min(1, t / (part.glideSeconds ?? part.length));
     phase += TAU * hz / rate;
     const tremolo = part.wobble ? 0.8 + 0.2 * Math.cos(TAU * part.wobble * t) : 1;
     data[i + offset] += Math.sin(phase) * envelope(t, part.length, part.attack ?? 0.012) * part.gain * tremolo;
@@ -29,15 +29,16 @@ function addPartial(data: Float32Array, rate: number, part: Partial): void {
 
 function mineral(data: Float32Array, rate: number, scene: SoundScene): void {
   const base = { drop: 650, impact: 280, small: 440, large: 95, limit: 370, ending: 185 }[scene];
-  const length = { drop: 0.24, impact: 0.3, small: 0.75, large: 1.8, limit: 1.05, ending: 1.65 }[scene];
+  const length = { drop: 0.24, impact: 0.3, small: 0.56, large: 1.8, limit: 1.05, ending: 1.65 }[scene];
   const ratios = [1, 1.483, 2.137, 3.79, 5.21];
   ratios.forEach((ratio, i) => {
     const converge = scene === 'small' || scene === 'large';
     addPartial(data, rate, { hz: base * ratio * (converge ? 1.12 : 1),
       endHz: base * ratio * (scene === 'drop' ? 0.5 : scene === 'ending' ? 0.36 : 1),
-      gain: (scene === 'large' ? 0.15 : 0.22) / (1 + i * 1.4), length: length / (1 + i * 0.23), wobble: scene === 'limit' ? 12 : 2 });
+      gain: (scene === 'large' ? 0.15 : 0.22) / (1 + i * 1.4), length: length / (1 + i * 0.23),
+      glideSeconds: converge ? GROW_SECONDS : undefined, wobble: scene === 'limit' ? 12 : 2 });
     if (converge) addPartial(data, rate, { hz: base * ratio * 0.88, endHz: base * ratio,
-      gain: 0.1 / (i + 1), length: length / (1 + i * 0.3), at: 0.025 });
+      gain: 0.1 / (i + 1), length: length / (1 + i * 0.3), at: 0.025, glideSeconds: GROW_SECONDS - 0.025 });
   });
   if (scene === 'limit') addPartial(data, rate, { hz: base + 18, gain: 0.12, length: 0.95 });
   if (scene === 'large' || scene === 'ending') {
@@ -67,14 +68,17 @@ function pressure(data: Float32Array, rate: number, scene: SoundScene, seed: num
       : scene === 'limit' ? 0.15 + 0.85 * Math.sin(TAU * 4 * t) ** 4
       : scene === 'ending' ? Math.max(0, 1 - t / 0.65) : 1;
     const attack = scene === 'drop' ? 0.075 : 0.016;
-    data[i] += (low - slower * 0.5) * envelope(t, length, attack) * (scene === 'drop' ? 0.35 : 0.8) * grains;
+    const colored = low - slower * 0.5;
+    const softened = scene === 'impact' || scene === 'ending' ? Math.tanh(colored * 4) / 4 : colored;
+    data[i] += softened * envelope(t, length, attack) * (scene === 'drop' ? 0.35 : scene === 'limit' ? 0.5 : 0.8) * grains;
   }
   addPartial(data, rate, { hz: scene === 'drop' ? 650 : scene === 'large' ? 65 : scene === 'ending' ? 220 : 160,
     endHz: scene === 'drop' ? 210 : scene === 'large' ? 125 : scene === 'ending' ? 40 : 65,
-    gain: scene === 'drop' ? 0.07 : scene === 'large' ? 0.09 : 0.14, length: length * 0.85, attack: scene === 'drop' ? 0.035 : 0.02 });
+    gain: scene === 'drop' ? 0.07 : scene === 'large' ? 0.09 : scene === 'limit' ? 0.08 : 0.14,
+    length: length * 0.85, attack: scene === 'drop' ? 0.035 : 0.02 });
   if (scene === 'large') addPartial(data, rate, { hz: 420, endHz: 680, gain: 0.2, length: 0.65, at: 0.06 });
   if (scene === 'limit') for (let i = 0; i < 4; i++) {
-    addPartial(data, rate, { hz: 740, endHz: 680, gain: 0.18, length: 0.11, at: i * 0.25, attack: 0.015 });
+    addPartial(data, rate, { hz: 740, endHz: 680, gain: 0.24, length: 0.11, at: i * 0.25, attack: 0.015 });
   }
 }
 
@@ -120,3 +124,5 @@ export async function renderDirection(direction: Direction, scene: SoundScene, s
   source.start();
   return context.startRendering();
 }
+import { GROW_SECONDS } from '../game/constants';
+

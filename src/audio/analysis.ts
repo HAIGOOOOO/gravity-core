@@ -4,6 +4,7 @@ export type SoundMetrics = {
 };
 export const FFT_SIZE = 2048;
 export const FFT_HOP = 512;
+const roots = new Map<number, { cosine: Float64Array; sine: Float64Array }>();
 
 /** Hann窓付きFFT。比較用の全画像で同じ窓・振幅基準を使う。 */
 export function spectrum(data: Float32Array, offset = 0, size = FFT_SIZE): Float64Array {
@@ -19,12 +20,17 @@ export function spectrum(data: Float32Array, offset = 0, size = FFT_SIZE): Float
   }
   for (let width = 2; width <= size; width *= 2) {
     const half = width / 2;
+    let root = roots.get(width);
+    if (!root) {
+      root = { cosine: Float64Array.from({ length: half }, (_, k) => Math.cos(-2 * Math.PI * k / width)),
+        sine: Float64Array.from({ length: half }, (_, k) => Math.sin(-2 * Math.PI * k / width)) };
+      roots.set(width, root);
+    }
     for (let start = 0; start < size; start += width) {
       for (let k = 0; k < half; k++) {
-        const angle = -2 * Math.PI * k / width;
         const a = start + k, b = a + half;
-        const r = real[b] * Math.cos(angle) - imag[b] * Math.sin(angle);
-        const im = real[b] * Math.sin(angle) + imag[b] * Math.cos(angle);
+        const r = real[b] * root.cosine[k] - imag[b] * root.sine[k];
+        const im = real[b] * root.sine[k] + imag[b] * root.cosine[k];
         real[b] = real[a] - r; imag[b] = imag[a] - im;
         real[a] += r; imag[a] += im;
       }
