@@ -16,10 +16,10 @@
 <body><main>
 <p class="sub"><a href="../">全体の一覧へ</a></p>
 <h1>担当 C: 感じる（演出・音・曲）</h1>
-<p class="sub">更新 2026-10-15 09:46（ed0e3d0　WIP: record team C pause after syncing latest instructions）</p>
+<p class="sub">更新 2026-10-15 10:07（1d76559　担当C: 音の3方向と6場面の比較室を追加（題目1・1周目））</p>
 
-<h2>いま</h2><div class="card">2026-10-15、ユーザーの指示で中断。最新の main（4fe12c6）を取り込み、新方針を確認したところまで。実装の変更はなく、新しい題目は未着手（0 周）。中断時の build は通過。</div>
-<h2>つぎ</h2><div class="card">再開時に最新を取得し、変更済みの lockfile に合わせて npm ci を実行する。docs/review/C.md を確認した後、題目 1（音の方向を決める）の 1 周目を調査から始める。</div>
+<h2>いま</h2><div class="card">題目1（音の方向）の1周目が完了。3案×6場面の試聴・波形・スペクトログラム・測定値を dev/sound.html に実装。2役の審査で挙がった重い設計上の欠点を修正。実聴・実機スピーカーの確認はできておらず、提出にはしない。</div>
+<h2>つぎ</h2><div class="card">題目1の2周目。比較音量・スマートフォンでの操作・連続する出来事の比較を改善し、再審査する。</div>
 
 <h2>触ってみる</h2>
 <p class="links">
@@ -27,6 +27,7 @@
   <a href="dev/board.html">見本: 盤面と照準（担当 D）</a>
   <a href="dev/screens.html">見本: 画面（担当 D）</a>
   <a href="dev/effects.html">見本: 演出（担当 C）</a>
+  <a href="dev/sound.html">見本: 音の画像と数字（担当 C）</a>
   <a href="ranking.html">ランキング</a>
 </p>
 <p class="note">その場で動きます。音は、ここで実際に触ると聞けます（動画には入りません）。</p>
@@ -37,5 +38,6 @@
   <figure style="margin:0"><video src="videos/game.webm" poster="videos/game.png" controls muted playsinline preload="none"></video><figcaption class="note">ゲーム本体（自動で遊ばせた物）</figcaption></figure>
   <figure style="margin:0"><video src="videos/board.webm" poster="videos/board.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 盤面と照準（担当 D）</figcaption></figure>
   <figure style="margin:0"><video src="videos/screens.webm" poster="videos/screens.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 画面（担当 D）</figcaption></figure>
+  <figure style="margin:0"><video src="videos/sound.webm" poster="videos/sound.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 音の画像と数字（担当 C）</figcaption></figure>
 </div>
 </main></body></html>
