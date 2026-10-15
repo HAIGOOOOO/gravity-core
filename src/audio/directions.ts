@@ -35,7 +35,7 @@ function mineral(data: Float32Array, rate: number, scene: SoundScene): void {
     const converge = scene === 'small' || scene === 'large';
     addPartial(data, rate, { hz: base * ratio * (converge ? 1.12 : 1),
       endHz: base * ratio * (scene === 'drop' ? 0.5 : scene === 'ending' ? 0.36 : 1),
-      gain: 0.22 / (1 + i * 1.4), length: length / (1 + i * 0.23), wobble: scene === 'limit' ? 12 : 2 });
+      gain: (scene === 'large' ? 0.15 : 0.22) / (1 + i * 1.4), length: length / (1 + i * 0.23), wobble: scene === 'limit' ? 12 : 2 });
     if (converge) addPartial(data, rate, { hz: base * ratio * 0.88, endHz: base * ratio,
       gain: 0.1 / (i + 1), length: length / (1 + i * 0.3), at: 0.025 });
   });
@@ -44,14 +44,14 @@ function mineral(data: Float32Array, rate: number, scene: SoundScene): void {
     // 小さいスピーカーにも出来事が届くよう、低い胴と同じ動きの中域を残す。
     [3.13, 4.77, 7.09].forEach((ratio, i) => addPartial(data, rate, {
       hz: base * ratio, endHz: base * ratio * (scene === 'ending' ? 0.5 : 1.04),
-      gain: 0.17 / (1 + i * 0.7), length: 0.7 / (1 + i * 0.2), at: 0.008,
+      gain: (scene === 'large' ? 0.25 : 0.17) / (1 + i * 0.7), length: (scene === 'large' ? 1 : 0.7) / (1 + i * 0.2), at: 0.008,
     }));
   }
 }
 
 function pressure(data: Float32Array, rate: number, scene: SoundScene, seed: number): void {
   const length = { drop: 0.28, impact: 0.18, small: 0.55, large: 1.5, limit: 1.2, ending: 1.15 }[scene];
-  const cutoff = { drop: 1300, impact: 1000, small: 1500, large: 480, limit: 800, ending: 900 }[scene];
+  const cutoff = { drop: 1300, impact: 1000, small: 1500, large: 900, limit: 800, ending: 900 }[scene];
   let state = seed >>> 0 || 1;
   let low = 0;
   let slower = 0;
@@ -71,20 +71,31 @@ function pressure(data: Float32Array, rate: number, scene: SoundScene, seed: num
   }
   addPartial(data, rate, { hz: scene === 'drop' ? 650 : scene === 'large' ? 65 : scene === 'ending' ? 220 : 160,
     endHz: scene === 'drop' ? 210 : scene === 'large' ? 125 : scene === 'ending' ? 40 : 65,
-    gain: scene === 'drop' ? 0.07 : 0.14, length: length * 0.85, attack: scene === 'drop' ? 0.035 : 0.02 });
+    gain: scene === 'drop' ? 0.07 : scene === 'large' ? 0.09 : 0.14, length: length * 0.85, attack: scene === 'drop' ? 0.035 : 0.02 });
+  if (scene === 'large') addPartial(data, rate, { hz: 420, endHz: 680, gain: 0.2, length: 0.65, at: 0.06 });
+  if (scene === 'limit') for (let i = 0; i < 4; i++) {
+    addPartial(data, rate, { hz: 740, endHz: 680, gain: 0.18, length: 0.11, at: i * 0.25, attack: 0.015 });
+  }
 }
 
 function musical(data: Float32Array, rate: number, scene: SoundScene): void {
+  if (scene === 'drop') {
+    addPartial(data, rate, { hz: 784, endHz: 392, gain: 0.19, length: 0.18, attack: 0.012 });
+    return;
+  }
   const notes = { drop: [784, 523], impact: [262], small: [523, 659, 784],
     large: [131, 262, 330, 392, 523], limit: [440, 466, 440, 466], ending: [392, 330, 262, 131] }[scene];
   const spacing = scene === 'large' ? 0.04 : scene === 'ending' ? 0.15 : scene === 'limit' ? 0.18 : 0.055;
   notes.forEach((hz, note) => {
     [1, 4, 10].forEach((ratio, harmonic) => addPartial(data, rate, {
-      hz: hz * ratio, gain: (scene === 'large' ? 0.13 : 0.2) / (1 + harmonic * 5),
+      hz: hz * ratio, gain: (note === 0 ? scene === 'large' ? 0.18 : 0.3 : scene === 'small' ? 0.09 : scene === 'large' ? 0.04 : 0.065) / (1 + harmonic * 5),
       length: (scene === 'large' || scene === 'ending' ? 1.2 : 0.38) / (1 + harmonic),
-      at: note * spacing, attack: 0.01,
+      at: scene === 'small' && note > 0 ? 0.09 : note * spacing, attack: 0.01,
     }));
   });
+  if (scene === 'large') [523, 784].forEach((hz, i) => addPartial(data, rate, {
+    hz, gain: 0.22 / (i + 1), length: 0.8, at: 0, attack: 0.012,
+  }));
 }
 
 export function synthesizeDirection(direction: Direction, scene: SoundScene, seed = 57, rate = LAB_RATE): Float32Array<ArrayBuffer> {

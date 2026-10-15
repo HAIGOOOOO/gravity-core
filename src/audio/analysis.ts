@@ -35,8 +35,16 @@ export function spectrum(data: Float32Array, offset = 0, size = FFT_SIZE): Float
 
 export function spectrogram(data: Float32Array): Float64Array[] {
   const frames: Float64Array[] = [];
-  for (let start = 0; start + FFT_SIZE <= data.length; start += FFT_HOP) frames.push(spectrum(data, start));
+  for (let center = 0; center < data.length; center += FFT_HOP) frames.push(spectrum(data, center - FFT_SIZE / 2));
   return frames;
+}
+
+/** 同じ場面のRMSを揃えつつ、補正後ピークにも余裕を残す。知覚音量の一致ではない。 */
+export function comparisonGains(metrics: readonly Pick<SoundMetrics, 'rms' | 'peak'>[]): number[] {
+  const sounding = metrics.filter(m => m.rms > 0 && m.peak > 0);
+  if (!sounding.length) return metrics.map(() => 0);
+  const target = Math.min(Math.max(...sounding.map(m => m.rms)), ...sounding.map(m => 0.8 * m.rms / m.peak));
+  return metrics.map(m => m.rms > 0 ? target / m.rms : 0);
 }
 
 export function measureSound(data: Float32Array, rate: number, frames = spectrogram(data)): SoundMetrics {

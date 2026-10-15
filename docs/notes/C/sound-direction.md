@@ -28,3 +28,11 @@
 ## 検証条件
 
 全案で落下・衝突・小合体・大合体・限界超過・終了を同じ順番で提示。48kHz/mono、同じ出力段、同じ図の時間・周波数・色・振幅スケールで比較する。素材追加なし。試作音はゲーム本体にまだ接続しない。
+
+## 2周目 — 比較の偏りと応答の時刻
+
+調査: [AudacityのRMS測定](https://www.audacityteam.org/manual/analyzers/measure-rms/) はピークと平均レベルを区別する。[Youleanのメーター](https://docs.youlean.co/youlean-loudness-meter/interface/interface-overview) は瞬間と短期を分ける。[Web Audioの遅延資料](https://www.w3.org/2021/03/media-production-workshop/talks/slides/hongchan-choi-building-audio-apps.pdf) は音声処理と出力の遅延を区別する。今回はRMSを知覚音量と呼ばず、90%到達を出力遅延とも呼ばない。
+
+案は①元音量だけを比べる ②ピークを揃える ③同じ場面の全区間RMSを揃え、元音量と切り替える。③を採用。瞬間ピークを強めるだけの案が有利にならず、音源本来の強弱も確認できる。最大値0.8の余裕を保てる共通目標を計算する。短い音の知覚音量の完全一致は保証しない。
+
+別の3案: Cの遅い主ピークを①全音同時にする ②冒頭の一打を強くし後続を弱める ③長い膨らみを維持する。②を選ぶ。音階の進行を残しつつ、出来事の瞬間に主反応を置けるため。

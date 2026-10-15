@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { measureSound, spectrum, FFT_SIZE } from './analysis';
+import { comparisonGains, measureSound, spectrum, FFT_SIZE } from './analysis';
 import { DIRECTIONS, SCENES, synthesizeDirection, LAB_RATE } from './directions';
 
 describe('音の測定', () => {
@@ -18,6 +18,13 @@ describe('音の測定', () => {
   it('無音を安全に扱い、飽和を数える', () => {
     expect(measureSound(new Float32Array(4096), 48000).bands).toEqual([0, 0, 0]);
     expect(measureSound(new Float32Array([0, 1, -1.1, 0.5]), 48000).clipped).toBe(2);
+  });
+  it('比較音量を揃えても最大値0.8を超えず、無音を増幅しない', () => {
+    const inputs = [{ rms: 0.1, peak: 0.9 }, { rms: 0.3, peak: 0.4 }, { rms: 0, peak: 0 }];
+    const gains = comparisonGains(inputs);
+    expect(inputs[0].rms * gains[0]).toBeCloseTo(inputs[1].rms * gains[1]);
+    inputs.forEach((m, i) => expect(m.peak * gains[i]).toBeLessThanOrEqual(0.8 + Number.EPSILON));
+    expect(gains[2]).toBe(0);
   });
   it('ゼロから90%へ届く時間と最後の可聴サンプルを測れる', () => {
     const data = new Float32Array(1000);
@@ -44,5 +51,17 @@ describe('3方向の6場面', () => {
     const a = synthesizeDirection('pressure', 'impact', 12);
     expect(a).toEqual(synthesizeDirection('pressure', 'impact', 12));
     expect(a).not.toEqual(synthesizeDirection('pressure', 'impact', 13));
+  });
+  it.each(DIRECTIONS)('%s の大合体には小型スピーカーへ届く中域を残す', direction => {
+    const metrics = measureSound(synthesizeDirection(direction, 'large'), LAB_RATE);
+    expect(metrics.bands[1]).toBeGreaterThan(0.25);
+  });
+  it('音階案は即座に一打を置き、落下より合体に長い応答を与える', () => {
+    const drop = measureSound(synthesizeDirection('musical', 'drop'), LAB_RATE);
+    const small = measureSound(synthesizeDirection('musical', 'small'), LAB_RATE);
+    const large = measureSound(synthesizeDirection('musical', 'large'), LAB_RATE);
+    expect(small.audibleMs).toBeGreaterThan(drop.audibleMs * 2);
+    expect(small.attackMs).toBeLessThan(20);
+    expect(large.attackMs).toBeLessThan(20);
   });
 });

@@ -18,7 +18,8 @@
     button:disabled { opacity: .5; cursor: wait; }
     #demo-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; position: sticky; top: 0; z-index: 2; background: #0b111bf5; padding: 14px 0; border-bottom: 1px solid #3a4b5e; }
     #status { min-height: 1.7em; color: #ffdb9c; }
-    .row { margin-block: 28px 40px; }
+    .row { margin-block: 28px 40px; scroll-margin-top: 190px; }
+    [hidden] { display: none !important; }
     .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
     article { border: 1px solid #334557; border-radius: 12px; background: #111c2a; padding: 16px; }
     article.playing { border-color: #ffda85; box-shadow: 0 0 0 2px #ffda85; }
@@ -28,7 +29,8 @@
     pre { white-space: pre-wrap; font: 12px/1.8 ui-monospace, monospace; color: #c4d7e6; margin-bottom: 0; }
     .eyebrow { font: 12px ui-monospace, monospace; letter-spacing: .18em; color: #8fe6d3; }
     details { margin-block: 18px; color: #b7c8d8; }
-    @media(max-width: 760px) { body { padding: 16px; } .cards { grid-template-columns: 1fr; } #demo-controls { position: static; } }
+    #quick { display: flex; gap: 8px; }
+    @media(max-width: 760px) { body { padding: 16px; } .cards { grid-template-columns: 1fr; } #demo-controls { gap: 8px; padding: 8px 0; } #demo-controls button { padding: 7px 10px; } #scene-preview { max-height: 120px; width: auto; max-width: 100%; } }
   </style>
 </head>
 <body>
@@ -39,14 +41,18 @@
   <div id="demo-controls">
     <button id="compare" disabled>この場面を A → B → C で再生</button>
     <label>場面 <select id="scene"></select></label>
+    <span id="quick"><button data-direction="mineral" disabled>A 共鳴</button><button data-direction="pressure" disabled>B 粒</button><button data-direction="musical" disabled>C 音階</button></span>
     <button id="stop">停止</button>
     <label>試聴音量 <input id="volume" type="range" min="0" max="100" value="50" /> <output id="volume-value">50%</output></label>
+    <label><input id="equal-level" type="checkbox" checked /> 平均レベルを揃える</label>
   </div>
   <p id="status" role="status" aria-live="polite">18個の音と測定画像を準備しています…</p>
   <canvas id="scene-preview" width="420" height="180" style="max-width:420px" aria-label="再生中の出来事の場面図" role="img"></canvas>
   <details><summary>図と測定値の読み方</summary>
-    <p>全て48kHz・2.4秒。上は振幅±1の波形、下は時間×周波数（40Hz〜12kHz）の図です。明るいほど強い音。色の基準は全カード共通です。最大値とRMSは試聴音量を掛ける前の値。立上りは開始から最大振幅の90%へ初めて届く時間、減衰は−60dBFS以上の最後のサンプルまで。帯域は250Hz未満 / 250〜2000Hz / 2000Hz以上のエネルギー比です。数字だけでは聞き心地や聞き分けの良さは確定できません。</p>
+    <p>音源は48kHz・2.4秒。図の表示時間は場面ごとに3案共通です。上は振幅±1の波形、下は時間×周波数（40Hz〜12kHz）の図です。明るいほど強い音。色の基準は全カード共通です。図と測定値は「平均レベルを揃える」の状態に従い、試聴音量スライダーを掛ける前の音を示します。最大90%到達は開始から最大振幅の90%へ初めて届く時間、減衰は−60dBFS以上の最後のサンプルまで。帯域は250Hz未満 / 250〜2000Hz / 2000Hz以上のエネルギー比です。数字だけでは聞き心地や聞き分けの良さは確定できません。</p>
+    <p>「平均レベルを揃える」は同じ場面の2.4秒全区間RMSを合わせます。知覚音量の完全な一致ではありません。補正後もピークは0.8以下です。「最大90%到達」は音形の指標で、操作から発音までの遅延ではありません。</p>
   </details>
+  <p><label><input id="all-scenes" type="checkbox" /> 全場面の図を並べる</label>　<label><input id="zoom" type="checkbox" /> 冒頭0.3秒を拡大</label></p>
   <main id="comparisons"></main>
   <script type="module" src="../src/dev/sound-demo.ts"></script>
 </body>
