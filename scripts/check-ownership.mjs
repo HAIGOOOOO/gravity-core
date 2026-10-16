@@ -26,6 +26,8 @@ const FORBIDDEN = [
   'AGENTS.md',
   'SPEC.md',
   'docs/方針.md',
+  'docs/手応え.md',
+  'docs/research/',
   'docs/RULES.md',
   'docs/TEAM.md',
   'docs/tasks/',
