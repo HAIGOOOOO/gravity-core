@@ -1,18 +1,19 @@
 # プレイの再生（swe-replay）
 
 ## いま
-- endTick 0（撃って即記録）の記録で、最初の表示が「入力反映前」の盤面になる不整合を直した。
-  原因: keyframes[0] は最終盤面（入力反映後）に上書きされるのに、currentSnap は
-  入力反映前の firstSnap で初期化されていた → snapshot()/seek(0) と peek(0) が食い違う。
-  対策: 最初の盤面もキーフレーム経由に揃えた（通常の記録では同じ物が返るので無影響）。
-- 見どころの bestTier は「開始時点の最高 Tier」を越えた時だけ立つようにした
-  （setup で高 Tier 開始の記録で、途中の合体を「最高 Tier 誕生」と誤認しない）。
-- 覚える物の量の計測テストを足した（keyframeInterval・cap・visited LRU・概算バイト）。
-- 失敗 detail に入力番号・残った入力の tick・到達時の phase を足した。
+- engine の失敗 detail を日本語・「何が: 計算 X / 記録 Y」の形に統一した。
+- 抜けを足した: visit が 0〜endTick を順に呼ぶ契約、endTick がキーフレーム間隔の
+  倍数と重なりその tick に入力がある記録（最終盤面は入力反映済みを返す）、
+  まばら間隔での peek の粒度、player.record の同一性。
+- 見どころ・負けた理由を記録の統計と整合させる確認を強化した
+  （maxChain=stats.maxChain、beforeGameOver.value=endTick、culprits=独立計算の集合）。
+- 分析 2 API（findHighlights/analyzeCause）の速さテストを追加（2 分の記録で各 <20s）。
 
 ## つぎ
-- 実際の長い記録（30 分〜）での作成時間とメモリは未計測。必要なら重いテストを足す。
-- detail 文の形をもう一度通して見る（日本語/英語が混ざっている）。
+- 30 分級の実長記録の計測は重い（自動プレイ生成自体が数十秒）。cap 機構は
+  keyframeCap で等価再現済み。必要になったら別枠で測る形を考える。
+- 見直しの周回: seek で行き来した時の events の返し方が直感通りか、
+  runReplay 単体の「共有記録の受け入れ検証」としての使い勝手を疑う。
 
 ## 「tick T の盤面」の決め方（一番大事な約束）
 `submitLaunch` は呼んだ時点の tick で盤面へ即反映される。元のプレイでは

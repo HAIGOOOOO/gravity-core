@@ -53,6 +53,10 @@ describe('覚える物の量', () => {
       if (want === undefined) continue;
       expect(JSON.stringify(p.seek(t)), `tick ${t}`).toBe(want);
     }
+    // まばらな間隔でも、peek は「t 以下の一番近いキーフレーム」を返す
+    const every = keyframeInterval(record.endTick, cap);
+    const t = Math.min(901, record.endTick);
+    expect(p.peek(t).tick).toBe(Math.floor(t / every) * every);
   });
 
   it('行った所の記憶は 240 面で止まり、古い物が捨てられても再 seek は正しい', { timeout: 60_000 }, () => {

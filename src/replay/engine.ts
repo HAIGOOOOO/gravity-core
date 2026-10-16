@@ -19,7 +19,11 @@ export type ReplayFailure =
   | Readonly<{ ok: false; reason: 'rulesMismatch'; expected: string; actual: string }>
   | Readonly<{ ok: false; reason: 'diverged'; detail: string }>;
 
-/** 1 つの出来事と、それが stepFixed の戻り値として返った時点の tick。 */
+/**
+ * 1 つの出来事と、それが stepFixed の戻り値として返った時点の tick。
+ * at は「そのステップで到達した tick」。launch は撃った直後の stepFixed で
+ * 返るため、at が event.tick より 1 大きくなりうる（他の出来事は一致する）。
+ */
 export type IndexedEvent = Readonly<{ at: Tick; event: GameEvent }>;
 
 export type ReplayRun = Readonly<{
@@ -67,7 +71,9 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
     return {
       ok: false,
       reason: 'diverged',
-      detail: `initial snapshot differs (hash ${initHash} vs record ${record.initialHash}); seed/setup/queue do not reproduce the recorded start`,
+      detail:
+        `開始の盤面が記録と合わない（計算: ${initHash} / 記録: ${record.initialHash}）。` +
+        'seed・setup・初期キューのどれかが元の開始を再現していない',
     };
   }
   const inputs = record.inputs;
@@ -84,10 +90,10 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
       const input = inputs[idx]!;
       nextInput++;
       const res = sim.submitLaunch(input);
-      if (!res.accepted) return `input #${idx} (tick ${tick}) rejected: ${res.reason}`;
+      if (!res.accepted) return `入力 #${idx}（tick ${tick}）が受理されなかった: ${res.reason}`;
     }
     if (nextInput < inputs.length && inputs[nextInput]!.tick < tick) {
-      return `input order broken: input #${nextInput} has tick ${inputs[nextInput]!.tick}, already past tick ${tick}`;
+      return `入力の順序が壊れている: #${nextInput}（tick ${inputs[nextInput]!.tick}）は既に過ぎた tick ${tick} より前`;
     }
     return null;
   };
@@ -119,33 +125,33 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   const diverged = (detail: string): ReplayFailure => ({ ok: false, reason: 'diverged', detail });
   if (nextInput < inputs.length) {
     return diverged(
-      `${inputs.length - nextInput} inputs were never applied ` +
-        `(first leftover: #${nextInput} at tick ${inputs[nextInput]!.tick}, replay reached tick ${final.tick})`,
+      `入力が ${inputs.length - nextInput} 件使われなかった` +
+        `（先頭の残り: #${nextInput}・tick ${inputs[nextInput]!.tick}、再生は tick ${final.tick} まで）`,
     );
   }
   if (final.tick !== record.endTick) {
-    return diverged(`reached tick ${final.tick} (phase ${final.phase}), expected tick ${record.endTick}`);
+    return diverged(`tick ${final.tick}（phase ${final.phase}）までしか進まなかった。記録の endTick は ${record.endTick}`);
   }
-  if (final.phase !== record.phase) return diverged(`phase ${final.phase}, expected ${record.phase}`);
-  if (final.score !== record.finalScore) return diverged(`score ${final.score}, expected ${record.finalScore}`);
+  if (final.phase !== record.phase) return diverged(`phase が違う: 計算 ${final.phase} / 記録 ${record.phase}`);
+  if (final.score !== record.finalScore) return diverged(`得点が違う: 計算 ${final.score} / 記録 ${record.finalScore}`);
   if (final.bodies.length !== record.finalBodyCount) {
-    return diverged(`bodies ${final.bodies.length}, expected ${record.finalBodyCount}`);
+    return diverged(`天体の数が違う: 計算 ${final.bodies.length} / 記録 ${record.finalBodyCount}`);
   }
   // 統計は「どの項目がいくつ違うか」を全部挙げる（1 項目ずつだと、
   // 直したら次が出る、を繰り返すことになる）。
   const statKeys = ['launches', 'merges', 'supernovas', 'maxChain'] as const;
   const statDiff = statKeys
     .filter((k) => final.stats[k] !== record.stats[k])
-    .map((k) => `${k}=${final.stats[k]} vs record ${record.stats[k]}`)
+    .map((k) => `${k}: 計算 ${final.stats[k]} / 記録 ${record.stats[k]}`)
     .join(', ');
-  if (statDiff) return diverged(`run stats differ: ${statDiff}`);
+  if (statDiff) return diverged(`統計が違う: ${statDiff}`);
   // 最後の全体照合。上の項目をすり抜ける差（熱量・位置・キュー・
   // endTick だけを延ばした改ざんなど）を盤面の指紋で拾う。
   const finalHash = snapshotHash(final);
   if (finalHash !== record.finalHash) {
     return diverged(
-      `final snapshot differs (hash ${finalHash} vs record ${record.finalHash}); ` +
-        'score/tick/phase/stats match, so the difference is in heat, bodies, queue, or cooldown',
+      `最終盤面が記録と合わない（計算: ${finalHash} / 記録: ${record.finalHash}）。` +
+        '得点・tick・phase・統計は一致するので、差は熱量・天体・キュー・冷却のどれか',
     );
   }
 

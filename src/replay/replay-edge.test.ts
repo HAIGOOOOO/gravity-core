@@ -48,6 +48,25 @@ describe('記録の端と抜け', () => {
     expect(start.player.seek(record.endTick).bodies).toHaveLength(2);
   });
 
+  it('endTick がキーフレーム間隔の倍数ちょうどで、endTick に入力がある記録も、最終盤面は入力反映済み', () => {
+    const sim = createSimulation(17);
+    for (let i = 0; i < 60; i++) sim.stepFixed();
+    expect(sim.submitLaunch(dropAt(UP)).accepted).toBe(true);
+    const record = createReplayRecord(sim); // endTick 60: キーフレームを取る間隔（60）と重なる
+    expect(record.endTick).toBe(60);
+    expect(record.inputs).toHaveLength(1);
+    const start = createReplayPlayer(record);
+    expect(start.ok).toBe(true);
+    if (!start.ok) return;
+    const p = start.player;
+    // 「tick T の盤面」に T の入力が出ないのが原則だが、記録の最後だけは
+    // 例外（記録の直前に撃たれた分を含む）。この tick には入力反映前の中間面も
+    // 存在しうるが、どの窓口から見ても「撃ったあとの盤面」（2 体）が返る
+    expect(p.seek(60).bodies).toHaveLength(2);
+    expect(snapshotHash(p.seek(60))).toBe(record.finalHash);
+    expect(p.peek(60).bodies).toHaveLength(2);
+  });
+
   it('tick 0 に撃って終わった記録（endTick 0）は、最初の表示・seek・peek が一致する', () => {
     const sim = createSimulation(7);
     expect(sim.submitLaunch(dropAt(UP)).accepted).toBe(true);

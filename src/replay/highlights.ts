@@ -30,7 +30,10 @@ const HEAT_CRITICAL = HEAT_STATE_LIMITS[2];
 export function findHighlights(record: ReplayRecord): HighlightsResult {
   let heatTick: Tick | null = null;
   let heatValue = 0;
+  // 中間の盤面は tick 0 以外いらない（最高 Tier の下限に使うだけ）ので、
+  // checkpoints は取らない。長い記録で盤面を数百面溜め込むのを避ける。
   const run = runReplay(record, {
+    checkpointEvery: 0,
     visit: (snap) => {
       if (heatTick === null && snap.heat > HEAT_CRITICAL) {
         heatTick = snap.tick;

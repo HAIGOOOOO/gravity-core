@@ -29,7 +29,9 @@ export function analyzeCause(record: ReplayRecord): CauseResult {
   let riseSnap: GameSnapshot | null = null;
   let overTick: Tick | null = null;
 
+  // 要るのは visit と最後の盤面だけ。中間の盤面は取らない（engine.ts の決まりどおり）。
   const run = runReplay(record, {
+    checkpointEvery: 0,
     visit: (snap, surfaced) => {
       for (const e of surfaced) {
         if (e.kind === 'overLimitStart') {

@@ -125,6 +125,11 @@ function copySetup(setup: SimulationSetup): SimulationSetup {
 /**
  * プレイ中（あるいは終了後）のシミュレーションから記録を作る。
  * 盤面は持たず、シードと受理済みの入力ログを写す。
+ *
+ * createSimulation に setup を渡して始めたプレイでは、同じ物を options.setup に
+ * 渡すこと。SimulationPort は開始状態を外に出さないので、渡さないと
+ * 「通常開始の記録」として保存され、再生時に開始の盤面が合わず
+ * 必ず diverged になる（黙って再現できない記録を作るより、分かる方が安全）。
  */
 export function createReplayRecord(
   sim: SimulationPort,

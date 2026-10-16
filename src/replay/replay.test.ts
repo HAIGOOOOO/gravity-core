@@ -140,6 +140,8 @@ describe('見どころ', () => {
     expect(h.ok).toBe(true);
     if (!h.ok) return;
     expect(h.highlights.find((x) => x.kind === 'maxChain')?.value).toBe(2);
+    // 見どころの連鎖数は、記録が持つ統計の最大連鎖と必ず一致する
+    expect(h.highlights.find((x) => x.kind === 'maxChain')?.value).toBe(record.stats.maxChain);
     expect(h.highlights.find((x) => x.kind === 'bestTier')?.value).toBe(2);
     // 最高 Tier が生まれた tick は、2 回目の合体が返った tick と同じ
     const sim = createSimulation(1, setup);
@@ -161,6 +163,8 @@ describe('見どころ', () => {
     if (!h.ok) return;
     const novaTick = h.highlights.find((x) => x.kind === 'supernova');
     expect(novaTick?.tick).toBe(1); // 最初のステップで超新星になる
+    // この記録の熱量は 60 → 超新星でさらに下がる。境目（75）を越えた瞬間は無い
+    expect(h.highlights.some((x) => x.kind === 'heatCritical')).toBe(false);
 
     const hot: SimulationSetup = {
       bodies: [at(7, 130, 0), at(6, 280, 0), at(5, 400, 0)],
@@ -174,10 +178,14 @@ describe('見どころ', () => {
     if (!h2.ok) return;
     const crit = h2.highlights.find((x) => x.kind === 'heatCritical');
     expect(crit?.value).toBeGreaterThan(75); // value は境目ではなく越えた瞬間の実熱量
+    // heat 96 で始めた記録なので「越えた瞬間」は開始の盤面そのもの（tick 0）
+    expect(crit?.tick).toBe(0);
     const soon = h2.highlights.find((x) => x.kind === 'beforeGameOver');
     expect(soon).toBeDefined();
     // ゲームオーバーの 10 秒前（0 より前にはならない）
     expect(soon!.tick).toBe(Math.max(0, soon!.value - 10 * TICK_HZ));
+    // value は gameOver が起きた tick。終了まで進んだ記録なので endTick と一致する
+    expect(soon!.value).toBe(dead.endTick);
   });
 });
 
@@ -199,15 +207,24 @@ describe('負けた理由', () => {
     const sim = createSimulation(1, setup);
     let lastRise = -1;
     let over = -1;
+    let culpritIds: number[] = [];
     for (let i = 0; i < 10 * TICK_HZ && sim.getSnapshot().phase === 'active'; i++) {
-      for (const e of sim.stepFixed()) {
-        if (e.kind === 'overLimitStart') lastRise = e.tick;
+      const events = sim.stepFixed();
+      const snap = sim.getSnapshot();
+      for (const e of events) {
+        if (e.kind === 'overLimitStart') {
+          lastRise = e.tick;
+          culpritIds = snap.bodies.filter((b) => b.overLimit).map((b) => b.id);
+        }
         if (e.kind === 'gameOver') over = e.tick;
       }
     }
     expect(cause.heatRiseTick).toBe(lastRise);
     expect(cause.gameOverTick).toBe(over);
     expect(cause.snapshot.tick).toBe(lastRise);
+    // 「上がり始め」の盤面は越えている最中のはずで、犯人の集合も独立に計算した物と一致する
+    expect(cause.snapshot.overLimit).toBe(true);
+    expect(cause.culprits.map((b) => b.id)).toEqual(culpritIds);
     expect(cause.culprits.length).toBeGreaterThan(0);
     expect(cause.culprits.every((b) => b.overLimit)).toBe(true);
   });
@@ -261,5 +278,35 @@ describe('seek の速さ', () => {
     const peekBegan = Date.now();
     player.peek(Math.floor(record.endTick * 0.33));
     expect(Date.now() - peekBegan).toBeLessThan(50);
+  });
+});
+
+describe('分析の速さ', () => {
+  it('2 分ぶんの記録でも、見どころと負けた理由は全計算し直し 1 回ぶんで返る', { timeout: 90_000 }, () => {
+    const { record } = recordAutoPlay(88, 2 * 60 * TICK_HZ);
+    const hBegan = Date.now();
+    const h = findHighlights(record);
+    const hMs = Date.now() - hBegan;
+    expect(h.ok).toBe(true);
+    const cBegan = Date.now();
+    const c = analyzeCause(record);
+    const cMs = Date.now() - cBegan;
+    expect(c.ok).toBe(true);
+    // どちらも内部は「最初から最後までの計算し直し」1 回ぶんが上限。
+    // 中間の盤面を溜め込んだり、tick ごとに 0 から計算し直したりする退行はここで止まる。
+    expect(hMs).toBeLessThan(20_000);
+    expect(cMs).toBeLessThan(20_000);
+    if (h.ok) {
+      // 見どころの tick は全部、記録の範囲に収まる
+      for (const x of h.highlights) {
+        expect(x.tick).toBeGreaterThanOrEqual(0);
+        expect(x.tick).toBeLessThanOrEqual(record.endTick);
+      }
+    }
+    // 途中で終わった記録なら、負けた理由は記録内の tick で返る
+    if (c.ok && c.cause) {
+      expect(c.cause.gameOverTick).toBeLessThanOrEqual(record.endTick);
+      expect(c.cause.heatRiseTick).toBeLessThanOrEqual(c.cause.gameOverTick);
+    }
   });
 });
