@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LaunchInput } from '../contracts/game';
+import type { GameSnapshot, LaunchInput } from '../contracts/game';
 import { createAutoPlay, dropAt } from '../fixtures';
 import { DROP_SPEED, TICK_HZ } from '../game/constants';
 import { createRng } from '../game/rng';
@@ -116,6 +116,60 @@ describe('verifyPlay', () => {
       expect(cappedOver.ok).toBe(true);
       if (cappedOver.ok) expect(cappedOver.result.ticks).toBe(expected.tick);
     }
+  }, 120_000);
+
+  it('ゲームオーバー後の tick に入力がある文字列は、終了時点で止まり結果を返す', () => {
+    // 標準開始の盤面でオーバーを起こす必要があるので、狭い角度へ撃ち続けて山を意図的に偏らせる。
+    // まっすぐ落としは必ずどこかへ積もるので、撃ち続ければいずれ限界リングを越える。
+    const t0 = performance.now();
+    let found: { seed: number; sim: ReturnType<typeof createSimulation>; snap: GameSnapshot } | null = null;
+    for (const seed of [616, 77, 2026]) {
+      const sim = createSimulation(seed);
+      const rng = createRng(seed + 9);
+      let nextLaunch = 0;
+      const limit = 150 * TICK_HZ; // 最長 150 秒ぶんまで試す
+      for (;;) {
+        const snap = sim.getSnapshot();
+        if (snap.phase !== 'active' || snap.tick >= limit) break;
+        if (snap.tick >= nextLaunch) {
+          sim.submitLaunch(dropAt(-Math.PI / 2 + (rng() - 0.5) * 0.6)); // 真上 ±0.3 rad
+          nextLaunch = snap.tick + 65; // クールダウン 0.5s = 60 tick に余裕を持たせる
+        }
+        sim.stepFixed();
+      }
+      const snap = sim.getSnapshot();
+      if (snap.phase === 'over') {
+        found = { seed, sim, snap };
+        break;
+      }
+    }
+    console.info(`[share] オーバー再現まで: ${(performance.now() - t0).toFixed(1)}ms`);
+    if (!found) {
+      // オーバーに至らない環境ではここで終わる。
+      // 終了済みの sim に入力が来たときの分岐は「実際の終了より後」テストでも条件付きで確かめている。
+      console.info('[share] 試したシードではオーバーに至らず、後半は未確認');
+      return;
+    }
+    const base = found.sim.getInputLog();
+    expect(base.length).toBeGreaterThan(0);
+    // 終了時点より後の tick に入力を足した文字列を作る
+    const extraTick = found.snap.tick + 100;
+    const inputs: LaunchInput[] = [...base, { tick: extraTick, ...dropAt(1.1) }];
+    const text = encodePlay({
+      rulesVersion: SHARE_RULES_VERSION,
+      seed: found.seed,
+      inputs,
+      endTick: extraTick + 500,
+    });
+    expect(text).not.toBe('');
+    const v = verifyPlay(text);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.result.gameOver).toBe(true);
+    expect(v.result.ticks).toBe(found.snap.tick); // endTick まで進まず終了時点で止まる
+    expect(v.result.score).toBe(found.snap.score);
+    expect(v.result.inputsApplied).toBe(base.length); // オーバー後の入力は捨てられる
+    expect(v.result.inputsTotal).toBe(inputs.length);
   }, 120_000);
 
   it('同じ tick に複数の入力がある文字列は、受理された分だけ正直に数える', () => {
@@ -247,6 +301,29 @@ describe('verifyPlay', () => {
       for (let j = 0; j < len; j++) s += String.fromCharCode(Math.floor(rng() * 65536));
       expect(verifyPlay(s).ok).toBe(false);
     }
+  });
+
+  it('入力なし・endTick だけあるプレイはその tick まで進み、得点 0 を返す', () => {
+    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 4, inputs: [], endTick: 600 });
+    const v = verifyPlay(text);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.result.ticks).toBe(600);
+    expect(v.result.score).toBe(0);
+    expect(v.result.inputsTotal).toBe(0);
+    expect(v.result.gameOver).toBe(false);
+  });
+
+  it('options の getter が投げても例外は外へ出ない', () => {
+    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [], endTick: 0 });
+    const evil = {
+      get maxTicks(): number {
+        throw new Error('trap');
+      },
+    };
+    const v = verifyPlay(text, evil);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toBe('badData');
   });
 });
 

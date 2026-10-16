@@ -109,6 +109,17 @@ describe('decodePlay: 検査値を付け直した細工', () => {
     if (!bigSeed.ok) expect(bigSeed.reason).toBe('badData');
   });
 
+  it('ヘッダの上限を越える値は弾く（rulesVersion 256・個数が上限超過）', () => {
+    // rulesVersion 1 → 256（varint: 256 = 0 + 2×128 → [0x80,0x02]）
+    const rv = decodePlay(forge(SAMPLE, (b) => { b.splice(1, 1, 0x80, 0x02); }));
+    expect(rv.ok).toBe(false);
+    if (!rv.ok) expect(rv.reason).toBe('badData');
+    // 個数 1 → 100,001（varint: 33 + 13×128 + 6×16384 → [0xa1,0x8d,0x06]）
+    const many = decodePlay(forge(SAMPLE, (b) => { b.splice(4, 1, 0xa1, 0x8d, 0x06); }));
+    expect(many.ok).toBe(false);
+    if (!many.ok) expect(many.reason).toBe('badData');
+  });
+
   it('大きい経路で入れた格子の入力は、読み戻すと小さい正規形に直る', () => {
     // 格子上の角度をあえて「角度だけ」形（8 バイト）で手組みする
     const body: number[] = [SHARE_FORMAT_VERSION, 1];

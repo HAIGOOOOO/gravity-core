@@ -223,6 +223,23 @@ describe('encodePlay / decodePlay', () => {
     }
   });
 
+  it('-0 の seed・rulesVersion・endTick は +0 と同じ正準形になる', () => {
+    // -0 は整数として受理されるが、書き込みでは +0 と同じバイトになる。
+    // 読み戻せば +0 なので、値の符号を気にする必要のない数では正準形どうしが一致する。
+    const a = encodePlay({ rulesVersion: -0, seed: -0, inputs: [], endTick: -0 });
+    const b = encodePlay({ rulesVersion: 0, seed: 0, inputs: [], endTick: 0 });
+    expect(a).not.toBe('');
+    expect(a).toBe(b);
+  });
+
+  it('非整数の tick は空文字列を返し、最初の入力が tick 0 より後でも往復する', () => {
+    expect(encodePlay({ rulesVersion: 1, seed: 1, inputs: [{ ...drop(0, 0), tick: 0.5 }] })).toBe('');
+    // 最初の入力の差分は tick 0 起点で計算される
+    const d = decodePlay(encodePlay({ rulesVersion: 1, seed: 2, inputs: [drop(500, 0.4)] }));
+    expect(d.ok).toBe(true);
+    if (d.ok) expectSameInputs(d.play.inputs, [drop(500, 0.4)]);
+  });
+
   it('おかしい入力は空文字列を返す（例外なし）', () => {
     const ok = { rulesVersion: 1, seed: 1 };
     expect(encodePlay({ ...ok, inputs: [{ ...drop(0, 0), tick: -1 }] })).toBe('');
@@ -306,6 +323,15 @@ describe('decodePlay の頑丈さ', () => {
     for (const v of [undefined, null, 0, 42, {}, [], true]) {
       expect(decodePlay(v as unknown as string).ok).toBe(false);
     }
+  });
+
+  it('真ん中に空白や制御文字が入った文字列は弾く（前後の空白だけは落とす）', () => {
+    const mid = Math.floor(sample.length / 2);
+    for (const ch of [' ', '\t', '\n', '\0']) {
+      expect(decodePlay(sample.slice(0, mid) + ch + sample.slice(mid)).ok).toBe(false);
+    }
+    // 前後は trim されるので読める
+    expect(decodePlay('\t\n' + sample + '\n\t').ok).toBe(true);
   });
 
   it('途中で切れた文字列は全部失敗する', () => {
