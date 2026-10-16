@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayResult } from './batch';
-import { balanceTable, formatNumber, formatRange, markdownTable, statsTable } from './report';
+import { balanceTable, formatNumber, formatRange, markdownTable, seedTable, statsTable } from './report';
 import { summarize } from './stats';
 
 const base: PlayResult = {
@@ -11,6 +11,7 @@ const base: PlayResult = {
   bestTier: 3,
   launches: 8,
   merges: 4,
+  mergesPerLaunch: 0.5,
   supernovas: 0,
   maxChain: 2,
   heat75Count: 1,
@@ -60,9 +61,12 @@ describe('balanceTable', () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toContain('ボット');
     expect(lines[0]).toContain('限界越え秒');
+    expect(lines[0]).toContain('合体効率');
     expect(lines[2]).toContain('| a | 2 |');
     // 得点 2 件の中央値は 2000
     expect(lines[2]).toContain('2000');
+    // 合体効率（0.5 の平均）は平均値で出す
+    expect(lines[2]).toContain('| 0.5 |');
     // 打ち切り列は行の最後（a は 1 件、b は 0 件）
     expect(lines[2]).toMatch(/\| 1 \|$/);
     expect(lines[3]).toMatch(/\| 0 \|$/);
@@ -77,20 +81,53 @@ describe('balanceTable', () => {
 });
 
 describe('statsTable', () => {
-  it('見出し + 指標 9 行の表になる', () => {
+  it('見出し + 指標 10 行の表になる', () => {
     const t = statsTable('a', [base]);
     expect(t).toContain('### a');
     expect(t).toContain('得点');
     expect(t).toContain('熱量75超');
     expect(t).toContain('限界越え秒');
-    // 「### a」・空行・ヘッダ・区切り・9 指標 = 13 行
-    expect(t.split('\n')).toHaveLength(13);
+    expect(t).toContain('合体効率');
+    // 「### a」・空行・ヘッダ・区切り・10 指標 = 14 行
+    expect(t.split('\n')).toHaveLength(14);
   });
 
   it('0 件でも表を作れる（値はすべて「—」）', () => {
     const t = statsTable('empty', []);
     expect(t).toContain('### empty');
-    expect(t.split('\n')).toHaveLength(13);
+    expect(t.split('\n')).toHaveLength(14);
     expect(t).toContain('—');
+  });
+});
+
+describe('seedTable', () => {
+  it('秒数の短い順に count 件だけ出す', () => {
+    const runs = [
+      { ...base, seed: 301, seconds: 30 },
+      { ...base, seed: 101, seconds: 10 },
+      { ...base, seed: 201, seconds: 20 },
+    ];
+    const t = seedTable('x', runs, 2);
+    const lines = t.split('\n');
+    // 「### x（…）」・空行・ヘッダ・区切り・2 行 = 6 行
+    expect(lines).toHaveLength(6);
+    expect(t).toContain('### x');
+    expect(lines[4]).toContain('| 101 |');
+    expect(lines[5]).toContain('| 201 |');
+    expect(t).not.toContain('| 301 |');
+  });
+
+  it('打ち切りの行に「はい」が付き、件数が足りなくても全部出す', () => {
+    const t = seedTable('x', [{ ...base, seed: 77, timedOut: true }], 8);
+    expect(t).toContain('| 77 |');
+    expect(t).toContain('はい');
+    expect(t.split('\n')).toHaveLength(5);
+  });
+
+  it('0 件なら表だけ（行なし）', () => {
+    const t = seedTable('x', [], 8);
+    expect(t).toContain('### x');
+    // 「### x（…）」・空行・ヘッダ・区切り = 4 行
+    expect(t.split('\n')).toHaveLength(4);
   });
 });

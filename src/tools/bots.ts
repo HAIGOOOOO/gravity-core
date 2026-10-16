@@ -43,6 +43,8 @@ const CURVE_SPEEDS = [SPEED_MAX, (SPEED_MIN + SPEED_MAX) / 2];
 type Probe = Readonly<{
   angleCount: number;
   commandsFor: (angle: number) => readonly LaunchCommand[];
+  /** 合体できない着地への追加点（近くに同 Tier がある等）。無ければ 0 */
+  landingBonus?: (p: Prediction, snapshot: GameSnapshot, shotRadius: number) => number;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -62,6 +64,30 @@ export function isSafeLanding(p: Prediction, snapshot: GameSnapshot, shotRadius:
   return !(hit?.overLimit ?? false);
 }
 
+/** 着地点から「これ以内なら隣」とみなす距離の余裕。少しの隙間は押し戻しで埋まる */
+const NEAR_MARGIN_PX = 4;
+
+/**
+ * 着地点の近くに、いま撃つ天体と同じ Tier の天体がいる数 × 2。
+ * 撃った天体どうしだけでなく積まれた天体どうしも触れれば合体するので、
+ * 同じ Tier の隣に置けば、合体できない射出でも自然合体を誘発できる。
+ */
+function nearBonus(p: Prediction, snapshot: GameSnapshot, shotRadius: number): number {
+  if (p.end !== 'body') return 0;
+  const last = p.points[p.points.length - 1];
+  if (!last) return 0;
+  const tier = snapshot.nextQueue[0];
+  let n = 0;
+  for (const b of snapshot.bodies) {
+    if (b.tier !== tier || b.id === p.hitBodyId) continue;
+    const dx = b.x - last.x;
+    const dy = b.y - last.y;
+    const reach = shotRadius + b.radius + NEAR_MARGIN_PX;
+    if (dx * dx + dy * dy <= reach * reach) n++;
+  }
+  return n * 2;
+}
+
 /**
  * 方角を舐めて一番良い射出を選ぶ。
  * 順位: 合体できる（rank 0）> 安全に着地できる（rank 1）> リングを越えそう（rank 2）。
@@ -76,6 +102,7 @@ function pickCommand(
   avoidRisky: boolean,
 ): LaunchCommand {
   const { angleCount, commandsFor } = probe;
+  const shotRadius = TIER_RADIUS[snapshot.nextQueue[0]];
   let best: { command: LaunchCommand; rank: number; score: number } | null = null;
   for (let i = 0; i < angleCount; i++) {
     const angle = ((startIndex + i) % angleCount) * (FULL_TURN / angleCount);
@@ -90,10 +117,10 @@ function pickCommand(
         // 連鎖が続く相手ほど、また大きい Tier ほど先に合体させる
         score = (hit && hit.chainUntilTick > snapshot.tick ? hit.chain : 0) * 10 + (hit?.tier ?? 0);
       } else {
-        const safe = isSafeLanding(p, snapshot, TIER_RADIUS[snapshot.nextQueue[0]]);
+        const safe = isSafeLanding(p, snapshot, shotRadius);
         rank = safe || !avoidRisky ? 1 : 2;
-        // 同じ順位の中では、空き地（核）より既にある天体に寄せる方を少し優先する
-        score = p.end === 'body' ? 1 : 0;
+        // 空き地（核）より既にある天体に寄せる方を少し優先し、探しかた固有の追加点を足す
+        score = (p.end === 'body' ? 1 : 0) + (probe.landingBonus?.(p, snapshot, shotRadius) ?? 0);
       }
       if (best === null || rank < best.rank || (rank === best.rank && score > best.score)) {
         best = { command, rank, score };
@@ -140,6 +167,8 @@ function straightAndCurves(angle: number): readonly LaunchCommand[] {
 const STRAIGHT_PROBE: Probe = { angleCount: STRAIGHT_ANGLES, commandsFor: straightOnly };
 /** 直投げに曲げを足して調べる探しかた */
 const CURVE_PROBE: Probe = { angleCount: CURVE_ANGLES, commandsFor: straightAndCurves };
+/** 直投げだけを調べ、「同じ Tier の隣に着地」に追加点を付ける探しかた */
+const NEAR_PROBE: Probe = { angleCount: STRAIGHT_ANGLES, commandsFor: straightOnly, landingBonus: nearBonus };
 
 // ---------------------------------------------------------------------------
 // ボット本体
@@ -171,9 +200,13 @@ export const mergeBot: BotFactory = (seed) =>
 export const safeMergeBot: BotFactory = (seed) =>
   makeAimingBot('merge-safe', createRng(seed + 303), STRAIGHT_PROBE, true);
 
+/** ③の探しかたに、合体できない時は「同じ Tier の隣」に置く追加点を足す（自然合体を誘発）。 */
+export const nearBot: BotFactory = (seed) =>
+  makeAimingBot('near', createRng(seed + 505), NEAR_PROBE, true);
+
 /** ④ ③の探しかたに、接線方向へ投げる「曲げ」を足す（直投げで届かない裏側を狙える）。 */
 export const curveBot: BotFactory = (seed) =>
   makeAimingBot('curve', createRng(seed + 404), CURVE_PROBE, true);
 
 /** 全部のボット（レポートやテストでまとめて回す用）。 */
-export const ALL_BOTS: readonly BotFactory[] = [randomBot, spiralBot, mergeBot, safeMergeBot, curveBot];
+export const ALL_BOTS: readonly BotFactory[] = [randomBot, spiralBot, mergeBot, safeMergeBot, nearBot, curveBot];

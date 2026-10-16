@@ -9,6 +9,7 @@ export const METRIC_LABELS: Record<RunMetric, string> = {
   score: '得点',
   bestTier: '到達Tier',
   merges: '合体数',
+  mergesPerLaunch: '合体効率',
   maxChain: '最大連鎖',
   heat75Count: '熱量75超',
   overLimitSeconds: '限界越え秒',
@@ -37,7 +38,7 @@ export function markdownTable(headers: readonly string[], rows: readonly (readon
 /** ボットどうし（または設定どうし）を並べた比較表。各マスは「中央値（10%〜90%）」。 */
 export function balanceTable(entries: readonly { name: string; runs: readonly PlayResult[] }[]): string {
   return markdownTable(
-    ['ボット', '回数', '秒数', '得点', '到達Tier', '合体数', '最大連鎖', '限界越え秒', '熱量75超（平均）', '打ち切り'],
+    ['ボット', '回数', '秒数', '得点', '到達Tier', '合体数', '合体効率', '最大連鎖', '限界越え秒', '熱量75超（平均）', '打ち切り'],
     entries.map(({ name, runs }) => {
       const s = summarizeRuns(runs);
       const timeouts = runs.filter((r) => r.timedOut).length;
@@ -48,6 +49,7 @@ export function balanceTable(entries: readonly { name: string; runs: readonly Pl
         formatRange(s.score),
         formatRange(s.bestTier),
         formatRange(s.merges),
+        formatNumber(s.mergesPerLaunch.mean),
         formatRange(s.maxChain),
         formatRange(s.overLimitSeconds),
         formatNumber(s.heat75Count.mean),
@@ -76,4 +78,22 @@ export function statsTable(name: string, runs: readonly PlayResult[]): string {
     }),
   );
   return `### ${name}\n\n${table}`;
+}
+
+/** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */
+export function seedTable(name: string, runs: readonly PlayResult[], count: number): string {
+  const sorted = [...runs].sort((a, b) => a.seconds - b.seconds).slice(0, Math.max(0, count));
+  const table = markdownTable(
+    ['シード', '秒数', '得点', '到達Tier', '合体数', '最大連鎖', '打ち切り'],
+    sorted.map((r) => [
+      String(r.seed),
+      formatNumber(r.seconds),
+      formatNumber(r.score),
+      formatNumber(r.bestTier),
+      formatNumber(r.merges),
+      formatNumber(r.maxChain),
+      r.timedOut ? 'はい' : '',
+    ]),
+  );
+  return `### ${name}（秒数の短い順）\n\n${table}`;
 }

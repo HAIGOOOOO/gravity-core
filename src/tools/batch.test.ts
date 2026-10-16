@@ -46,6 +46,13 @@ describe('runBatch', () => {
     expect(a).toEqual(b);
   });
 
+  it('setup は全部の回に渡る（比較用の条件変更が 1 回だけに効く事はない）', () => {
+    const runs = runBatch(randomBot, { runs: 3, seedStart: 20, maxTicks: 5 * TICK_HZ, setup: { bestTier: 8 } });
+    expect(runs).toHaveLength(3);
+    // bestTierThisRun は開始値がそのまま（Tier 8 同士は超新星で消え、9 以上にはならない）
+    for (const r of runs) expect(r.bestTier).toBe(8);
+  });
+
   it('0 回なら空を返す', () => {
     expect(runBatch(randomBot, { runs: 0 })).toEqual([]);
   });
@@ -73,6 +80,19 @@ describe('playOnce の抜けている場合', () => {
     const { sim } = playOnce(randomBot(1), { seed: 1, maxTicks: TICK_HZ, setup: { bestTier: 8 } });
     expect(sim.getSnapshot().bestTierThisRun).toBe(8);
   });
+
+  it('合体効率は「合体数 ÷ 射出数」。撃てなければ 0、撃てば 0 以上', () => {
+    // 撃てないボットは 0 射出 → 0 で割れないので 0
+    const stubborn: Bot = { name: 'stubborn', decide: () => ({ originAngleRadians: 0, vx: 0, vy: 0 }) };
+    const { result: none } = playOnce(stubborn, { seed: 1, maxTicks: 10 * TICK_HZ });
+    expect(none.launches).toBe(0);
+    expect(none.mergesPerLaunch).toBe(0);
+    // 普通に撃てば効率は 0 以上（1 射で連鎖合体が起きると 1 を越えてよい）
+    const { result: played } = playOnce(randomBot(1), { seed: 1, maxTicks: 20 * TICK_HZ });
+    expect(played.launches).toBeGreaterThan(0);
+    expect(played.mergesPerLaunch).toBeGreaterThanOrEqual(0);
+    expect(played.mergesPerLaunch).toBe(played.merges / played.launches);
+  });
 });
 
 describe('summarizeRuns', () => {
@@ -85,5 +105,14 @@ describe('summarizeRuns', () => {
     expect(s.bestTier.median).toBeGreaterThanOrEqual(0);
     expect(s.merges.mean).toBeGreaterThanOrEqual(0);
     expect(s.heat75Count.max).toBeGreaterThanOrEqual(0);
+    expect(s.mergesPerLaunch.mean).toBeGreaterThanOrEqual(0);
+  });
+
+  it('0 件でも落ちない（値は NaN）', () => {
+    const s = summarizeRuns([]);
+    expect(s.seconds.n).toBe(0);
+    expect(s.seconds.mean).toBeNaN();
+    expect(s.merges.median).toBeNaN();
+    expect(s.mergesPerLaunch.p90).toBeNaN();
   });
 });

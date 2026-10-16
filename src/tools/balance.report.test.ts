@@ -8,7 +8,7 @@ import { setupAllTiers } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
 import { ALL_BOTS, randomBot } from './bots';
-import { balanceTable, statsTable } from './report';
+import { balanceTable, seedTable, statsTable } from './report';
 
 const FULL = import.meta.env.VITE_BALANCE === '1';
 const RUNS = FULL ? 100 : 3;
@@ -43,7 +43,11 @@ describe('数値調整レポート', () => {
 
       console.log('\n## GRAVITY CORE 数値レポート（ボット別）\n');
       console.log(table);
-      for (const { name, runs } of collected) console.log(`\n${statsTable(name, runs)}`);
+      for (const { name, runs } of collected) {
+        console.log(`\n${statsTable(name, runs)}`);
+        // 異常に早く終わるシードは、調整で条件を絞る手がかりになる
+        console.log(`\n${seedTable(name, runs, 8)}`);
+      }
 
       // setup で変えられる物を変えた比較。random は予測を呼ばないので一番速い
       console.log('\n## setup の差し替え比較（random ボット）\n');

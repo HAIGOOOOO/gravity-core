@@ -7,6 +7,7 @@ import {
   curveBot,
   isSafeLanding,
   mergeBot,
+  nearBot,
   randomBot,
   safeMergeBot,
   spiralBot,
@@ -136,6 +137,85 @@ describe('狙いを定める判断（予測を差し替える）', () => {
       pred({ end: 'core', willMerge: Math.hypot(c.vx, c.vy) > DROP_SPEED + 1 });
     const cmd = curveBot(1).decide(snap(), predict);
     expect(Math.hypot(cmd.vx, cmd.vy)).toBeGreaterThan(DROP_SPEED + 1);
+  });
+
+  it('merge: 合体できる相手が複数なら、連鎖が残っている相手を優先する', () => {
+    const cold = 5 * GRID48;
+    const chained = 21 * GRID48;
+    const s = snap({
+      tick: 100,
+      bodies: [
+        body({ id: 1, tier: 0, chain: 0, chainUntilTick: 0 }), // 連鎖切れ
+        body({ id: 2, tier: 0, chain: 3, chainUntilTick: 500 }), // 連鎖中
+      ],
+    });
+    const predict: PredictFn = (c) => {
+      if (Math.abs(c.originAngleRadians - cold) < 1e-9) {
+        return pred({ end: 'body', hitBodyId: 1, willMerge: true, points: [{ x: 0, y: 0, t: 1 }] });
+      }
+      if (Math.abs(c.originAngleRadians - chained) < 1e-9) {
+        return pred({ end: 'body', hitBodyId: 2, willMerge: true, points: [{ x: 0, y: 0, t: 1 }] });
+      }
+      return pred({ valid: false });
+    };
+    expect(mergeBot(1).decide(s, predict).originAngleRadians).toBeCloseTo(chained, 9);
+  });
+
+  it('curve: 直投げでも合体できるなら、曲げずに直投げする（同点なら先に調べた方）', () => {
+    // どの射出でも合体する予測。同じ rank・同じ score なら、各方角の最初の候補（直投げ）が残る
+    const predict: PredictFn = () => pred({ end: 'core', willMerge: true });
+    const cmd = curveBot(1).decide(snap(), predict);
+    expect(Math.hypot(cmd.vx, cmd.vy)).toBeCloseTo(DROP_SPEED, 9);
+  });
+});
+
+describe('near（同じ Tier の隣に置く）', () => {
+  it('合体できない時は、同じ Tier の天体の隣に着地できる方角を選ぶ', () => {
+    const plain = 3 * GRID48;
+    const beside = 11 * GRID48;
+    // Tier 0（半径 14）を撃つ。(128, 0) への着地は (100, 0) の同 Tier 天体と距離 28 < 14+14+4
+    const s = snap({ bodies: [body({ id: 7, tier: 0, x: 100, y: 0, radius: 14 })] });
+    const predict: PredictFn = (c) => {
+      if (Math.abs(c.originAngleRadians - plain) < 1e-9) {
+        return pred({ end: 'body', points: [{ x: -200, y: -200, t: 1 }], hitBodyId: 99 });
+      }
+      if (Math.abs(c.originAngleRadians - beside) < 1e-9) {
+        return pred({ end: 'body', points: [{ x: 128, y: 0, t: 1 }], hitBodyId: 99 });
+      }
+      return pred({ valid: false });
+    };
+    expect(nearBot(1).decide(s, predict).originAngleRadians).toBeCloseTo(beside, 9);
+    // merge-safe は「隣に同 Tier」を見ないので、この差は出ない（2 つのどちらかを選ぶだけ）
+    const safe = safeMergeBot(1).decide(s, predict).originAngleRadians;
+    expect(safe === plain || safe === beside).toBe(true);
+  });
+
+  it('隣に置ける場所が無ければ、安全な着地を普通に選ぶ', () => {
+    const plain = 3 * GRID48;
+    const s = snap({ bodies: [body({ id: 7, tier: 5, x: 100, y: 0, radius: 52 })] }); // 違う Tier だけ
+    const predict: PredictFn = (c) => {
+      if (Math.abs(c.originAngleRadians - plain) < 1e-9) {
+        return pred({ end: 'body', points: [{ x: 128, y: 0, t: 1 }], hitBodyId: 7 });
+      }
+      return pred({ valid: false });
+    };
+    expect(nearBot(1).decide(s, predict).originAngleRadians).toBeCloseTo(plain, 9);
+  });
+
+  it('合体できる方角があれば、隣に同 Tier があっても合体を優先する', () => {
+    const mergeAngle = 4 * GRID48;
+    const beside = 11 * GRID48;
+    const s = snap({ bodies: [body({ id: 7, tier: 0, x: 100, y: 0, radius: 14 })] });
+    const predict: PredictFn = (c) => {
+      if (Math.abs(c.originAngleRadians - mergeAngle) < 1e-9) {
+        return pred({ end: 'body', willMerge: true, hitBodyId: 7, points: [{ x: 114, y: 0, t: 1 }] });
+      }
+      if (Math.abs(c.originAngleRadians - beside) < 1e-9) {
+        return pred({ end: 'body', points: [{ x: 128, y: 0, t: 1 }], hitBodyId: 99 });
+      }
+      return pred({ valid: false });
+    };
+    expect(nearBot(1).decide(s, predict).originAngleRadians).toBeCloseTo(mergeAngle, 9);
   });
 });
 

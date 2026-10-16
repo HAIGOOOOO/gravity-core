@@ -24,6 +24,8 @@ export type PlayResult = Readonly<{
   bestTier: number;
   launches: number;
   merges: number;
+  /** 射出 1 回あたりの合体数（打つ効率）。0 射出なら 0 */
+  mergesPerLaunch: number;
   supernovas: number;
   maxChain: number;
   /** 熱量が 75 を越えた回数（下がってまた越えたら 2 回） */
@@ -96,6 +98,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
       bestTier: snap.bestTierThisRun,
       launches: snap.stats.launches,
       merges: snap.stats.merges,
+      mergesPerLaunch: snap.stats.launches > 0 ? snap.stats.merges / snap.stats.launches : 0,
       supernovas: snap.stats.supernovas,
       maxChain: snap.stats.maxChain,
       heat75Count,
@@ -130,6 +133,7 @@ export const RUN_METRICS = [
   'score',
   'bestTier',
   'merges',
+  'mergesPerLaunch',
   'maxChain',
   'heat75Count',
   'overLimitSeconds',
