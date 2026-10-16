@@ -24,6 +24,21 @@ import type { ReplayRecord } from './record';
 
 /** キーフレーム・キャッシュを取る間隔（60 tick = 0.5 秒）。 */
 const KEYFRAME_EVERY = 60;
+/**
+ * キーフレームの最大数。記録が長いほど間隔を広げて、覚える盤面の数を抑える。
+ * 間隔を広げないと、2 時間の記録（864,000 tick）で 1 万面を越えてメモリを食う。
+ * 広げても、手前のキーフレームからの計算し直しは間隔ぶんで済むので seek は速いまま。
+ */
+const KEYFRAME_CAP = 720;
+
+/**
+ * キーフレームを取る間隔。短い記録（6 分まで）は KEYFRAME_EVERY。
+ * 長い記録は、間隔を広げて盤面の数が KEYFRAME_CAP を越えないようにする。
+ */
+export function keyframeInterval(endTick: Tick): Tick {
+  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / KEYFRAME_CAP));
+}
+
 /** 同時に持つシミュレーションの本数。増やすと戻り seek が速くなる代わりにメモリを使う */
 const CURSOR_MAX = 4;
 /** 「行った所」の記憶の上限（キーフレームとは別枠）。往復し続けても増え続けないようにする */
