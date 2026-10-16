@@ -4,6 +4,7 @@
 // 結果を Markdown の表にして console.log に出す（fs / process はこのリポジトリでは型が無いので使わない）。
 
 import { describe, expect, it } from 'vitest';
+import { setupAllTiers } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
 import { ALL_BOTS, randomBot } from './bots';
@@ -56,6 +57,15 @@ describe('数値調整レポート', () => {
           {
             name: 'キュー [4,4,4]',
             runs: runBatch(randomBot, { runs: RUNS, seedStart: 500, maxTicks: MAX_TICKS, setup: { queue: [4, 4, 4] } }),
+          },
+          {
+            // bestTier は出現する天体の確率表（QUEUE_TABLE の行）を変えるので、出現バランスの比較になる
+            name: '最高Tier 4 で開始',
+            runs: runBatch(randomBot, { runs: RUNS, seedStart: 500, maxTicks: MAX_TICKS, setup: { bestTier: 4 } }),
+          },
+          {
+            name: '全Tier の山あり',
+            runs: runBatch(randomBot, { runs: RUNS, seedStart: 500, maxTicks: MAX_TICKS, setup: setupAllTiers() }),
           },
         ]),
       );

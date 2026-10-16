@@ -11,6 +11,7 @@ export const METRIC_LABELS: Record<RunMetric, string> = {
   merges: '合体数',
   maxChain: '最大連鎖',
   heat75Count: '熱量75超',
+  overLimitSeconds: '限界越え秒',
   launches: '射出数',
   supernovas: '超新星',
 };
@@ -36,7 +37,7 @@ export function markdownTable(headers: readonly string[], rows: readonly (readon
 /** ボットどうし（または設定どうし）を並べた比較表。各マスは「中央値（10%〜90%）」。 */
 export function balanceTable(entries: readonly { name: string; runs: readonly PlayResult[] }[]): string {
   return markdownTable(
-    ['ボット', '回数', '秒数', '得点', '到達Tier', '合体数', '最大連鎖', '熱量75超（平均）', '打ち切り'],
+    ['ボット', '回数', '秒数', '得点', '到達Tier', '合体数', '最大連鎖', '限界越え秒', '熱量75超（平均）', '打ち切り'],
     entries.map(({ name, runs }) => {
       const s = summarizeRuns(runs);
       const timeouts = runs.filter((r) => r.timedOut).length;
@@ -48,6 +49,7 @@ export function balanceTable(entries: readonly { name: string; runs: readonly Pl
         formatRange(s.bestTier),
         formatRange(s.merges),
         formatRange(s.maxChain),
+        formatRange(s.overLimitSeconds),
         formatNumber(s.heat75Count.mean),
         String(timeouts),
       ];

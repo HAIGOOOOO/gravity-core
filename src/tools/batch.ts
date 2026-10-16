@@ -28,6 +28,8 @@ export type PlayResult = Readonly<{
   maxChain: number;
   /** 熱量が 75 を越えた回数（下がってまた越えたら 2 回） */
   heat75Count: number;
+  /** 山が限界リングを越えていた合計時間（秒）。「どれだけ危ない状態だったか」の目安 */
+  overLimitSeconds: number;
   /** 時間の上限に達して終えた（まだ終わっていなかった） */
   timedOut: boolean;
 }>;
@@ -55,13 +57,15 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
   const maxTicks = options.maxTicks ?? DEFAULT_MAX_TICKS;
   const sim = createSimulation(options.seed, options.setup);
   let heat75Count = 0;
+  let overLimitTicks = 0;
   let wasHot = sim.getSnapshot().heat > HEAT_HOT;
 
   const step = (): void => {
     sim.stepFixed();
-    const heat = sim.getSnapshot().heat;
-    if (heat > HEAT_HOT && !wasHot) heat75Count++;
-    wasHot = heat > HEAT_HOT;
+    const s = sim.getSnapshot();
+    if (s.overLimit) overLimitTicks++;
+    if (s.heat > HEAT_HOT && !wasHot) heat75Count++;
+    wasHot = s.heat > HEAT_HOT;
   };
 
   for (;;) {
@@ -95,6 +99,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
       supernovas: snap.stats.supernovas,
       maxChain: snap.stats.maxChain,
       heat75Count,
+      overLimitSeconds: overLimitTicks / TICK_HZ,
       timedOut: snap.phase === 'active',
     },
   };
@@ -127,6 +132,7 @@ export const RUN_METRICS = [
   'merges',
   'maxChain',
   'heat75Count',
+  'overLimitSeconds',
   'launches',
   'supernovas',
 ] as const;

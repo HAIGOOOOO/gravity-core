@@ -14,12 +14,15 @@ const base: PlayResult = {
   supernovas: 0,
   maxChain: 2,
   heat75Count: 1,
+  overLimitSeconds: 5,
   timedOut: false,
 };
 
 describe('formatNumber', () => {
   it('整数はそのまま、小数は 1 桁、NaN や無限は「—」', () => {
     expect(formatNumber(42)).toBe('42');
+    expect(formatNumber(128460)).toBe('128460');
+    expect(formatNumber(-7)).toBe('-7');
     expect(formatNumber(12.34)).toBe('12.3');
     expect(formatNumber(NaN)).toBe('—');
     expect(formatNumber(Infinity)).toBe('—');
@@ -56,6 +59,7 @@ describe('balanceTable', () => {
     const lines = t.split('\n');
     expect(lines).toHaveLength(4);
     expect(lines[0]).toContain('ボット');
+    expect(lines[0]).toContain('限界越え秒');
     expect(lines[2]).toContain('| a | 2 |');
     // 得点 2 件の中央値は 2000
     expect(lines[2]).toContain('2000');
@@ -63,15 +67,30 @@ describe('balanceTable', () => {
     expect(lines[2]).toMatch(/\| 1 \|$/);
     expect(lines[3]).toMatch(/\| 0 \|$/);
   });
+
+  it('0 回の行は「—」で埋まり、打ち切りは 0', () => {
+    const line = balanceTable([{ name: 'empty', runs: [] }]).split('\n')[2]!;
+    expect(line).toContain('empty');
+    expect(line).toContain('—');
+    expect(line).toMatch(/\| 0 \|$/);
+  });
 });
 
 describe('statsTable', () => {
-  it('見出し + 指標 8 行の表になる', () => {
+  it('見出し + 指標 9 行の表になる', () => {
     const t = statsTable('a', [base]);
     expect(t).toContain('### a');
     expect(t).toContain('得点');
     expect(t).toContain('熱量75超');
-    // 「### a」・空行・ヘッダ・区切り・8 指標 = 12 行
-    expect(t.split('\n')).toHaveLength(12);
+    expect(t).toContain('限界越え秒');
+    // 「### a」・空行・ヘッダ・区切り・9 指標 = 13 行
+    expect(t.split('\n')).toHaveLength(13);
+  });
+
+  it('0 件でも表を作れる（値はすべて「—」）', () => {
+    const t = statsTable('empty', []);
+    expect(t).toContain('### empty');
+    expect(t.split('\n')).toHaveLength(13);
+    expect(t).toContain('—');
   });
 });

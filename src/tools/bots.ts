@@ -39,6 +39,12 @@ const CURVE_ANGLES = 24;
 /** 曲げる速さは最速と中間の 2 段階 */
 const CURVE_SPEEDS = [SPEED_MAX, (SPEED_MIN + SPEED_MAX) / 2];
 
+/** 方角の刻みと、そこから作る射出の候補。2 つは必ず対なので、ずれないよう 1 つにまとめて渡す */
+type Probe = Readonly<{
+  angleCount: number;
+  commandsFor: (angle: number) => readonly LaunchCommand[];
+}>;
+
 // ---------------------------------------------------------------------------
 // 共通の部品
 
@@ -47,7 +53,7 @@ const CURVE_SPEEDS = [SPEED_MAX, (SPEED_MIN + SPEED_MAX) / 2];
  * 危ない = 天体に当たって止まる場所が限界リングの外（そのまま残ると熱量を上げ続ける）。
  * end === 'core' は核に着くので安全。'timeLimit' は行き先が分からないので危ない側に数える。
  */
-function isSafeLanding(p: Prediction, snapshot: GameSnapshot, shotRadius: number): boolean {
+export function isSafeLanding(p: Prediction, snapshot: GameSnapshot, shotRadius: number): boolean {
   if (p.end === 'core') return true;
   if (p.end !== 'body') return false;
   const last = p.points[p.points.length - 1];
@@ -66,10 +72,10 @@ function pickCommand(
   snapshot: GameSnapshot,
   predict: PredictFn,
   startIndex: number,
-  angleCount: number,
-  commandsFor: (angle: number) => readonly LaunchCommand[],
+  probe: Probe,
   avoidRisky: boolean,
 ): LaunchCommand {
+  const { angleCount, commandsFor } = probe;
   let best: { command: LaunchCommand; rank: number; score: number } | null = null;
   for (let i = 0; i < angleCount; i++) {
     const angle = ((startIndex + i) % angleCount) * (FULL_TURN / angleCount);
@@ -100,18 +106,12 @@ function pickCommand(
 }
 
 /** 予測で方角を舐めるボットを作る共通部品。毎回の開始位置だけ乱数で回す。 */
-function makeAimingBot(
-  name: string,
-  rng: Rng,
-  angleCount: number,
-  commandsFor: (angle: number) => readonly LaunchCommand[],
-  avoidRisky: boolean,
-): Bot {
+function makeAimingBot(name: string, rng: Rng, probe: Probe, avoidRisky: boolean): Bot {
   return {
     name,
     decide(snapshot, predict) {
-      const start = Math.floor(rng() * angleCount);
-      return pickCommand(snapshot, predict, start, angleCount, commandsFor, avoidRisky);
+      const start = Math.floor(rng() * probe.angleCount);
+      return pickCommand(snapshot, predict, start, probe, avoidRisky);
     },
   };
 }
@@ -135,6 +135,11 @@ function straightAndCurves(angle: number): readonly LaunchCommand[] {
   }
   return commands;
 }
+
+/** 直投げだけを調べる探しかた */
+const STRAIGHT_PROBE: Probe = { angleCount: STRAIGHT_ANGLES, commandsFor: straightOnly };
+/** 直投げに曲げを足して調べる探しかた */
+const CURVE_PROBE: Probe = { angleCount: CURVE_ANGLES, commandsFor: straightAndCurves };
 
 // ---------------------------------------------------------------------------
 // ボット本体
@@ -160,15 +165,15 @@ export const spiralBot: BotFactory = (seed) => {
 
 /** ② 予測で「同じ Tier に当たる」方角を探して落とす。見つからなければどこかへ落とす。 */
 export const mergeBot: BotFactory = (seed) =>
-  makeAimingBot('merge', createRng(seed + 202), STRAIGHT_ANGLES, straightOnly, false);
+  makeAimingBot('merge', createRng(seed + 202), STRAIGHT_PROBE, false);
 
 /** ③ ②に加えて、限界リングを越えそうな方角を避ける。 */
 export const safeMergeBot: BotFactory = (seed) =>
-  makeAimingBot('merge-safe', createRng(seed + 303), STRAIGHT_ANGLES, straightOnly, true);
+  makeAimingBot('merge-safe', createRng(seed + 303), STRAIGHT_PROBE, true);
 
 /** ④ ③の探しかたに、接線方向へ投げる「曲げ」を足す（直投げで届かない裏側を狙える）。 */
 export const curveBot: BotFactory = (seed) =>
-  makeAimingBot('curve', createRng(seed + 404), CURVE_ANGLES, straightAndCurves, true);
+  makeAimingBot('curve', createRng(seed + 404), CURVE_PROBE, true);
 
 /** 全部のボット（レポートやテストでまとめて回す用）。 */
 export const ALL_BOTS: readonly BotFactory[] = [randomBot, spiralBot, mergeBot, safeMergeBot, curveBot];
