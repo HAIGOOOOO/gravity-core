@@ -2,8 +2,8 @@
 // 壊れた値・保存できない端末・別の版で落ちない方針は save.ts と同じ。
 
 import type { RunDetailV1, StatsArchive } from './stats';
-import { MAX_STATS_RUNS, STATS_VERSION } from './stats';
-import { defaultStatsArchive, migrateStatsArchive, readRunDetail } from './archive';
+import { STATS_VERSION } from './stats';
+import { defaultStatsArchive, migrateStatsArchive, normalizeRuns, readRunDetail } from './archive';
 import type { StoragePort } from './save';
 import { browserStorage } from './save';
 
@@ -58,20 +58,20 @@ export function createStatsStore(storage: StoragePort | null = browserStorage())
       write(STATS_KEY, JSON.stringify(memory));
     }
   }
-  // 同じ id は新しい方で置き換え、playedAt の古い順に並べて件数を制限する。
-  // add も addAll もこの 1 本に通す（1 回の呼び出し = 1 回の書き込み）。
+  // 検査した後は移し替えと同じ normalizeRuns に通す（同じ入力には同じ結果になる）。
+  // add も addAll もこの 1 本に通す（1 回の呼び出し = 多くて 1 回の書き込み）。
   function addAll(details: readonly RunDetailV1[]): void {
     initialize();
     if (!Array.isArray(details)) return; // 配列でない呼び出しでは落ちない
-    const byId = new Map<string, RunDetailV1>();
-    for (const run of memory.runs) byId.set(run.id, run);
+    const incoming: RunDetailV1[] = [];
     for (const item of details) {
       const clean = readRunDetail(item);
-      if (clean) byId.set(clean.id, clean);
+      if (clean) incoming.push(clean);
     }
-    const runs = [...byId.values()];
-    runs.sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
-    memory = { version: STATS_VERSION, runs: runs.slice(-MAX_STATS_RUNS) };
+    // 追加が 1 件も残らなかった時は書き込まない（同じ内容を書き直さない）
+    if (incoming.length === 0) return;
+    // 既存と追加分をまとめて正規化: 同じ id は後の物で置き換え、古い順に捨てて MAX_STATS_RUNS 件まで残す
+    memory = { version: STATS_VERSION, runs: normalizeRuns([...memory.runs, ...incoming]) };
     write(STATS_KEY, JSON.stringify(memory));
   }
   return {

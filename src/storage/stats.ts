@@ -167,6 +167,14 @@ const nonNegative = (value: number | undefined): number =>
 const nonNegativeInt = (value: number | undefined): number => Math.floor(nonNegative(value));
 
 /**
+ * 出来事から数えた数が盤面の集計を下回る（出来事の取りこぼし）ときは集計側を採る。
+ * 上回る（重複して渡された等）は出来事側を信じる。両方とも同じプレイの数字なので、
+ * 欠けた側を残す「大きい方」でそろえる。
+ */
+const counted = (fromEvents: number, reported: number | undefined): number =>
+  Math.max(fromEvents, nonNegativeInt(reported));
+
+/**
  * 限界を越えていた合計 tick を出す。区間はプレイ時間 [0, tick] の内側に切ってから
  * 和集合を取る（出来事の時刻が前後して区間が重なっても、実際に越えていた時間より
  * 多く数えない）。開いたままの区間は最後の盤面の tick まで越えていた扱いにする
@@ -199,6 +207,17 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
   const overLimitTicks = overLimitTotalTicks(fold, tick);
   const score = nonNegativeInt(snap.score);
   const simStats: Partial<RunStats> = snap.stats ?? {};
+  // 出来事と盤面の集計は本来一致する。取りこぼしがあっても大きい方が残る（maxChain と同じ考え方）
+  const launches = counted(fold.launches, simStats.launches);
+  const merges = counted(fold.merges, simStats.merges);
+  const supernovas = counted(fold.supernovas, simStats.supernovas);
+  const maxChain = counted(fold.chainMax, simStats.maxChain);
+  // 終了の盤面が限界超過中なのに開いた区間が無い = 越え始めの出来事を取りこぼした。
+  // 時刻は分からないので区間は足さず、「越えた事があった」回数だけは立てる
+  const overLimitEntries =
+    snap.overLimit === true && fold.overLimitSince === null
+      ? fold.overLimitEntries + 1
+      : fold.overLimitEntries;
   // 読めない日付は保存時の検査で 1 回分まるごと捨てられるので、原点に置き換える（順序だけが古い端にずれる）。
   // id は捏造できないので、文字列でなければ空のまま渡して保存時の検査に落としてもらう
   const playedAt = typeof info.playedAt === 'string' && Number.isFinite(Date.parse(info.playedAt))
@@ -211,16 +230,15 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
     gameVersion: typeof info.gameVersion === 'string' ? info.gameVersion : '',
     score,
     seconds: tick / TICK_HZ,
-    launches: fold.launches,
+    launches,
     lands: fold.lands,
-    merges: fold.merges,
-    supernovas: fold.supernovas,
-    // 出来事の連鎖と盤面の集計の大きい方（片方が欠けても正しい値を残す）
-    maxChain: Math.max(fold.chainMax, nonNegativeInt(simStats.maxChain ?? 0)),
+    merges,
+    supernovas,
+    maxChain,
     bestTier: Math.min(TIER_COUNT - 1, nonNegativeInt(snap.bestTierThisRun)),
     overLimitSeconds: overLimitTicks / TICK_HZ,
-    overLimitEntries: fold.overLimitEntries,
-    scorePerLaunch: fold.launches > 0 ? score / fold.launches : 0,
+    overLimitEntries,
+    scorePerLaunch: launches > 0 ? score / launches : 0,
     maxSingleScore: fold.maxSingleScore,
     maxImpactSpeed: fold.maxImpactSpeed,
     mergesByTier: [...fold.mergesByTier],
@@ -229,8 +247,8 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
 
 /**
  * 出来事の列（プレイ中に起きた全イベント）と最後の盤面から、1 回分の統計を作る。
- * 数は出来事から数える（自動プレイの記録と 1 対 1 で対応する）。盤面からは
- * 得点・到達 Tier・経過 tick・seed・集計済みの連鎖を取る。
+ * 数は出来事から数え、盤面の集計を下回らない（取りこぼしは集計で補う）。盤面からは
+ * 得点・到達 Tier・経過 tick・seed を取る。
  */
 export function buildRunDetail(
   events: readonly GameEvent[],

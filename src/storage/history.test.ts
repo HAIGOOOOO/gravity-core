@@ -233,6 +233,34 @@ describe('統計アーカイブの保存', () => {
     store.save({ version: 99, runs: [{ id: 'x' }] } as unknown as StatsArchive);
     expect(store.load()).toEqual(defaultStatsArchive());
   });
+  it('save と addAll で同じ id の置き換え規則が一致する（後の物を採る）', () => {
+    const pair = [
+      detail('dup', '2026-10-10T00:00:00.000Z', { score: 1 }),
+      detail('dup', '2026-10-11T00:00:00.000Z', { score: 2 }),
+    ];
+    const viaSave = createStatsStore(fakeStorage());
+    viaSave.save({ version: STATS_VERSION, runs: pair });
+    const viaAdd = createStatsStore(fakeStorage());
+    viaAdd.addAll(pair);
+    expect(viaSave.load()).toEqual(viaAdd.load());
+    expect(viaSave.load().runs).toHaveLength(1);
+    expect(viaSave.load().runs[0]?.score).toBe(2);
+    expect(viaSave.load().runs[0]?.playedAt).toBe('2026-10-11T00:00:00.000Z');
+  });
+  it('追加が 1 件も残らなかった時は書き込まない', () => {
+    const storage = fakeStorage();
+    let writes = 0;
+    const original = storage.setItem;
+    storage.setItem = (key, value) => {
+      writes++;
+      original(key, value);
+    };
+    const store = createStatsStore(storage);
+    store.add({ id: 'broken' } as unknown as RunDetailV1);
+    store.addAll([{ id: 'broken' } as unknown as RunDetailV1, null as unknown as RunDetailV1]);
+    expect(writes).toBe(0);
+    expect(store.load().runs).toHaveLength(0);
+  });
 });
 
 describe('統計アーカイブの移し替え', () => {

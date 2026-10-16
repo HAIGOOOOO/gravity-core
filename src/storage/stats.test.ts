@@ -230,6 +230,85 @@ describe('壊れた入力を通さない', () => {
   });
 });
 
+describe('盤面の集計との照合', () => {
+  it('出来事の取りこぼしで数が足りない時は、盤面の集計を採る', () => {
+    const d = buildRunDetail(
+      [event('launch', 1), event('merge', 5, { sourceTier: 0, chain: 1, scoreDelta: 100 })],
+      snapshot({ tick: 600, score: 900, stats: { launches: 5, merges: 3, supernovas: 1, maxChain: 4 } }),
+      META,
+    );
+    expect(d.launches).toBe(5);
+    expect(d.merges).toBe(3);
+    expect(d.supernovas).toBe(1);
+    expect(d.maxChain).toBe(4);
+    // lands に対応する集計は盤面に無いので、出来事側の数のまま
+    expect(d.lands).toBe(0);
+    // 1 投あたりの得点も、補った後の投数で割る
+    expect(d.scorePerLaunch).toBeCloseTo(180, 10);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('出来事の方が多い時は出来事側を信じる（集計の欠損で減らさない）', () => {
+    const d = buildRunDetail(
+      [event('launch', 1), event('launch', 2), event('merge', 3, { sourceTier: 0, chain: 2, scoreDelta: 50 })],
+      snapshot({ stats: { launches: 1, merges: 0, supernovas: 0, maxChain: 0 } }),
+      META,
+    );
+    expect(d.launches).toBe(2);
+    expect(d.merges).toBe(1);
+    expect(d.maxChain).toBe(2);
+  });
+  it('終了の盤面が限界超過中なのに開いた区間が無い時は、越えた回数だけ立てる', () => {
+    // 最後の overLimitStart だけ取りこぼした形。時刻は分からないので秒数は足さない
+    const lost = buildRunDetail(
+      [event('overLimitStart', 10), event('overLimitEnd', 40)],
+      snapshot({ tick: 100, overLimit: true }),
+      META,
+    );
+    expect(lost.overLimitEntries).toBe(2);
+    expect(lost.overLimitSeconds).toBeCloseTo(30 / TICK_HZ, 10);
+    // 区間が開いたまま終わる通常の形では、回数を増やさない
+    const open = buildRunDetail(
+      [event('overLimitStart', 10)],
+      snapshot({ tick: 100, overLimit: true }),
+      META,
+    );
+    expect(open.overLimitEntries).toBe(1);
+    expect(open.overLimitSeconds).toBeCloseTo(90 / TICK_HZ, 10);
+  });
+  it('限界出来事の時刻がどれだけ乱れていても、1 tick ずつ覆って数えた時間と一致する', () => {
+    // 和集合の潰し方を、別の計算（各 tick がどれかの区間に入るか全数え）で確かめる。
+    // 区間の対づけは実装と同じ規則（越えていない→越えたで開く、越えている→越えてないで閉じる）
+    let s = 20261016;
+    const rand = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const endTick = 500;
+    const events: GameEvent[] = [];
+    const intervals: { from: number; to: number }[] = [];
+    let open: number | null = null;
+    for (let i = 0; i < 400; i++) {
+      const t = Math.floor(rand() * (endTick + 200)); // 終了を越える時刻も混ぜる
+      if (rand() < 0.5) {
+        events.push(event('overLimitStart', t));
+        if (open === null) open = t;
+      } else {
+        events.push(event('overLimitEnd', t));
+        if (open !== null) {
+          intervals.push({ from: open, to: t });
+          open = null;
+        }
+      }
+    }
+    if (open !== null) intervals.push({ from: open, to: endTick });
+    let coveredTicks = 0;
+    for (let t = 0; t < endTick; t++) {
+      if (intervals.some((iv) => iv.from <= t && t < iv.to)) coveredTicks++;
+    }
+    const d = buildRunDetail(events, snapshot({ tick: endTick }), META);
+    expect(d.overLimitSeconds).toBeCloseTo(coveredTicks / TICK_HZ, 10);
+    expect(d.overLimitSeconds).toBeLessThanOrEqual(d.seconds);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+});
+
 describe('自動プレイとの照合', () => {
   it('自動プレイから作った統計が、出来事の数と盤面の集計に合う', () => {
     // 核の上に並べた Tier 0 2 体が最初の tick で合体する（必ず merge が出る）

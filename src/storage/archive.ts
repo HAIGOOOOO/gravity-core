@@ -51,7 +51,9 @@ export function readRunDetail(value: unknown): RunDetailV1 | null {
     supernovas: value.supernovas as number,
     maxChain: value.maxChain as number,
     bestTier: value.bestTier as number,
-    overLimitSeconds: value.overLimitSeconds as number,
+    // 作り側は「限界超過 ≤ プレイ時間」を保証する。それを越える保存値は壊れているので、
+    // 項目を捨てずに関係だけ直す（1 回分まるごと落とすほどの壊れではない）
+    overLimitSeconds: Math.min(value.seconds as number, value.overLimitSeconds as number),
     overLimitEntries: value.overLimitEntries as number,
     scorePerLaunch: value.scorePerLaunch as number,
     maxSingleScore: value.maxSingleScore as number,
@@ -106,14 +108,14 @@ function migrateLegacyRuns(list: readonly unknown[]): RunDetailV1[] {
   return runs;
 }
 
-/** id の重複を除き、playedAt の古い順に並べて件数を制限する。 */
-function normalizeRuns(runs: readonly RunDetailV1[]): RunDetailV1[] {
-  const seen = new Set<string>();
-  const unique = runs.filter((run) => {
-    if (seen.has(run.id)) return false;
-    seen.add(run.id);
-    return true;
-  });
+/**
+ * id の重複は後の物で置き換え、playedAt の古い順に並べて件数を制限する。
+ * 移し替えでも history.ts の addAll でもこの 1 本に通し、同じ入力には同じ結果になるようにする。
+ */
+export function normalizeRuns(runs: readonly RunDetailV1[]): RunDetailV1[] {
+  const byId = new Map<string, RunDetailV1>();
+  for (const run of runs) byId.set(run.id, run);
+  const unique = [...byId.values()];
   unique.sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
   return unique.slice(-MAX_STATS_RUNS);
 }

@@ -114,16 +114,23 @@ describe('版の移し替え', () => {
     expect(d.score).toBe(0);
     expect(readRunDetail(d)).toBeNull();
   });
-  it('id の重複は 1 件にし、playedAt の古い順に並べ、件数を制限する', () => {
+  it('id の重複は後の物で置き換え（addAll と同じ規則）、playedAt の古い順に並べ、件数を制限する', () => {
     const runs = [
       detail('dup', '2026-10-12T00:00:00.000Z'),
       detail('b', '2026-10-11T00:00:00.000Z'),
-      detail('dup', '2026-10-13T00:00:00.000Z'),
+      detail('dup', '2026-10-13T00:00:00.000Z', { score: 999 }),
       detail('a', '2026-10-10T00:00:00.000Z'),
     ];
     const archive = migrateStatsArchive({ version: 1, runs });
     expect(archive.runs.map((r) => r.id)).toEqual(['a', 'b', 'dup']);
-    expect(archive.runs[2]?.playedAt).toBe('2026-10-12T00:00:00.000Z');
+    expect(archive.runs[2]?.playedAt).toBe('2026-10-13T00:00:00.000Z');
+    expect(archive.runs[2]?.score).toBe(999);
     expect(archive.runs.length).toBeLessThanOrEqual(MAX_STATS_RUNS);
+  });
+  it('限界超過の時間がプレイ時間を越える壊れた記録は、捨てずに関係だけ直す', () => {
+    const d = readRunDetail(detail('wide', '2026-10-10T00:00:00.000Z', { seconds: 10, overLimitSeconds: 50 }));
+    expect(d).not.toBeNull();
+    expect(d?.seconds).toBe(10);
+    expect(d?.overLimitSeconds).toBe(10);
   });
 });

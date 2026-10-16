@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { TIER_COUNT } from '../game/constants';
 import { summarizeTrend } from './trend';
+import { migrateStatsArchive } from './archive';
 import type { RunDetailV1 } from './stats';
+import type { RunRecord } from '../contracts/app';
 
 function detail(id: string, playedAt: string, over: Partial<RunDetailV1> = {}): RunDetailV1 {
   return {
@@ -176,6 +178,20 @@ describe('上達の移り変わり', () => {
     expect(trend.score.previousAverage).toBeCloseTo(100, 10);
     expect(summarizeTrend(null as unknown as RunDetailV1[], 10).totalCount).toBe(0);
     expect(summarizeTrend({} as unknown as RunDetailV1[], 10).score.average).toBeNull();
+  });
+  it('旧形の記録を移し替えた列からも、移り変わりを計算できる', () => {
+    const legacy: RunRecord[] = [
+      { id: 'l1', name: 'A', score: 100, bestTier: 2, maxChain: 1, seconds: 30, launches: 10, merges: 2, supernovas: 0, seed: 1, playedAt: days(0), gameVersion: '0.1.0' },
+      { id: 'l2', name: 'B', score: 300, bestTier: 4, maxChain: 3, seconds: 60, launches: 20, merges: 6, supernovas: 0, seed: 2, playedAt: days(1), gameVersion: '0.1.0' },
+    ];
+    const archive = migrateStatsArchive(legacy);
+    const trend = summarizeTrend(archive.runs, 1);
+    expect(trend.totalCount).toBe(2);
+    expect(trend.score.delta).toBeCloseTo(200, 10);
+    expect(trend.score.allTimeBest).toBe(300);
+    // 旧形に無い項目は 0 で移される
+    expect(trend.lands.average).toBeCloseTo(0, 10);
+    expect(trend.overLimitSeconds.allTimeBest).toBe(0);
   });
   it('指標の値が壊れていても、その指標だけ有限の値で計算し、ほかは全部使う', () => {
     const runs = [
