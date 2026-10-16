@@ -4,6 +4,7 @@ import { metricsText, paintAnalysis } from '../audio/analysis-view';
 import { paintSoundScene } from '../audio/scene-view';
 import { mixSceneSequence, SCENE_SEQUENCE, SEQUENCE_SECONDS } from '../audio/sequence';
 import { verifyLaunch } from '../audio/launch-verify';
+import { createLaunchPreview } from '../audio/launch-preview';
 
 type LabScene = SoundScene | 'sequence';
 const LAB_SCENES: readonly LabScene[] = [...SCENES, 'sequence'];
@@ -21,6 +22,9 @@ const preview = document.querySelector<HTMLCanvasElement>('#scene-preview')!;
 const equalLevel = document.querySelector<HTMLInputElement>('#equal-level')!;
 const allScenes = document.querySelector<HTMLInputElement>('#all-scenes')!;
 const zoom = document.querySelector<HTMLInputElement>('#zoom')!;
+const runtimePreview = document.querySelector<HTMLCanvasElement>('#runtime-preview')!;
+const livePreview = createLaunchPreview(runtimePreview, document.querySelector('#runtime-live-report')!, () => Number(volume.value));
+new ResizeObserver(([entry]) => { document.body.style.setProperty('--controls-height', `${entry.borderBoxSize[0].blockSize + 20}px`); }).observe(document.querySelector('#demo-controls')!);
 type Entry = { buffer: AudioBuffer; card: HTMLElement; metrics: SoundMetrics; frames: Float64Array[]; canvas: HTMLCanvasElement;
   correction: number; correctedData: Float32Array; correctedMetrics: SoundMetrics; scene: LabScene; playhead: HTMLElement };
 const entries = new Map<string, Entry>();
@@ -65,6 +69,7 @@ for (const scene of LAB_SCENES) {
 }
 
 function stop(): void {
+  livePreview.stop();
   generation++;
   for (const source of active) { try { source.stop(); } catch { /* 終了済み */ } source.disconnect(); }
   active = [];
@@ -125,6 +130,7 @@ async function play(directions: readonly Direction[], scene: LabScene): Promise<
 
 document.querySelector('#stop')!.addEventListener('click', stop);
 volume.addEventListener('input', () => {
+  livePreview.setVolume();
   document.querySelector('output')!.textContent = `${volume.value}%`;
   if (gain && context) gain.gain.setTargetAtTime(Number(volume.value) / 100, context.currentTime, 0.015);
 });
@@ -193,6 +199,12 @@ async function prepare(): Promise<void> {
 void prepare().catch(error => { status.textContent = `準備に失敗しました: ${String(error)}`; });
 
 document.querySelector('#runtime-verify')!.addEventListener('click', () => { void showRuntimeStudy(); });
+for (const [id, shots] of [['runtime-live', 1], ['runtime-repeat', 3]] as const) {
+  document.getElementById(id)!.addEventListener('click', () => {
+    stop(); document.querySelector<HTMLElement>('#runtime-study')!.hidden = false; runtimePreview.hidden = false;
+    livePreview.start(shots); document.querySelector('#runtime-study')!.scrollIntoView({ block: 'start' });
+  });
+}
 async function showRuntimeStudy(): Promise<void> {
   stop();
   const button = document.querySelector<HTMLButtonElement>('#runtime-verify')!;
@@ -206,15 +218,18 @@ async function showRuntimeStudy(): Promise<void> {
       const card = document.createElement('article');
       const title = document.createElement('h3'); title.textContent = sample.label;
       const play = document.createElement('button'); play.textContent = 'この音を再生';
-      play.addEventListener('click', () => { void playRuntimeSample(sample.buffer, sample.label); });
+      play.addEventListener('click', () => { void playRuntimeSample(sample.buffer, sample.label).catch(error => { status.textContent = `再生できません: ${String(error)}`; }); });
       const canvas = document.createElement('canvas'); canvas.width = 420; canvas.height = 240;
       canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', `${sample.label}の波形とスペクトログラム`);
       const data = sample.buffer.getChannelData(0), frames = spectrogram(data);
-      paintAnalysis(canvas, data, sample.buffer.sampleRate, frames);
-      const numbers = document.createElement('pre'); numbers.textContent = metricsText(measureSound(data, sample.buffer.sampleRate, frames));
+      const multiple = sample.buffer.duration > 1;
+      paintAnalysis(canvas, data, sample.buffer.sampleRate, frames, multiple ? sample.buffer.duration : 0.15, 1, [], 0.25);
+      const numbers = document.createElement('pre');
+      const text = metricsText(measureSound(data, sample.buffer.sampleRate, frames));
+      numbers.textContent = multiple ? text.replace('最大90%到達', '全体の最大90%の時刻').replace('減衰', '最後の可聴時刻') : text;
       card.append(title, play, canvas, numbers); samples.append(card);
     }
-    report.textContent = `発音の立上り ${result.onsetMs.toFixed(2)}ms（振幅0.00001到達・出力機器の遅延は含まず） / 最大同時 ${result.maxVoices} / 60回で予約した成分 ${result.accepted} / 反復の波形差 ${result.changed ? 'あり' : 'なし'} / 音量0の最大 ${result.mutedPeak} / 音量50%のRMS ${result.halfVolumeRms.toFixed(5)}`;
+    report.textContent = `信号開始 ${result.onsetMs.toFixed(2)}ms（振幅0.00001到達・出力機器の遅延は含まず）\n最大同時 ${result.maxVoices} / 60回で発音した成分 ${result.accepted} / 一部省略 ${result.partialEvents}回 / 全省略 ${result.silentEvents}回\n古い余韻を12msで短縮 ${result.trimmedTails}成分（通常の射出間隔は0.5秒以上）\n反復の波形差 ${result.changed ? 'あり' : 'なし'}（差のRMS/基準RMS ${result.relativeDifference.toFixed(3)}）\n初回/安定後の最大 ${result.coldPeak.toFixed(4)} / ${result.fullPeak.toFixed(4)}\n音量0の最大 ${result.mutedPeak} / 音量50%/100%のRMS ${result.halfVolumeRms.toFixed(5)} / ${result.fullVolumeRms.toFixed(5)}`;
     section.scrollIntoView({ block: 'start' });
   } catch (error) { report.textContent = `測定できません: ${String(error)}`; }
   finally { button.disabled = false; }

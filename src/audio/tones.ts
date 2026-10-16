@@ -7,6 +7,7 @@ export type Tone = {
   frequency: number; endFrequency?: number; wave: OscillatorType;
   gain: number; seconds: number; delay: number;
   attackSeconds?: number;
+  tailGroup?: 'launch';
 };
 
 export function eventTones(event: GameEvent): readonly Tone[] {

@@ -38,6 +38,8 @@
     .sequence-mode .intro { display: none; }
     details { margin-block: 18px; color: #b7c8d8; }
     #quick { display: flex; gap: 8px; }
+    #runtime-study { scroll-margin-top: var(--controls-height, 200px); }
+    #runtime-preview { max-width: 420px; }
     @media(max-width: 760px) { body { padding: 16px; } .cards { grid-template-columns: 1fr; } #demo-controls { gap: 8px; padding: 8px 0; } #demo-controls button { padding: 7px 10px; } #scene-preview { max-height: 120px; width: auto; max-width: 100%; } }
   </style>
 </head>
@@ -51,6 +53,8 @@
     <button id="compare" disabled>この場面を A → B → C で再生</button>
     <button id="timeline" disabled>連続場面を A → B → C で再生</button>
     <button id="runtime-verify" disabled>本番の落とす音を測る</button>
+    <button id="runtime-live">本番の一投（動きと音）</button>
+    <button id="runtime-repeat">本番の3投（通常間隔）</button>
     <label>場面 <select id="scene"></select></label>
     <span id="quick"><button data-direction="mineral" disabled>A 共鳴</button><button data-direction="pressure" disabled>B 粒</button><button data-direction="musical" disabled>C 音階</button></span>
     <button id="stop">停止</button>
@@ -67,7 +71,7 @@
   </details>
   <p><label><input id="all-scenes" type="checkbox" /> 全場面の図を並べる</label>　<label><input id="zoom" type="checkbox" /> 冒頭0.3秒を拡大</label></p>
   <main id="comparisons"></main>
-  <section id="runtime-study" hidden><h2>本番の落とす音</h2><p>ゲームに接続した音を、音量100%・比較補正なしで測っています。</p><p id="runtime-report" role="status"></p><div id="runtime-samples" class="cards"></div></section>
+  <section id="runtime-study" hidden><h2>本番の落とす音</h2><p>測定値は音量100%・比較補正なし。試聴には上の試聴音量だけを掛けます。単発RMSは無音を含む0.6秒、連射RMSは2.4秒全体です。波形は全カード共通±0.25、単発は冒頭0.15秒を表示します。Tier 0・4・連投は音量が安定した状態、最後は有効にした直後の一投です。</p><p id="runtime-live-report" role="status" style="white-space:pre-line"></p><canvas id="runtime-preview" hidden></canvas><p id="runtime-report" role="status" style="white-space: pre-line"></p><div id="runtime-samples" class="cards"></div></section>
   <script type="module" src="../src/dev/sound-demo.ts"></script>
 </body>
 </html>

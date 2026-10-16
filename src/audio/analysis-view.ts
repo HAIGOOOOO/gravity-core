@@ -1,7 +1,7 @@
 import { FFT_SIZE, FFT_HOP, type SoundMetrics } from './analysis';
 
 export function paintAnalysis(canvas: HTMLCanvasElement, data: Float32Array, rate: number, frames: Float64Array[], seconds = data.length / rate, spectralGain = 1,
-  markers: readonly { at: number; label: string }[] = []): void {
+  markers: readonly { at: number; label: string }[] = [], amplitude = 1): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const w = canvas.width, h = canvas.height;
@@ -9,7 +9,7 @@ export function paintAnalysis(canvas: HTMLCanvasElement, data: Float32Array, rat
   const width = right - left, height = bottom - top;
   ctx.fillStyle = '#101824'; ctx.fillRect(0, 0, w, h);
   ctx.font = '11px sans-serif'; ctx.fillStyle = '#c5d3df';
-  ctx.fillText('波形 ±1', 4, 13);
+  ctx.fillText(`波形 ±${amplitude}`, 4, 13);
   ctx.strokeStyle = '#355063'; ctx.beginPath(); ctx.moveTo(left, 42); ctx.lineTo(right, 42); ctx.stroke();
   ctx.strokeStyle = '#7de0cc'; ctx.beginPath();
   const pixels = ctx.createImageData(width, height);
@@ -18,7 +18,7 @@ export function paintAnalysis(canvas: HTMLCanvasElement, data: Float32Array, rat
     const from = Math.floor(x / width * seconds * rate), to = Math.min(data.length, Math.ceil((x + 1) / width * seconds * rate));
     let min = 0, max = 0;
     for (let i = from; i < to; i++) { min = Math.min(min, data[i]); max = Math.max(max, data[i]); }
-    ctx.moveTo(left + x, 42 - max * 28); ctx.lineTo(left + x, 42 - min * 28);
+    ctx.moveTo(left + x, 42 - max / amplitude * 28); ctx.lineTo(left + x, 42 - min / amplitude * 28);
   }
   ctx.stroke();
   ctx.fillStyle = '#c5d3df'; ctx.fillText('周波数 / 共通色尺度 −80〜0 dBFS', 4, 77);
@@ -49,7 +49,7 @@ export function paintAnalysis(canvas: HTMLCanvasElement, data: Float32Array, rat
     const y = bottom - Math.log(hz / 40) / Math.log(12000 / 40) * height;
     ctx.fillText(hz >= 1000 ? `${hz / 1000}k` : `${hz}`, 4, y + 4);
   }
-  ctx.fillText('0', left, h - 6); ctx.fillText(`${seconds.toFixed(1)}秒`, right - 32, h - 6);
+  ctx.fillText('0', left, h - 6); ctx.fillText(`${seconds.toFixed(seconds < 1 ? 2 : 1)}秒`, right - 40, h - 6);
 }
 
 export function metricsText(m: SoundMetrics): string {
