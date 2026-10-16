@@ -28,6 +28,8 @@ export type UnlockEntry = Readonly<{
 const ratio = (now: number, target: number): number =>
   target <= 0 ? 1 : Math.min(1, Math.max(0, now) / target);
 
+const SHARE_SCORE = 10_000;
+
 const byRuns = (id: string, name: string, description: string, runs: number): UnlockEntry => ({
   id,
   name,
@@ -66,9 +68,9 @@ export const UNLOCKS: readonly UnlockEntry[] = [
     id: 'share',
     name: '結果の共有',
     description: 'プレイを短い文字列や 1 枚の画像にして人に渡せる',
-    requirement: '1 プレイで 10,000 点を取る',
-    unlocked: ctx => ctx.bestScore >= 10_000,
-    progress: ctx => ratio(ctx.bestScore, 10_000),
+    requirement: `1 プレイで ${SHARE_SCORE.toLocaleString('ja-JP')} 点を取る`,
+    unlocked: ctx => ctx.bestScore >= SHARE_SCORE,
+    progress: ctx => ratio(ctx.bestScore, SHARE_SCORE),
   },
   byRuns('growth', '記録の移り変わり', '自分の記録が上手くなっていくのを見る', 10),
   byOfficialDays('daily-history', '日替わりの履歴', '昨日の自分・先週の自分と並べて見られる', 2),
@@ -101,4 +103,38 @@ export function evaluateUnlocks(ctx: UnlockContext): UnlockSummary {
   }
   locked.sort((a, b) => b.progress - a.progress);
   return { unlocked, locked, unlockedCount: unlocked.length, total: UNLOCKS.length };
+}
+
+const nonNegative = (n: number): number => (Number.isFinite(n) ? Math.max(0, n) : 0);
+const nonNegativeInt = (n: number): number => Math.floor(nonNegative(n));
+
+/**
+ * evaluateUnlocks へ渡す文脈を、実際の部品から組み立てる。
+ * 「図鑑の発見数」「本番を済ませた日数」の取り方はここに固定する
+ * （アプリ側が各ストアの読み方を知らなくてよいように）。
+ */
+export function unlockContextFrom(sources: {
+  /** これまでにプレイした回数 */
+  runs: number;
+  /** これまでの最高得点 */
+  bestScore: number;
+  /** 図鑑ストア（progress().found を使う） */
+  codex: Readonly<{ progress(): { found: number } }>;
+  /** 日替わりストア（history() の件数が本番を済ませた日数） */
+  daily: Readonly<{ history(): readonly unknown[] }>;
+}): UnlockContext {
+  return {
+    runs: nonNegativeInt(sources.runs),
+    bestScore: nonNegative(sources.bestScore),
+    codexFound: sources.codex.progress().found,
+    officialDays: sources.daily.history().length,
+  };
+}
+
+/**
+ * 状態が before から after へ進んだとき、新しく開いた項目を返す。
+ * 「○○を解放しました」の通知に使う。順番は UNLOCKS の表の順。
+ */
+export function newlyUnlocked(before: UnlockContext, after: UnlockContext): readonly UnlockEntry[] {
+  return UNLOCKS.filter(e => !e.unlocked(before) && e.unlocked(after));
 }

@@ -4,7 +4,8 @@
 
 import { asObject, readStoredJson, writeStoredJson, type MetaStorage } from './storage';
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+/** 日本時間（UTC+9、夏時間なし）のオフセット。時刻で判定する meta の各部品で共有する */
+export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 86_400_000;
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const STORAGE_KEY = 'gravity-core:daily:v1';
@@ -62,19 +63,27 @@ export interface DailyChallenge {
   history(): readonly DailyRecord[];
 }
 
-/** 渡された時刻（UTC ms）を日本時間の日付キー 'YYYY-MM-DD' にする。 */
+/**
+ * 渡された時刻（UTC ms）を日本時間の日付キー 'YYYY-MM-DD' にする。
+ * 年は 4 桁にゼロ詰めする。Date が表せない時刻・西暦 0 未満・1 万年以降は
+ * キーの形に収まらないので既定の日付へ落とす（出力は必ず dayNumberOf を通る形）。
+ */
 export function jstDateKey(nowMs: number): string {
   const ms = Number.isFinite(nowMs) ? nowMs : 0;
   const d = new Date(ms + JST_OFFSET_MS);
+  const year = d.getUTCFullYear(); // Invalid Date では NaN
+  if (!Number.isFinite(year) || year < 0 || year > 9999) return '1970-01-01';
   const month = String(d.getUTCMonth() + 1).padStart(2, '0');
   const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${month}-${day}`;
+  return `${String(year).padStart(4, '0')}-${month}-${day}`;
 }
 
 /**
  * 日付キーを 1970-01-01 からの日数へ。形・日付の違う文字列には null。
- * Date.UTC は 13 月や 2/30 を翌月へ丸めるので、往復させて実在の日だけ通す。
- * （丸めたまま通すと、違う日付キーが同じ日数＝同じシードへ化けてしまう）
+ * Date.UTC は 13 月や 2/30 を翌月へ丸めるので、往復させて実在の日だけ通す
+ * （丸めたまま通すと、違う日付キーが同じ日数＝同じシードへ化けてしまう）。
+ * さらに Date.UTC は年 0〜99 を 1900 年代と解釈するので、うるう年の 2000 年で
+ * いったん日付を作ってから目的の年へ移し、西暦 3 桁以下の年も正しく検証する。
  */
 export function dayNumberOf(dateKey: string): number | null {
   const m = DATE_KEY_PATTERN.exec(dateKey);
@@ -82,12 +91,12 @@ export function dayNumberOf(dateKey: string): number | null {
   const y = Number(m[1]);
   const month = Number(m[2]);
   const day = Number(m[3]);
-  const ms = Date.UTC(y, month - 1, day);
-  const d = new Date(ms);
+  const d = new Date(Date.UTC(2000, month - 1, day));
+  d.setUTCFullYear(y);
   if (d.getUTCFullYear() !== y || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) {
     return null;
   }
-  return Math.floor(ms / DAY_MS);
+  return Math.floor(d.getTime() / DAY_MS);
 }
 
 /**

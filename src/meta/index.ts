@@ -4,6 +4,7 @@ export {
   createDailyChallenge,
   dailySeed,
   dayNumberOf,
+  JST_OFFSET_MS,
   jstDateKey,
   practiceSeed,
 } from './daily';
@@ -25,5 +26,5 @@ export type {
   CodexItemView,
   CodexStore,
 } from './codex';
-export { UNLOCKS, evaluateUnlocks } from './unlocks';
+export { evaluateUnlocks, newlyUnlocked, unlockContextFrom, UNLOCKS } from './unlocks';
 export type { LockedView, UnlockContext, UnlockEntry, UnlockSummary } from './unlocks';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GameEvent, GameSnapshot, Tier } from '../contracts/game';
+import type { BodyView, GameEvent, GameSnapshot, Tier } from '../contracts/game';
 import { createAutoPlay, onCore, sampleEvent } from '../fixtures';
 import {
   CODEX_ENTRIES,
@@ -8,6 +8,7 @@ import {
   type CodexContext,
   type CodexEntry,
 } from './codex';
+import { JST_OFFSET_MS } from './daily';
 import type { MetaStorage } from './storage';
 
 const STORAGE_KEY = 'gravity-core:codex:v1';
@@ -42,6 +43,18 @@ function snapshot(partial: Partial<GameSnapshot> = {}): GameSnapshot {
 }
 
 const META = { runIndex: 1, nowMs: 1_700_000_000_000 };
+
+/** 見た目だけの天体。数を並べるテスト用。 */
+function body(id: number, tier: Tier = 0, bornTick = 0): BodyView {
+  return {
+    id, tier, x: id, y: id, vx: 0, vy: 0, radius: 10,
+    bornTick, chain: 0, chainUntilTick: 0, overLimit: false,
+  };
+}
+
+/** 盤面だけを変えて判定する（純粋関数 evaluateCodex に流す）。 */
+const foundIds = (partial: Partial<GameSnapshot>, events: GameEvent[] = [], nowMs?: number): string[] =>
+  evaluateCodex({ events, snapshot: snapshot(partial), nowMs }).map(e => e.id);
 
 describe('図鑑の発見', () => {
   it('自動プレイの出来事を流し込むと、天体と出来事が見つかっていく', () => {
@@ -147,6 +160,123 @@ describe('図鑑の発見', () => {
   it('項目は 15 個以上ある', () => {
     expect(CODEX_ENTRIES.length).toBeGreaterThanOrEqual(15);
     expect(new Set(CODEX_ENTRIES.map(e => e.id)).size).toBe(CODEX_ENTRIES.length);
+  });
+
+  it('全部の項目に名前・説明・手がかりがあり、一覧は表の順で出る', () => {
+    for (const e of CODEX_ENTRIES) {
+      expect(e.id).not.toBe('');
+      expect(e.name).not.toBe('');
+      expect(e.description).not.toBe('');
+      // 未発見の人が「次に何を狙うか」読めるよう、手がかりは必須
+      expect(e.hint).not.toBe('');
+      expect(['body', 'event', 'feat']).toContain(e.category);
+    }
+    const codex = createCodexStore(memoryStorage());
+    expect(codex.list().map(v => v.id)).toEqual(CODEX_ENTRIES.map(e => e.id));
+  });
+});
+
+describe('盤面だけで判定する項目', () => {
+  it('同時に並ぶ天体の数で満員御礼・大混雑が見つかる', () => {
+    const bodies = (n: number) => ({ bodies: Array.from({ length: n }, (_, i) => body(i)) });
+    expect(foundIds(bodies(19))).not.toContain('feat-crowd');
+    expect(foundIds(bodies(20))).toContain('feat-crowd');
+    expect(foundIds(bodies(20))).not.toContain('feat-overflow');
+    expect(foundIds(bodies(30))).toContain('feat-overflow');
+  });
+
+  it('プレイの統計で量産体制・百発運用・超新星三昧が見つかる', () => {
+    const stats = (launches: number, merges: number, supernovas: number) => ({
+      stats: { launches, merges, supernovas, maxChain: 0 },
+    });
+    expect(foundIds(stats(100, 25, 3))).toEqual(
+      expect.arrayContaining(['feat-merges', 'feat-launches', 'feat-triple-nova']),
+    );
+    const under = foundIds(stats(99, 24, 2));
+    expect(under).not.toContain('feat-merges');
+    expect(under).not.toContain('feat-launches');
+    expect(under).not.toContain('feat-triple-nova');
+  });
+
+  it('生存時間・合体なしの我慢・限界寸前を判定する', () => {
+    const stats0 = { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
+    expect(foundIds({ tick: 3 * 60 * 120 })).toContain('feat-survive');
+    expect(foundIds({ tick: 3 * 60 * 120 - 1 })).not.toContain('feat-survive');
+    expect(foundIds({ tick: 60 * 120, stats: stats0 })).toContain('feat-quiet');
+    // 1 度でも合体していれば沈黙ではない
+    expect(foundIds({ tick: 60 * 120, stats: { ...stats0, merges: 1 } })).not.toContain('feat-quiet');
+    expect(foundIds({ tick: 60 * 120 - 1, stats: stats0 })).not.toContain('feat-quiet');
+    expect(foundIds({ heat: 90, phase: 'active' })).toContain('feat-brink');
+    // 終わった盤面は九死ではない
+    expect(foundIds({ heat: 90, phase: 'over' })).not.toContain('feat-brink');
+    expect(foundIds({ heat: 89, phase: 'active' })).not.toContain('feat-brink');
+  });
+
+  it('到達済み Tier より下の天体は、証拠が無くても出たとみなす', () => {
+    const ids = foundIds({ bestTierThisRun: 5 });
+    expect(ids).toContain('body-t5');
+    expect(ids).toContain('body-t4');
+    expect(ids).not.toContain('body-t6');
+  });
+});
+
+describe('出来事だけで判定する項目', () => {
+  it('連鎖の中の超新星・終了・超新星は Tier 8 の証拠にもなる', () => {
+    expect(foundIds({}, [sampleEvent('supernova', 8, 0, 0, 2)])).toContain('feat-nova-chain');
+    expect(foundIds({}, [sampleEvent('supernova', 8, 0, 0, 1)])).not.toContain('feat-nova-chain');
+    expect(foundIds({}, [sampleEvent('supernova')])).toContain('body-t8');
+    expect(foundIds({}, [sampleEvent('gameOver')])).toContain('evt-gameover');
+  });
+});
+
+describe('観測時刻で判定する項目', () => {
+  /** JST のその日の hour 時に相当する UTC ms。 */
+  const jstMs = (hour: number) => Date.UTC(2026, 9, 16, hour) - JST_OFFSET_MS;
+
+  it('日本時間の深夜（0 時〜5 時前）だけ見つかる。時刻が無ければ判定しない', () => {
+    expect(foundIds({}, [], jstMs(3))).toContain('feat-night-owl');
+    expect(foundIds({}, [], jstMs(5))).not.toContain('feat-night-owl');
+    expect(foundIds({}, [], jstMs(12))).not.toContain('feat-night-owl');
+    expect(foundIds({})).not.toContain('feat-night-owl');
+  });
+});
+
+describe('記録と保存の細部', () => {
+  it('回数や時刻が変でも、記録は 1 番・時刻 0 で残る', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('launch')], snapshot(), { runIndex: 0, nowMs: Number.NaN });
+    expect(codex.discovery('evt-launch')).toMatchObject({ runIndex: 1, foundAtMs: 0 });
+  });
+
+  it('新しい発見が無ければ保存を書き換えない', () => {
+    const storage = memoryStorage();
+    const codex = createCodexStore(storage);
+    codex.feed([sampleEvent('launch')], snapshot(), META);
+    const saved = storage.values.get(STORAGE_KEY);
+    expect(saved).toBeTruthy();
+    codex.feed([sampleEvent('land')], snapshot(), META); // evt-land は新規 → 書き込み発生
+    const afterLand = storage.values.get(STORAGE_KEY);
+    expect(afterLand).not.toBe(saved);
+    codex.feed([sampleEvent('land')], snapshot(), META); // 新規なし → そのまま
+    expect(storage.values.get(STORAGE_KEY)).toBe(afterLand);
+  });
+});
+
+describe('速さ', () => {
+  it('自動プレイの終盤でも feed 1 回は重くならない', () => {
+    const codex = createCodexStore(memoryStorage());
+    const auto = createAutoPlay(7, { bodies: [onCore(0, -1.9), onCore(0, -1.6)] });
+    const events: GameEvent[] = [];
+    let worst = 0;
+    for (let i = 0; i < 720; i++) {
+      events.push(...auto.step());
+      if (i % 30 !== 0) continue;
+      const t0 = performance.now();
+      codex.feed(events, auto.sim.getSnapshot(), META);
+      worst = Math.max(worst, performance.now() - t0);
+    }
+    // 出来事が積み上がった終盤の 1 回でも 50ms 以内（実測は 1ms 前後）
+    expect(worst).toBeLessThan(50);
   });
 });
 

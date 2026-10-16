@@ -10,6 +10,7 @@ import {
   TICK_HZ,
   TIER_NAMES,
 } from '../game/constants';
+import { JST_OFFSET_MS } from './daily';
 import { asObject, readStoredJson, writeStoredJson, type MetaStorage } from './storage';
 
 const STORAGE_KEY = 'gravity-core:codex:v1';
@@ -18,11 +19,15 @@ const HIDDEN_NAME = '？？？';
 /** 偉業項目の目標値（meta 側の設計値なのでここにまとめる） */
 const SCORE_MARKS = [10_000, 50_000, 100_000] as const;
 const CROWD_BODIES = 20;
+const OVERFLOW_BODIES = 30;
 const MERGES_IN_RUN = 25;
 const LAUNCHES_IN_RUN = 100;
 const NOVAS_IN_RUN = 3;
 const NOVA_CHAIN = 2;
 const SURVIVE_TICKS = 3 * 60 * TICK_HZ; // 3 分
+const QUIET_TICKS = 60 * TICK_HZ; // 1 分
+/** 深夜の天文台の判定に使う時間帯（JST の 0 時台〜4 時台） */
+const NIGHT_HOURS = [0, 5] as const;
 const CRITICAL_HEAT = HEAT_STATE_LIMITS[2]; // 臨界の境目 75
 const BRINK_HEAT = 90; // 終了（100）の寸前
 
@@ -34,6 +39,11 @@ export type CodexContext = Readonly<{
   events: readonly GameEvent[];
   /** 最新の盤面 */
   snapshot: GameSnapshot;
+  /**
+   * 観測した実時刻（ms）。実時刻で判定する項目（深夜に遊んだ等）だけが使う。
+   * 渡さないと時刻条件の項目は見つからない（feed は meta.nowMs をそのまま渡す）。
+   */
+  nowMs?: number;
 }>;
 
 /** 図鑑の項目の定義。表示名と説明は発見後だけ見せ、発見前は hint を出す。 */
@@ -127,6 +137,17 @@ const snapshotWhen =
 const scoreAtLeast = (score: number) => snapshotWhen(s => s.score >= score);
 
 /**
+ * 日本時間の深夜（0 時〜5 時前）に観測できたか。
+ * 観測時刻が渡されていなければ判定しない（実時刻を見る項目はこれだけにする）。
+ */
+const observedAtNight = (ctx: CodexContext): number | null => {
+  const ms = ctx.nowMs;
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+  const hour = new Date(ms + JST_OFFSET_MS).getUTCHours();
+  return hour >= NIGHT_HOURS[0] && hour < NIGHT_HOURS[1] ? ctx.snapshot.tick : null;
+};
+
+/**
  * Tier の天体が盤面に出たか。
  * 証拠は 3 つ: 撃った・着地した・合体の材料（sourceTier）、合体の産物（resultTier）、いま置いてある。
  * 出た瞬間を残すため、出来事の tick と天体の生まれた tick の早い方を返す。
@@ -218,12 +239,19 @@ const FEAT_ENTRIES: CodexEntry[] = [
   ),
   { id: 'feat-crowd', category: 'feat', name: '満員御礼', description: `${CROWD_BODIES} 体の天体が同時に盤面に並んだ`,
     hint: `天体を ${CROWD_BODIES} 体同時に盤面へ置く`, found: snapshotWhen(s => s.bodies.length >= CROWD_BODIES) },
+  { id: 'feat-overflow', category: 'feat', name: '大混雑', description: `${OVERFLOW_BODIES} 体もの天体が同時に盤面を埋めた`,
+    hint: `天体を ${OVERFLOW_BODIES} 体同時に盤面へ置く`, found: snapshotWhen(s => s.bodies.length >= OVERFLOW_BODIES) },
   { id: 'feat-merges', category: 'feat', name: '量産体制', description: `1 プレイで ${MERGES_IN_RUN} 回合体させた`,
     hint: `1 プレイで ${MERGES_IN_RUN} 回合体させる`, found: snapshotWhen(s => s.stats.merges >= MERGES_IN_RUN) },
   { id: 'feat-launches', category: 'feat', name: '百発運用', description: `1 プレイで ${LAUNCHES_IN_RUN} 回、天体を撃ち続けた`,
     hint: `1 プレイで ${LAUNCHES_IN_RUN} 回撃つ`, found: snapshotWhen(s => s.stats.launches >= LAUNCHES_IN_RUN) },
   { id: 'feat-survive', category: 'feat', name: '長距離運行', description: '1 プレイで 3 分間生き残った',
     hint: '1 プレイで 3 分間、終わらずに遊ぶ', found: snapshotWhen(s => s.tick >= SURVIVE_TICKS) },
+  { id: 'feat-quiet', category: 'feat', name: '沈黙の運行', description: '開始から 1 分間、一度も合体せずに持ちこたえた',
+    hint: '合体させずに 1 分間生き残る',
+    found: snapshotWhen(s => s.tick >= QUIET_TICKS && s.stats.merges === 0) },
+  { id: 'feat-night-owl', category: 'feat', name: '深夜の天文台', description: '日本時間の深夜（0 時〜5 時）に観測を続けた',
+    hint: '日本時間の深夜にプレイする', found: observedAtNight },
   { id: 'feat-critical', category: 'feat', name: '臨界体験', description: `熱量が ${CRITICAL_HEAT} を越える「臨界」に達した`,
     hint: `熱量を ${CRITICAL_HEAT} まで上げて生き残る`, found: snapshotWhen(s => s.heat >= CRITICAL_HEAT) },
   { id: 'feat-brink', category: 'feat', name: '九死一生', description: `熱量が ${BRINK_HEAT} を越えたのに、まだ終わっていない`,
@@ -289,7 +317,7 @@ export function createCodexStore(
 
   return {
     feed(events, snapshot, meta) {
-      const ctx: CodexContext = { events, snapshot };
+      const ctx: CodexContext = { events, snapshot, nowMs: meta.nowMs };
       const found: CodexEntry[] = [];
       for (const entry of entries) {
         if (discoveries.has(entry.id)) continue;

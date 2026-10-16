@@ -3,6 +3,7 @@ import {
   createDailyChallenge,
   dailySeed,
   dayNumberOf,
+  JST_OFFSET_MS,
   jstDateKey,
   practiceSeed,
 } from './daily';
@@ -67,6 +68,162 @@ describe('日本時間の日付とシード', () => {
     expect(practiceSeed(key, 0)).not.toBe(official);
     expect(practiceSeed(key, 0)).not.toBe(practiceSeed(key, 1));
     expect(practiceSeed(key, 0)).toBe(practiceSeed(key, 0));
+  });
+});
+
+describe('日付キーの検証', () => {
+  it.each([
+    '2026-02-30', // 実在しない日
+    '2026-13-01', // 13 月
+    '2026-00-15', // 0 月
+    '2026-10-32', // 32 日
+    '2026-02-29', // 平年の 2/29
+    'not-a-date',
+    '2026-1-1', // ゼロ詰めなしは形から違う
+    '',
+    ' 2026-10-16',
+  ])('dateKey %s は実在しない・形の違う日付として null', key => {
+    expect(dayNumberOf(key)).toBeNull();
+  });
+
+  it('うるう年の 2/29 は実在する', () => {
+    expect(dayNumberOf('2028-02-29')).not.toBeNull();
+    expect(dayNumberOf('2028-02-29')).toBe(dayNumberOf('2028-02-28')! + 1);
+  });
+
+  it('dailySeed は 32bit の整数を返す', () => {
+    for (const key of ['2026-10-16', '1999-12-31', '2100-01-01', '2028-02-29']) {
+      const s = dailySeed(key);
+      expect(Number.isInteger(s)).toBe(true);
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThan(2 ** 32);
+    }
+  });
+
+  it('有限でない時刻が来ても既定の日付に落ち、紀元前でも動く', () => {
+    expect(jstDateKey(Number.NaN)).toBe('1970-01-01');
+    expect(jstDateKey(Number.POSITIVE_INFINITY)).toBe('1970-01-01');
+    // UTC では紀元前でも、JST（+9 時間）では 1970-01-01 の朝
+    expect(jstDateKey(-1)).toBe('1970-01-01');
+    // JST の 1970-01-01 0 時の 1ms 前から紀元前の日付になる
+    expect(jstDateKey(jstMidnight(1970, 1, 1) - 1)).toBe('1969-12-31');
+  });
+
+  it('Date の表せる範囲外・西暦 0 未満・1 万年以降も既定の日付に落ちる', () => {
+    // この入力では 'YYYY-MM-DD' の形に収まらないため、落とす先を固定しておく
+    for (const t of [1e17, -1e17, 8.64e15, -8.64e15]) {
+      expect(jstDateKey(t)).toBe('1970-01-01');
+    }
+  });
+
+  it('出てくる日付キーは常に実在の日付として往復できる', () => {
+    const times = [
+      0,
+      -1,
+      jstMidnight(1969, 12, 31),
+      jstMidnight(2000, 2, 29), // うるう日
+      jstMidnight(2100, 3, 1), // 2100 はうるう年ではない
+      jstMidnight(9999, 12, 31),
+    ];
+    for (const t of times) {
+      const key = jstDateKey(t);
+      const n = dayNumberOf(key);
+      expect(n).not.toBeNull();
+      // その日の最初の 1ms（UTC）を JST 日付へ戻すと同じキーになる
+      expect(jstDateKey(n! * DAY_MS - JST_OFFSET_MS)).toBe(key);
+    }
+  });
+
+  it('西暦 3 桁以下の年でも日付キーが往復する', () => {
+    // Date.UTC は年 0〜99 を 1900 年代と解釈するので setUTCFullYear で作る
+    const d = new Date(Date.UTC(2000, 5, 15));
+    d.setUTCFullYear(123); // 123-06-15 00:00 UTC = JST 09:00
+    const key = jstDateKey(d.getTime());
+    expect(key).toBe('0123-06-15');
+    expect(dayNumberOf(key)).not.toBeNull();
+  });
+});
+
+describe('ランの記録の細部', () => {
+  const t = jstMidnight(2026, 10, 16) + 12 * 3_600_000; // JST 10-16 昼
+
+  it('begin() は本番が残っていれば本番、済んでいれば練習を返す', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    expect(daily.begin(t).mode).toBe('official');
+    daily.completeOfficial(daily.beginOfficial(t)!, { score: 1, endedAtMs: t });
+    expect(daily.begin(t).mode).toBe('practice');
+  });
+
+  it('練習は呼ぶたび次の盤面になる', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    const a = daily.beginPractice(t);
+    const b = daily.beginPractice(t);
+    expect(a.mode).toBe('practice');
+    expect(b.mode).toBe('practice');
+    expect(a.dateKey).toBe(b.dateKey);
+    expect(a.seed).not.toBe(b.seed);
+  });
+
+  it('練習ランや、形の違う日付のランは記録できない', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    expect(daily.completeOfficial(daily.beginPractice(t), { score: 1, endedAtMs: t })).toBe(false);
+    expect(
+      daily.completeOfficial(
+        { mode: 'official', dateKey: 'not-a-date', seed: 1 },
+        { score: 1, endedAtMs: t },
+      ),
+    ).toBe(false);
+    expect(daily.history()).toHaveLength(0);
+  });
+
+  it('スコアは 0 以上の整数に丸め、時刻が変なら 0 で記録する', () => {
+    const cases: Array<[number, number]> = [
+      [1234.9, 1234],
+      [-50, 0],
+      [Number.NaN, 0],
+    ];
+    cases.forEach(([raw, want], i) => {
+      const daily = createDailyChallenge(memoryStorage());
+      const ti = jstMidnight(2026, 10, 16 + i) + 3_600_000;
+      const run = daily.beginOfficial(ti)!;
+      expect(daily.completeOfficial(run, { score: raw, endedAtMs: Number.NaN })).toBe(true);
+      expect(daily.history()[0]).toMatchObject({ score: want, playedAtMs: 0 });
+    });
+  });
+
+  it('今日を済ませた日は、その日を含めて連続を数える', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    daily.completeOfficial(daily.beginOfficial(t)!, { score: 1, endedAtMs: t });
+    expect(daily.info(t).streak).toBe(1);
+  });
+
+  it('履歴は新しい日付順に並ぶ（記録した順番は関係ない）', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    for (const i of [2, 0, 1]) {
+      const ti = jstMidnight(2026, 10, 16 + i) + 3_600_000;
+      daily.completeOfficial(daily.beginOfficial(ti)!, { score: i, endedAtMs: ti });
+    }
+    expect(daily.history().map(r => r.dateKey)).toEqual([
+      '2026-10-18',
+      '2026-10-17',
+      '2026-10-16',
+    ]);
+  });
+
+  it('履歴は上限を越えると古い日から捨てる', () => {
+    const official: Record<string, { score: number; playedAtMs: number }> = {};
+    for (let i = 0; i < 1105; i++) {
+      const key = new Date(Date.UTC(2020, 0, 1 + i)).toISOString().slice(0, 10);
+      official[key] = { score: i, playedAtMs: i };
+    }
+    const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ version: 1, official }) });
+    const daily = createDailyChallenge(storage);
+    expect(daily.history()).toHaveLength(1105);
+    daily.completeOfficial(daily.beginOfficial(t)!, { score: 1, endedAtMs: t });
+    expect(daily.history()).toHaveLength(1100);
+    // 新しい記録のぶん、古い 6 日が捨てられる
+    expect(daily.history().some(r => r.dateKey === '2020-01-01')).toBe(false);
+    expect(daily.history().some(r => r.dateKey === '2020-01-07')).toBe(true);
   });
 });
 
