@@ -7,7 +7,8 @@
 //   そこで速さを 3 段に分ける。
 //     1. キーフレーム: 計算し直した盤面を一定 tick ごとに覚えておく。
 //        その tick への seek と peek（つまみの表示）は一瞬で返る。
-//     2. キャッシュ: seek した先の盤面も覚える。同じ所への再 seek は一瞬。
+//     2. 行った所: seek した先の盤面も覚える（上限つきで古い物から捨てる）。
+//        同じ所への再 seek は一瞬。
 //     3. カーソル: 前にしか進めないシミュレーションを数本持ち、
 //        目的地に一番近い（手前にいる）ものを選んで進める。
 //        行き来するほどカーソルが散って、戻る距離が短くなる。
@@ -25,6 +26,8 @@ import type { ReplayRecord } from './record';
 const KEYFRAME_EVERY = 60;
 /** 同時に持つシミュレーションの本数。増やすと戻り seek が速くなる代わりにメモリを使う */
 const CURSOR_MAX = 4;
+/** 「行った所」の記憶の上限（キーフレームとは別枠）。往復し続けても増え続けないようにする */
+const VISITED_CAP = 240;
 
 export type ReplayPlayer = {
   /** もとの記録 */
@@ -71,10 +74,31 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
   const { endTick } = record;
   const inputs = record.inputs;
 
-  // tick → 盤面。キーフレームと、飛んだ先の盤面を覚えておく。
-  const cache = new Map<Tick, GameSnapshot>();
-  for (const snap of run.checkpoints) cache.set(snap.tick, snap);
-  cache.set(endTick, run.final);
+  // 盤面の記憶は 2 つに分ける。
+  //   キーフレーム: 一定間隔の基準面。捨てない（数は endTick / 間隔で決まる）。
+  //   行った所:   seek で止まった面。上限を越えたら一番古い物から捨てる。
+  //               Map は挿入順を覚えるので、使った物を付け直せば先頭が一番古い。
+  const keyframes = new Map<Tick, GameSnapshot>();
+  for (const snap of run.checkpoints) keyframes.set(snap.tick, snap);
+  keyframes.set(endTick, run.final);
+  const visited = new Map<Tick, GameSnapshot>();
+
+  const getVisited = (t: Tick): GameSnapshot | undefined => {
+    const s = visited.get(t);
+    if (s) {
+      visited.delete(t);
+      visited.set(t, s);
+    }
+    return s;
+  };
+  const putVisited = (t: Tick, s: GameSnapshot): void => {
+    visited.delete(t);
+    visited.set(t, s);
+    if (visited.size > VISITED_CAP) {
+      const oldest = visited.keys().next();
+      if (!oldest.done) visited.delete(oldest.value);
+    }
+  };
 
   const cursors: Cursor[] = [];
   const newCursor = (): Cursor => ({ sim: createSimulation(record.seed, record.setup), nextInput: 0 });
@@ -90,29 +114,31 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
   };
 
   /**
-   * カーソルを target まで進める（その間のキーフレーム間隔の盤面はキャッシュに足す）。
+   * カーソルを target まで進める（途中のキーフレーム間隔の盤面は覚えていく）。
    * target ちょうどの入力はここでは投入しない: 「tick T の盤面」は
    * tick T の入力が撃たれる前に取られる物なので、反映すると本物より先に進んだ絵になる。
    * （その入力は次にカーソルを進めるとき、T→T+1 のステップ前に投入される）
+   * 盤面の tick はローカルで数えず毎回 snapshot から取る:
+   * 終了して進めなくなった sim を回し続けず、実際の tick をキーにするため。
    */
   const advance = (c: Cursor, target: Tick): void => {
-    let tick = c.sim.getSnapshot().tick;
-    while (tick < target) {
+    let snap = c.sim.getSnapshot();
+    while (snap.tick < target && snap.phase === 'active') {
       applyDue(c);
       c.sim.stepFixed();
-      tick++;
-      if (tick % KEYFRAME_EVERY === 0) cache.set(tick, c.sim.getSnapshot());
+      snap = c.sim.getSnapshot();
+      if (snap.tick % KEYFRAME_EVERY === 0) keyframes.set(snap.tick, snap);
     }
   };
 
   /** target 以下で一番近い所にいるカーソル。無ければ足すか、一番手前のものを作り直す。 */
   const cursorFor = (target: Tick): Cursor => {
     let best: Cursor | null = null;
-    let frontmost: Cursor | null = null;
+    let rearmost: Cursor | null = null;
     for (const c of cursors) {
       const tick = c.sim.getSnapshot().tick;
       if (tick <= target && (!best || tick > best.sim.getSnapshot().tick)) best = c;
-      if (!frontmost || tick < frontmost.sim.getSnapshot().tick) frontmost = c;
+      if (!rearmost || tick < rearmost.sim.getSnapshot().tick) rearmost = c;
     }
     if (best) return best;
     if (cursors.length < CURSOR_MAX) {
@@ -122,7 +148,7 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
     }
     // 全部が target より先にいる。どれを選んでも 0 から作り直しなので、
     // 一番手前（= そこまでの計算が一番少なく、失う物が小さい）を捨てる。
-    const c = frontmost!;
+    const c = rearmost!;
     cursors.splice(cursors.indexOf(c), 1);
     const fresh = newCursor();
     cursors.push(fresh);
@@ -141,30 +167,41 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
   let currentSnap: GameSnapshot = run.checkpoints[0]!;
   let currentEvents: readonly GameEvent[] = [];
 
+  // 範囲外は端に、小数は切り捨てに収める。
+  // Infinity は端まで飛ぶ。NaN は「飛べない」ので fallback（いまの位置）に留まる:
+  // ツマミの計算が 1 回壊れただけで盤面が先頭へ飛ぶ方が嫌なので、動かさない判断にした。
+  const clampTick = (target: Tick, fallback: Tick): Tick => {
+    if (Number.isNaN(target)) return fallback;
+    return Math.max(0, Math.min(endTick, Math.floor(target)));
+  };
+
   const seek = (target: Tick): GameSnapshot => {
-    const t = Math.max(0, Math.min(endTick, Math.floor(target)));
+    const t = clampTick(target, currentTick);
     if (t === currentTick) {
       currentEvents = [];
       return currentSnap;
     }
     const prev = currentTick;
-    let snap = cache.get(t);
+    let snap = keyframes.get(t) ?? getVisited(t);
     if (!snap) {
       const c = cursorFor(t);
       advance(c, t);
       snap = c.sim.getSnapshot();
-      cache.set(t, snap);
+      // 検証済みの記録では必ず snap.tick === t に辿り着く。進めなかった異例では
+      // 実際に辿り着いた tick をキーにして覚え、表示位置もそこに合わせる。
+      if (snap.tick % KEYFRAME_EVERY === 0) keyframes.set(snap.tick, snap);
+      else putVisited(snap.tick, snap);
     }
-    currentTick = t;
+    currentTick = snap.tick;
     currentSnap = snap;
-    currentEvents = eventsBetween(prev, t);
+    currentEvents = eventsBetween(prev, snap.tick);
     return snap;
   };
 
   const peek = (target: Tick): GameSnapshot => {
-    const t = Math.max(0, Math.min(endTick, Math.floor(target)));
+    const t = clampTick(target, currentTick);
     const key = Math.floor(t / KEYFRAME_EVERY) * KEYFRAME_EVERY;
-    return cache.get(key) ?? run.checkpoints[0]!;
+    return keyframes.get(key) ?? run.checkpoints[0]!;
   };
 
   return {

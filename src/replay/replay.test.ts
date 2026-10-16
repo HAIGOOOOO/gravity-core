@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GameSnapshot, Tier } from '../contracts/game';
+import type { Tier } from '../contracts/game';
 import { CORE_RADIUS, TICK_HZ } from '../game/constants';
 import { at, createAutoPlay, dropAt } from '../fixtures/index';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
@@ -13,30 +13,7 @@ import {
   serializeReplay,
   type ReplayRecord,
 } from './record';
-
-const UP = -Math.PI / 2;
-
-/** 自動プレイを maxTicks まで（終了ならそこまで）進め、記録と最後の盤面を返す。 */
-function recordAutoPlay(seed: number, maxTicks: number): { record: ReplayRecord; final: GameSnapshot } {
-  const auto = createAutoPlay(seed);
-  let snap = auto.sim.getSnapshot();
-  for (let i = 0; i < maxTicks && snap.phase === 'active'; i++) {
-    auto.step();
-    snap = auto.sim.getSnapshot();
-  }
-  return { record: createReplayRecord(auto.sim), final: snap };
-}
-
-/** 特別な開始状態から決まった tick ぶん進めて記録を作る。 */
-function recordSetup(seed: number, setup: SimulationSetup, maxTicks: number): ReplayRecord {
-  const sim = createSimulation(seed, setup);
-  let snap = sim.getSnapshot();
-  for (let i = 0; i < maxTicks && snap.phase === 'active'; i++) {
-    sim.stepFixed();
-    snap = sim.getSnapshot();
-  }
-  return createReplayRecord(sim, { setup });
-}
+import { recordAutoPlay, recordSetup, UP } from './testkit';
 
 describe('記録と再生', () => {
   it(
@@ -114,6 +91,9 @@ describe('記録が合わないとき', () => {
     if (start.ok) return;
     expect(start.reason).toBe('rulesMismatch');
     if (start.reason === 'rulesMismatch') expect(start.expected).toBe(rulesVersion());
+    // 再生以外（見どころ・負けた理由）も同じく「合わない」を返す
+    expect(findHighlights(wrong).ok).toBe(false);
+    expect(analyzeCause(wrong).ok).toBe(false);
   });
 
   it('記録を書き換えると、合わないと分かる結果を返す', { timeout: 30_000 }, () => {
@@ -192,7 +172,8 @@ describe('見どころ', () => {
     const h2 = findHighlights(dead);
     expect(h2.ok).toBe(true);
     if (!h2.ok) return;
-    expect(h2.highlights.some((x) => x.kind === 'heatCritical')).toBe(true);
+    const crit = h2.highlights.find((x) => x.kind === 'heatCritical');
+    expect(crit?.value).toBeGreaterThan(75); // value は境目ではなく越えた瞬間の実熱量
     const soon = h2.highlights.find((x) => x.kind === 'beforeGameOver');
     expect(soon).toBeDefined();
     // ゲームオーバーの 10 秒前（0 より前にはならない）
@@ -242,23 +223,40 @@ describe('負けた理由', () => {
 describe('seek の速さ', () => {
   it('3 分ぶんのプレイで、好きな tick への seek が十分速い', { timeout: 120_000 }, () => {
     const { record } = recordAutoPlay(2026, 3 * 60 * TICK_HZ);
+    const buildBegan = Date.now();
     const start = createReplayPlayer(record);
+    // 作成時の検証（最初から最後まで計算し直す）が退行していないかも見る
+    expect(Date.now() - buildBegan).toBeLessThan(20_000);
     expect(start.ok).toBe(true);
     if (!start.ok) return;
     const { player } = start;
     // ばらけた tick へ連続で飛ぶ（カーソルが育つ途中の、一番重い使い方）
     const fractions = [0.3, 0.85, 0.1, 0.6, 0.95, 0.45, 0.02, 0.7];
     let worst = 0;
+    let total = 0;
     for (const f of fractions) {
       const began = Date.now();
       player.seek(Math.floor(record.endTick * f));
-      worst = Math.max(worst, Date.now() - began);
+      const elapsed = Date.now() - began;
+      worst = Math.max(worst, elapsed);
+      total += elapsed;
     }
     expect(worst).toBeLessThan(5_000);
+    // 1 回ごとの上限だけでは「じわじわ遅くなる」退行を逃すので、合計にも上限を付ける
+    expect(total).toBeLessThan(15_000);
+    // キーフレームちょうどへの seek は、行った事がなくてもキャッシュで即返る
+    const keyframe = Math.floor(Math.min(record.endTick, 1_800) / 60) * 60;
+    const kfBegan = Date.now();
+    player.seek(keyframe);
+    expect(Date.now() - kfBegan).toBeLessThan(200);
     // 同じ場所への再 seek はキャッシュで速い
     const began = Date.now();
     player.seek(Math.floor(record.endTick * 0.7));
     expect(Date.now() - began).toBeLessThan(200);
+    // 一度行った所のすぐ手前は、育ったカーソルを少し戻すだけで済む
+    const nearBegan = Date.now();
+    player.seek(Math.floor(record.endTick * 0.7) - 7);
+    expect(Date.now() - nearBegan).toBeLessThan(1_000);
     // つまみ表示用の peek は常に軽い
     const peekBegan = Date.now();
     player.peek(Math.floor(record.endTick * 0.33));

@@ -6,10 +6,10 @@
 
 import type { GameSnapshot, LaunchInput, RunStats, SimulationPort, Tick } from '../contracts/game';
 import * as RULE_CONSTANTS from '../game/constants';
-import type { SimulationSetup } from '../game/simulation';
+import { createSimulation, type SimulationSetup } from '../game/simulation';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 1;
+export const REPLAY_FORMAT = 2;
 
 export type ReplayRecord = Readonly<{
   format: typeof REPLAY_FORMAT;
@@ -22,6 +22,13 @@ export type ReplayRecord = Readonly<{
   endTick: Tick;
   finalScore: number;
   finalBodyCount: number;
+  /**
+   * 開始時（tick 0・入力を反映する前）の盤面の指紋。
+   * finalHash だけでは、終わる頃に同じ状態へ収束する細工を見逃す
+   * （例: 開始時の熱量を足しても、その後の冷却で最終盤面が同じになる）。
+   * 開始の指紋も持つことで、seed・setup・初期キューの書き換えが全部「合わない」と分かる。
+   */
+  initialHash: string;
   /**
    * 記録した時点の盤面の指紋（snapshotHash）。
    * 得点・tick・天体・熱量・キュー全部を畳んだ物なので、入力を抜く・得点を盛る・
@@ -106,6 +113,15 @@ export function snapshotHash(snap: GameSnapshot): string {
 
 // ───────── 記録を作る ─────────
 
+// 呼び出し側があとで setup を書き換えても記録が腐らないよう、中身を複製する。
+// （inputs と stats は最初から複製している。ここだけ参照のままだった）
+function copySetup(setup: SimulationSetup): SimulationSetup {
+  const copy: SimulationSetup = { ...setup };
+  if (setup.bodies) copy.bodies = setup.bodies.map((b) => ({ ...b }));
+  if (setup.queue) copy.queue = [...setup.queue];
+  return copy;
+}
+
 /**
  * プレイ中（あるいは終了後）のシミュレーションから記録を作る。
  * 盤面は持たず、シードと受理済みの入力ログを写す。
@@ -123,13 +139,15 @@ export function createReplayRecord(
     endTick: snap.tick,
     finalScore: snap.score,
     finalBodyCount: snap.bodies.length,
+    // 開始の盤面はシードと setup だけで決まるので、同じ組み立てで作り直して指紋を取る
+    initialHash: snapshotHash(createSimulation(snap.seed, options.setup).getSnapshot()),
     finalHash: snapshotHash(snap),
     phase: snap.phase,
     stats: { ...snap.stats },
     createdAt: (options.now ?? new Date()).toISOString(),
   };
   // 通常の開始（既定の 1 体だけの盤面）では setup は付けない
-  return options.setup === undefined ? record : { ...record, setup: options.setup };
+  return options.setup === undefined ? record : { ...record, setup: copySetup(options.setup) };
 }
 
 // ───────── 文字列化 ─────────
@@ -204,6 +222,7 @@ export function parseReplay(text: string): ReplayRecord | null {
   if (!isNonNegativeInt(r.endTick)) return null;
   if (!isFiniteNum(r.finalScore)) return null;
   if (!isNonNegativeInt(r.finalBodyCount)) return null;
+  if (typeof r.initialHash !== 'string') return null;
   if (typeof r.finalHash !== 'string') return null;
   if (r.phase !== 'active' && r.phase !== 'over') return null;
   if (!isStats(r.stats)) return null;

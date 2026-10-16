@@ -6,7 +6,8 @@
 //   - 入力は「その tick の stepFixed の前」に投入する
 //     （元のプレイでも、tick T の射出は T→T+1 のステップ前に受け付けられている。
 //       つまり「tick T の盤面」には tick T の入力は出ず、tick < T の入力だけが出る）
-//   - 記録に含まれない入力が受理された・最後の盤面が記録と違う、のときは
+//   - 最初（tick 0）と最後（endTick）の盤面を記録の指紋と照合する。
+//     記録に含まれない入力が受理された・盤面が記録と違う、のときは
 //     「記録と合わない」として失敗を返す（黙って違う絵を出さない）
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
@@ -52,6 +53,12 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
 
   const every = Math.max(1, options.checkpointEvery ?? CHECKPOINT_EVERY);
   const sim = createSimulation(record.seed, record.setup);
+  // 開始の盤面（入力を反映する前の tick 0）が記録と違う = seed / setup / 初期キューが
+  // 書き換えられた。熱量のように終わる頃には同じ状態へ収束して最終照合を
+  // すり抜ける細工も、ここで「合わない」と分かる。
+  if (snapshotHash(sim.getSnapshot()) !== record.initialHash) {
+    return { ok: false, reason: 'diverged', detail: 'initial snapshot differs from record' };
+  }
   const inputs = record.inputs;
   let nextInput = 0;
   const events: IndexedEvent[] = [];

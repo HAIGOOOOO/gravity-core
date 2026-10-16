@@ -29,9 +29,13 @@ const HEAT_CRITICAL = HEAT_STATE_LIMITS[2];
 
 export function findHighlights(record: ReplayRecord): HighlightsResult {
   let heatTick: Tick | null = null;
+  let heatValue = 0;
   const run = runReplay(record, {
     visit: (snap) => {
-      if (heatTick === null && snap.heat > HEAT_CRITICAL) heatTick = snap.tick;
+      if (heatTick === null && snap.heat > HEAT_CRITICAL) {
+        heatTick = snap.tick;
+        heatValue = snap.heat;
+      }
     },
   });
   if (!run.ok) return run;
@@ -71,7 +75,8 @@ export function findHighlights(record: ReplayRecord): HighlightsResult {
 
   if (maxChainTick !== null) highlights.push({ kind: 'maxChain', tick: maxChainTick, value: maxChain });
   if (bestTierTick !== null) highlights.push({ kind: 'bestTier', tick: bestTierTick, value: bestTier });
-  if (heatTick !== null) highlights.push({ kind: 'heatCritical', tick: heatTick, value: HEAT_CRITICAL });
+  // value は「境目」ではなく越えた瞬間の実熱量（巻き戻し先の危険度として渡す）
+  if (heatTick !== null) highlights.push({ kind: 'heatCritical', tick: heatTick, value: heatValue });
   if (gameOverTick !== null) {
     highlights.push({
       kind: 'beforeGameOver',
