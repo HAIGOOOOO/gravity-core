@@ -6,16 +6,18 @@
 import { describe, expect, it } from 'vitest';
 import { setupAllTiers } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
-import { measureAccuracyBatch, type AccuracySummary, type ShotRecord } from './accuracy';
+import { measureAccuracy, summarizeAccuracy, type AccuracySummary, type ShotRecord } from './accuracy';
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
 import { ALL_BOTS, randomBot } from './bots';
 import { diffRuns } from './compare';
+import { createPaceTracker, setupTiers, tierPace, type TierPace } from './pace';
 import {
   accuracyTable,
   balanceTable,
   diffTable,
   missTable,
   outcomeTable,
+  paceTable,
   seedTable,
   statsTable,
   tierTable,
@@ -29,20 +31,40 @@ const TIMEOUT = FULL ? 600_000 : 30_000;
 describe('数値調整レポート', () => {
   const collected: { name: string; runs: PlayResult[] }[] = [];
   const accuracies: { name: string; summary: AccuracySummary; shots: ShotRecord[] }[] = [];
+  const paces: { name: string; paces: TierPace[] }[] = [];
 
   for (const make of ALL_BOTS) {
     const name = make(0).name;
     it(
       `ボット「${name}」を ${RUNS} 回まわせる`,
       () => {
-        // 結果と「予測どおりにいったか」を同じまわしで取る（まわし直しの分を増やさない）
-        const m = measureAccuracyBatch(make, { runs: RUNS, seedStart: 100, maxTicks: MAX_TICKS });
-        expect(m.runs).toHaveLength(RUNS);
-        const s = summarizeRuns(m.runs);
+        // 結果・的中率・Tier の育ち方を、同じまわしで全部取る（まわし直しの分を増やさない）
+        const runs: PlayResult[] = [];
+        const shots: ShotRecord[] = [];
+        const botPaces: TierPace[] = [];
+        for (let i = 0; i < RUNS; i++) {
+          const seed = 100 + i;
+          const tracker = createPaceTracker(setupTiers(undefined));
+          const m = measureAccuracy(make(seed), {
+            seed,
+            maxTicks: MAX_TICKS,
+            hooks: {
+              onEvents: (events) => {
+                for (const e of events) tracker.handleEvent(e);
+              },
+            },
+          });
+          runs.push(m.result);
+          shots.push(...m.shots);
+          botPaces.push(tierPace(seed, tracker.finish()));
+        }
+        expect(runs).toHaveLength(RUNS);
+        const s = summarizeRuns(runs);
         expect(s.launches.mean).toBeGreaterThan(0);
         expect(s.seconds.mean).toBeGreaterThan(0);
-        collected.push({ name, runs: m.runs });
-        accuracies.push({ name, summary: m.summary, shots: m.shots });
+        collected.push({ name, runs });
+        accuracies.push({ name, summary: summarizeAccuracy(shots), shots });
+        paces.push({ name, paces: botPaces });
       },
       TIMEOUT,
     );
@@ -64,6 +86,12 @@ describe('数値調整レポート', () => {
         console.log(`\n${statsTable(name, runs)}`);
         // 異常に早く終わるシードは、調整で条件を絞る手がかりになる
         console.log(`\n${seedTable(name, runs, 8)}`);
+      }
+
+      // Tier ごとの育ち方。届く率が急に落ちる所が「壁」、秒の幅が広い所は運次第
+      console.log('\n## Tier ごとの初到達（ボット別）\n');
+      for (const p of paces) {
+        console.log(`\n${paceTable(p.name, p.paces)}`);
       }
 
       // 予測の的中率。低いボットほど「狙っているのに外れる」ので、出た数字は実力より低い

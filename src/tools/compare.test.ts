@@ -69,6 +69,15 @@ describe('diffRuns（同じシードどうしの差）', () => {
     expect(d.deltas.score.mean).toBe(50); // 999 ではなく先に出た 100 と対になる
   });
 
+  it('B 側でシードが重複していても、最初の 1 件だけを使う（残りは onlyB にも数えない）', () => {
+    const a = [run({ seed: 1, score: 100 })];
+    const b = [run({ seed: 1, score: 150 }), run({ seed: 1, score: 999 })];
+    const d = diffRuns(a, b);
+    expect(d.paired).toBe(1);
+    expect(d.onlyB).toBe(0); // 2 件目は対になった 1 件目と同じシードなので端数扱いしない
+    expect(d.deltas.score.mean).toBe(50); // 999 ではなく先に出た 150 と対になる
+  });
+
   it('空どうしでも落ちない', () => {
     const d = diffRuns([], []);
     expect(d.paired).toBe(0);

@@ -11,6 +11,7 @@ import {
 } from './accuracy';
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
 import { diffRuns } from './compare';
+import { summarizePace, type TierPace } from './pace';
 import type { Stats } from './stats';
 
 /** 指標の表示名 */
@@ -222,6 +223,26 @@ export function missTable(name: string, shots: readonly ShotRecord[], count: num
     ]),
   );
   return `### ${name}: 予測合体の外れ（${all.length} 件中 ${list.length} 件）\n\n${table}`;
+}
+
+/**
+ * Tier ごとの「届いた率」と「何秒で届いたか」の表。
+ * 育ちの速さの調整用: 届く率が途中で急に落ちる所が「壁」、秒数の 10%〜90% が
+ * 広い所は「シード次第で育ち方がまちまち」の印。
+ */
+export function paceTable(name: string, paces: readonly TierPace[]): string {
+  const table = markdownTable(
+    ['Tier', '到達率', '平均秒', '中央値秒', '10%', '90%'],
+    summarizePace(paces).map((t) => [
+      String(t.tier),
+      formatPercent(t.reachRate),
+      formatNumber(t.seconds.mean),
+      formatNumber(t.seconds.median),
+      formatNumber(t.seconds.p10),
+      formatNumber(t.seconds.p90),
+    ]),
+  );
+  return `### ${name}: Tier ごとの初到達\n\n${table}`;
 }
 
 /** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */

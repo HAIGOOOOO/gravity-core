@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { dropAt } from '../fixtures/index';
+import { TICK_HZ } from '../game/constants';
 import type { AccuracySummary, ShotRecord } from './accuracy';
 import { RUN_METRICS, type PlayResult } from './batch';
+import { tierPace } from './pace';
 import {
   accuracyTable,
   balanceTable,
@@ -12,6 +14,7 @@ import {
   markdownTable,
   missTable,
   outcomeTable,
+  paceTable,
   seedTable,
   statsTable,
   tierTable,
@@ -308,6 +311,35 @@ describe('tierTable', () => {
     const t = tierTable('x', []);
     expect(t).toContain('### x');
     expect(t.split('\n')).toHaveLength(4);
+  });
+});
+
+describe('paceTable', () => {
+  it('Tier ごとの到達率と秒数の表。届かない Tier も 0% で出す', () => {
+    const paces = [
+      tierPace(1, [0, TICK_HZ, 2 * TICK_HZ, null]),
+      tierPace(2, [0, 2 * TICK_HZ, null, null]),
+    ];
+    const t = paceTable('p', paces);
+    expect(t).toContain('### p: Tier ごとの初到達');
+    const lines = t.split('\n');
+    // 見出し・空行・ヘッダ・区切り・9 Tier = 13 行
+    expect(lines).toHaveLength(13);
+    // Tier 0: 2/2 到達・全部 0 秒
+    expect(lines[4]).toBe('| 0 | 100% | 0 | 0 | 0 | 0 |');
+    // Tier 1: 届いた 2 件（1 秒と 2 秒）の分布
+    expect(lines[5]).toBe('| 1 | 100% | 1.5 | 1.5 | 1.1 | 1.9 |');
+    // Tier 2: 1/2 = 50%
+    expect(lines[6]).toBe('| 2 | 50% | 2 | 2 | 2 | 2 |');
+    // Tier 3: 0/2 → 秒は「—」
+    expect(lines[7]).toBe('| 3 | 0% | — | — | — | — |');
+  });
+
+  it('0 件なら率は「—」で埋まる', () => {
+    const t = paceTable('empty', []);
+    expect(t).toContain('### empty');
+    expect(t.split('\n')).toHaveLength(13);
+    expect(t).toContain('| 0 | — | — | — | — | — |');
   });
 });
 

@@ -2,7 +2,7 @@
 
 ## いま / つぎ
 
-- いま: 12 回目。「外れの原因を見る」道具を足した。`boardBeforeShot`（replay.ts）で記録した射出の直前の盤面を再現でき、predict の再取得と撃ち直しでの結末の追い直しができる。`summarizeByTier` + `tierTable` で Tier ごとの的中率（= キューが出した Tier の内訳も兼ねる）を出し、FULL レポートに載せた。抜けのテストも追加（replayLaunches の maxTicks 指定・missTable の件数 0・相手不明の相手一致母数・危ない曲げを避ける判断）。
+- いま: 13 回目。「育ちの速さ」を測る道具を足した。`pace.ts` で Tier ごとの初到達 tick を記録し（launch の sourceTier・merge の resultTier・開始時の天体は 0）、`summarizePace` で届いた率と秒の分布、`paceTable` で表にする。レポートの 1 まわしに hooks で混ぜたのでコストは増えない。`diffRuns` の B 側重複など抜けテストも足した。
 - つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す。
 
 ## 構成（`src/tools/`）
@@ -11,9 +11,10 @@
 - `batch.ts`: `playOnce`（1 回）と `runBatch`（N 回・シード順）。指標は秒数・得点・到達 Tier・合体数・合体効率・最大連鎖・熱量 75 超え回数・最高熱量・限界越え秒・射出数・超新星数。
 - `replay.ts`: `replayLaunches`（入力ログを同じ tick に撃ち直して完全再現。異常シードの検査・「同じ手順で条件だけ変えたら」用）と `boardBeforeShot`（記録した射出の直前の盤面を再現。外れの原因を見る道具）。
 - `accuracy.ts`: `measureAccuracy` / `measureAccuracyBatch`（playOnce のフックで射出の予測と結末を記録）。結末は最初のイベントで決める: land 前に合体消費 = 'merged'、land のみ = 'landed'、land 後に合体消費 = 'landedThenMerged'、何も無し = 'noContact'。集計は的中率・外れ・予測外合体・相手一致率・着地誤差と、Tier 別の `summarizeByTier`。
+- `pace.ts`: `createPaceTracker`（イベントから Tier ごとの初到達 tick を追跡）と `measurePace` / `measurePaceBatch`（playOnce のフックに乗せる）。`summarizePace` は Tier ごとに「届いた率」と秒の分布。`setupTiers` で開始時の天体（setup.bodies、無ければ START_BODY）を 0 秒で到達扱いにする。「届いた一番上 = bestTier」ではない点に注意（キューの抽選や setup 由来は bestTier に入らない）。
 - `stats.ts`: 平均・中央値・10%・90%（線形補間）。
 - `compare.ts`: `diffRuns`（シードで対を作り、指標ごとの「B − A」の分布を出す）。
-- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較・`accuracyTable`/`outcomeTable`/`tierTable`/`missTable` 的中率まわり）。
+- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較・`accuracyTable`/`outcomeTable`/`tierTable`/`missTable` 的中率まわり・`paceTable` Tier ごとの初到達）。
 - `speed.test.ts`: 各ボット 30 秒ぶんを回して tick/秒を出す。下限は「実時間の 2 倍」。
 - `balance.report.test.ts`: ふだん各 3 回で動作確認。`VITE_BALANCE=1` で各 100 回 + setup 差し替え比較を console.log に出す。
 
@@ -35,6 +36,7 @@
 - `accuracy.ts` の決め事: ① 予測は submitLaunch の「前」に取る（撃った後は自分が盤面にいて predict が自分に当たって壊れる。実際に試して確かめた）② 結末はイベントだけで決める（盤面を覗かない）。'merge' の bodyIds 末尾は生まれた子なので消費に含めない（2 件しか無ければ全部消費扱い）③ 「予測合体→未接触」も外れに数える（着地した時だけ外れだと、終了間際の未着が免れる）④ 相手一致は 'merged' の中で予測の相手が分かる物だけを母数にする（合体はしたが相手が違う = 狙いがずれた、を区別する）⑤ 着地誤差は landPoint と予測の最後の点の距離（land イベントはどの天体に触れたか持たないので、距離でずれを測る）。
 - `PlayHooks` は結果を変えない観察専用。呼び出し側が渡した hooks も measureAccuracy は最後に呼ぶ（取りこぼし防止）。
 - `boardBeforeShot` が「直前の盤面」を正確に作れる根拠: 受理された射出は必ず別々の tick にある（playOnce は射出のたびに step を挟み、クールダウンもある）。だから `入力.tick < shot.tick` の絞り込みで、その射出だけを除いた同じ入力列が作れる。再現は乱数列ごと同じなので、戻った盤面で submit すると受理・天体番号・結末のイベントまで一致する（テストで固定）。予測は `predictLaunch(getSnapshot(), command)` = 盤面だけの純粋計算なので、predict の再取得も記録と一致する。
+- `pace` の「到達」は「その Tier の天体が盤面に 1 度でも存在したか」。合体だけでなくキュー由来（launch の sourceTier）や setup 由来も数えるので、bestTierThisRun（合体で作った Tier だけ）より広い。普通のプレイでは「届いた一番上 ≤ max(bestTier, 1)」: キューの抽選が bestTier より上を出せるのは bestTier=0 の時の Tier 1 だけ（QUEUE_TABLE の先頭行）。setup.bodies があると上振れはいくらでも起きる（届いた Tier と bestTier が一致しない）。
 
 ## リーダーへの依頼
 
