@@ -21,6 +21,7 @@ export { analyzeCause, type CauseResult, type DefeatCause } from './cause';
 // （共有された記録の取り込み検証など）。プレイヤーは内部でこれを使っている。
 export {
   CHECKPOINT_EVERY,
+  MAX_REPLAY_TICKS,
   runReplay,
   type IndexedEvent,
   type ReplayFailure,

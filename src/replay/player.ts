@@ -102,11 +102,14 @@ type Cursor = {
   nextInput: number;
 };
 
-export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?: number } = {}): ReplayStart {
+export function createReplayPlayer(
+  record: ReplayRecord,
+  options: { keyframeCap?: number; maxTicks?: Tick } = {},
+): ReplayStart {
   // まず全部計算し直して、記録と合うか確かめる。合わなければここで止める。
   // 検証で取る盤面の間隔はそのままキーフレーム間隔にする（長い記録では広がる）。
   const every = keyframeInterval(record.endTick, options.keyframeCap ?? KEYFRAME_CAP);
-  const run = runReplay(record, { checkpointEvery: every });
+  const run = runReplay(record, { checkpointEvery: every, maxTicks: options.maxTicks });
   if (!run.ok) return run;
   const { endTick } = record;
   // 呼び出し側があとで記録の中身を書き換えても、カーソルの再計算が腐らないよう
@@ -158,7 +161,12 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
   };
 
   /**
-   * カーソルを target まで進める（途中のキーフレーム間隔の盤面は覚えていく）。
+   * カーソルを target まで進める。途中の盤面はここでは覚えない:
+   * キーフレーム間隔の倍数の盤面は、検証の再計算ですべて keyframes に
+   * 入っている（同じ間隔で同じ計算をした結果なので、重ねて取る意味がない）。
+   * 終端の盤面も書かない。keyframes[endTick] は「endTick の入力も反映した」
+   * 検証済みの盤面で初期化済みなので、入力反映前の面を書くと
+   * seek(endTick) が記録と違う盤面を返してしまう。
    * target ちょうどの入力はここでは投入しない: 「tick T の盤面」は
    * tick T の入力が撃たれる前に取られる物なので、反映すると本物より先に進んだ絵になる。
    * （その入力は次にカーソルを進めるとき、T→T+1 のステップ前に投入される）
@@ -171,10 +179,6 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
       applyDue(c);
       c.sim.stepFixed();
       snap = c.sim.getSnapshot();
-      // 終端の面はここで書かない。keyframes[endTick] は「endTick の入力も
-      // 反映した」検証済みの盤面で初期化済みなので、ここで入力反映前の面を
-      // 書くと seek(endTick) が記録と違う盤面を返してしまう。
-      if (snap.tick % every === 0 && snap.tick !== endTick) keyframes.set(snap.tick, snap);
     }
     // 終端に止まった時は、終端ちょうどの入力（記録の直前に撃たれた分）も反映する。
     // runReplay が最終盤面で同じ事をするので、ここで揃えないと
@@ -255,8 +259,10 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
       snap = c.sim.getSnapshot();
       // 検証済みの記録では必ず snap.tick === t に辿り着く。進めなかった異例では
       // 実際に辿り着いた tick をキーにして覚え、表示位置もそこに合わせる。
-      if (snap.tick % every === 0) keyframes.set(snap.tick, snap);
-      else putVisited(snap.tick, snap);
+      // 間隔の倍数の盤面は検証ですべて keyframes に入っているので、ここで
+      // 新たに覚えるのは「行った所」だけで足りる（異例で倍数に止まっても、
+      // 行った所に入れるだけで害はない）。
+      putVisited(snap.tick, snap);
     }
     currentTick = snap.tick;
     currentSnap = snap;

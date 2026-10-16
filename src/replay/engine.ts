@@ -10,13 +10,19 @@
 //     記録に含まれない入力が受理された・盤面が記録と違う、のときは
 //     「記録と合わない」として失敗を返す（黙って違う絵を出さない）。
 //     失敗の detail には、どこがどう違ったかを追えるだけの情報を入れる。
+//   - endTick が上限（既定 MAX_REPLAY_TICKS = 1 時間ぶん）を越える記録は
+//     「長すぎる」(tooLong) として、計算を始める前に止める。
+//     合わせる作業は記録の長さに比例して掛かるので、終わらない盤面で
+//     endTick だけを大きく書き換えられた記録を渡されると実質止まらない。
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
+import { TICK_HZ } from '../game/constants';
 import { createSimulation } from '../game/simulation';
 import { rulesVersion, snapshotHash, type ReplayRecord } from './record';
 
 export type ReplayFailure =
   | Readonly<{ ok: false; reason: 'rulesMismatch'; expected: string; actual: string }>
+  | Readonly<{ ok: false; reason: 'tooLong'; limit: Tick; endTick: Tick }>
   | Readonly<{ ok: false; reason: 'diverged'; detail: string }>;
 
 /**
@@ -40,6 +46,15 @@ export type ReplayRun = Readonly<{
 /** 盤面を覚えておく間隔の既定値（60 tick = 0.5 秒）。 */
 export const CHECKPOINT_EVERY = 60;
 
+/**
+ * 検証に使う tick の上限（1 時間ぶん）。
+ * 「記録と合うか」の確かめは endTick ぶん全部計算し直すので、記録の長さに
+ * 比例して掛かる。上限が無いと、共有された記録の endTick ひとつの書き換えで
+ * 何時間もの再計算を始めてしまう（終わらない盤面なら実質永遠）。
+ * これを越える記録を確かめたい時は options.maxTicks で上げる。
+ */
+export const MAX_REPLAY_TICKS: Tick = TICK_HZ * 60 * 60;
+
 export type RunOptions = {
   /**
    * checkpoints を取る間隔（既定 60）。0 で中間の盤面を取らない。
@@ -47,18 +62,26 @@ export type RunOptions = {
    * 長い記録で盤面を溜め込まないようにする。
    */
   checkpointEvery?: Tick;
+  /** endTick の上限（既定 MAX_REPLAY_TICKS）。越える記録は tooLong を返す。 */
+  maxTicks?: Tick;
   /** 各ステップの直後に呼ばれる（per-tick の熱量などが要る題目用）。盤面は変えないこと。 */
   visit?: (snapshot: GameSnapshot, surfaced: readonly GameEvent[]) => void;
 };
 
 /**
  * 記録を最初から endTick まで計算し直す。
- * 返り値は「合った」か「合わなかったか（rulesMismatch / diverged）」のどちらか。
+ * 返り値は「合った」か「合わなかったか（rulesMismatch / tooLong / diverged）」のどちらか。
  */
 export function runReplay(record: ReplayRecord, options: RunOptions = {}): ReplayRun | ReplayFailure {
   const expected = rulesVersion();
   if (record.rulesVersion !== expected) {
     return { ok: false, reason: 'rulesMismatch', expected, actual: record.rulesVersion };
+  }
+  const limit = options.maxTicks ?? MAX_REPLAY_TICKS;
+  if (record.endTick > limit) {
+    // 「合わない」(diverged) ではなく「長すぎる」: 記録自体は正しい可能性が
+    // 残る（本当に長いプレイかもしれない）ので、別の理由にして区別できるようにする。
+    return { ok: false, reason: 'tooLong', limit, endTick: record.endTick };
   }
 
   const every = options.checkpointEvery ?? CHECKPOINT_EVERY;

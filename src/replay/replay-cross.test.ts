@@ -3,15 +3,15 @@
 // 2 つの独立した計算経路が、同じ場所を指しているかを確かめる。
 
 import { describe, expect, it } from 'vitest';
-import type { Tier } from '../contracts/game';
+import type { GameSnapshot, Tier } from '../contracts/game';
 import { CORE_RADIUS, TICK_HZ } from '../game/constants';
 import { at } from '../fixtures/index';
-import type { SimulationSetup } from '../game/simulation';
+import { createSimulation, type SimulationSetup } from '../game/simulation';
 import { analyzeCause } from './cause';
-import { findHighlights } from './highlights';
+import { findHighlights, type HighlightKind } from './highlights';
 import { createReplayPlayer } from './player';
-import type { ReplayRecord } from './record';
-import { recordSetup, UP } from './testkit';
+import { createReplayRecord, type ReplayRecord } from './record';
+import { recordAutoPlay, recordSetup, UP } from './testkit';
 
 /** 限界リングを越え続ける山（負ける記録を作る配置）。 */
 const HOT_BODIES: SimulationSetup['bodies'] = [at(7, 130, 0), at(6, 280, 0), at(5, 400, 0)];
@@ -121,6 +121,56 @@ describe('見どころの tick は本当にその出来事の場所', () => {
     expect(soon!.value).toBeLessThan(10 * TICK_HZ);
     // 0 より前にはならないので、巻き戻しの入口は開始の盤面
     expect(soon!.tick).toBe(0);
+  });
+});
+
+describe('統計と見どころの突き合わせ', () => {
+  it('見どころの量は、記録の統計・最終盤面から独立に計算した値と一致する', { timeout: 60_000 }, () => {
+    // 見どころは出来事の索引から立てる。それが、シミュレーションが数えた
+    // 統計（stats）と最終盤面（bestTierThisRun）と一致するかを突き合わせる
+    // （イベントの数え間違い・二重計上をここで止める）。
+    const check = (record: ReplayRecord, final: GameSnapshot, label: string): void => {
+      const h = findHighlights(record);
+      expect(h.ok, label).toBe(true);
+      if (!h.ok) return;
+      const byKind = (k: HighlightKind) => h.highlights.filter((x) => x.kind === k);
+      // 最大の連鎖: 統計の maxChain と一致（1 度も連鎖しなければ立たない）
+      const chain = byKind('maxChain');
+      if (record.stats.maxChain > 0) {
+        expect(chain, label).toHaveLength(1);
+        expect(chain[0]!.value, label).toBe(record.stats.maxChain);
+      } else {
+        expect(chain, label).toHaveLength(0);
+      }
+      // 超新星: 起きた回数ぶんだけ立ち、何回目かは 1 から順に振られる
+      const novas = byKind('supernova');
+      expect(novas, label).toHaveLength(record.stats.supernovas);
+      novas.forEach((n, i) => expect(n.value).toBe(i + 1));
+      // 最高 Tier の誕生: 合体があれば最終盤面の bestTierThisRun と一致。
+      // （開始時の最高 Tier が 0 の記録では、1 度でも合体すれば必ず越える）
+      const best = byKind('bestTier');
+      if (record.stats.merges > 0) {
+        expect(best, label).toHaveLength(1);
+        expect(best[0]!.value, label).toBe(final.bestTierThisRun);
+      } else {
+        expect(best, label).toHaveLength(0);
+      }
+    };
+
+    // 複数の自動プレイで突き合わせる
+    for (const seed of [23, 37, 44, 45, 71, 88]) {
+      const { record, final } = recordAutoPlay(seed, 900);
+      check(record, final, `seed ${seed}`);
+    }
+
+    // 必ず合体する記録を 1 つ足す。autoplay のシードの偏りで
+    // 「どの記録も合体していない」になると、上の検査が空に回ってしまう
+    const setup: SimulationSetup = { bodies: [at(4, 150, 0), at(4, 232, 0)] };
+    const sim = createSimulation(1, setup);
+    for (let i = 0; i < 300; i++) sim.stepFixed();
+    const record = createReplayRecord(sim, { setup });
+    expect(record.stats.merges).toBeGreaterThan(0);
+    check(record, sim.getSnapshot(), 'setup');
   });
 });
 
