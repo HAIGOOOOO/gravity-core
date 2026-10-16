@@ -133,6 +133,39 @@ describe('壊れた入力を通さない', () => {
     expect(d.overLimitEntries).toBe(1);
     expect(d.overLimitSeconds).toBeCloseTo(30 / TICK_HZ, 10);
   });
+  it('start の無い overLimitEnd は無視する', () => {
+    const d = buildRunDetail([event('overLimitEnd', 50)], snapshot({ tick: 100 }), META);
+    expect(d.overLimitEntries).toBe(0);
+    expect(d.overLimitSeconds).toBe(0);
+  });
+  it('読めない時刻の限界出来事は区間を汚さず、統計は保存できる形に残る', () => {
+    const events = [
+      event('overLimitStart', 10),
+      event('overLimitEnd', 40), // 30 tick 有効
+      event('overLimitStart', NaN), // 時刻が読めない → 出来事ごと捨てる
+      event('overLimitStart', 100),
+      event('overLimitEnd', Infinity), // 読めない end は「来ない」のと同じ → 区間は開いたまま
+      event('overLimitEnd', -50), // 負は 0 に丸める → 100 - 0 は負なので 0 tick、区間は閉じる
+      event('overLimitStart', 200), // 新しい区間（終了まで開きっぱなし）
+    ];
+    const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
+    expect(d.overLimitEntries).toBe(3); // tick 10, 100, 200
+    // 有効な区間: 10〜40 の 30 tick + 200〜300 の 100 tick（100〜0 は負なので 0）
+    expect(d.overLimitSeconds).toBeCloseTo(130 / TICK_HZ, 10);
+    expect(Number.isFinite(d.overLimitSeconds)).toBe(true);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('盤面の集計と識別情報が欠けていても、検査を通る値に仕上げる', () => {
+    const snap = snapshot({ stats: undefined });
+    const d = buildRunDetail(
+      [event('merge', 5, { chain: 4, scoreDelta: 50 })],
+      snap,
+      { id: 'meta', playedAt: 'not-a-date', gameVersion: '0.1.0' },
+    );
+    expect(d.maxChain).toBe(4); // 出来事側の連鎖は残る
+    expect(d.playedAt).toBe('1970-01-01T00:00:00.000Z');
+    expect(readRunDetail(d)).not.toBeNull();
+  });
 });
 
 describe('自動プレイとの照合', () => {

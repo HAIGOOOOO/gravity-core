@@ -25,10 +25,19 @@ export type RunTrend = Readonly<{
   /** 比較に使った記録の総数 */
   totalCount: number;
   score: MetricTrend;
-  scorePerLaunch: MetricTrend;
+  /** プレイ時間（秒） */
+  seconds: MetricTrend;
+  launches: MetricTrend;
+  lands: MetricTrend;
+  merges: MetricTrend;
+  supernovas: MetricTrend;
   maxChain: MetricTrend;
   bestTier: MetricTrend;
   overLimitSeconds: MetricTrend;
+  overLimitEntries: MetricTrend;
+  scorePerLaunch: MetricTrend;
+  maxSingleScore: MetricTrend;
+  maxImpactSpeed: MetricTrend;
 }>;
 
 function metricTrend(
@@ -53,11 +62,14 @@ function metricTrend(
 
 /**
  * 直近 window 件とその前の window 件を比べて、上達の移り変わりを出す。
- * runs はどの順で渡してもよい（playedAt で並べ直す）。
+ * runs はどの順で渡してもよい（playedAt で並べ直す）。日時の読めない記録は
+ * 並べ替えの位置が決まらないので、比較から外す。
  */
 export function summarizeTrend(runs: readonly RunDetailV1[], windowSize = 10): RunTrend {
   const window = Number.isFinite(windowSize) ? Math.max(1, Math.floor(windowSize)) : 10;
-  const sorted = [...runs].sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
+  const sorted = runs
+    .filter((run) => Number.isFinite(Date.parse(run.playedAt)))
+    .sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
   const recent = sorted.slice(-window);
   const previous = sorted.slice(Math.max(0, sorted.length - window * 2), Math.max(0, sorted.length - window));
   const values = (list: readonly RunDetailV1[], pick: (run: RunDetailV1) => number): number[] => list.map(pick);
@@ -69,9 +81,17 @@ export function summarizeTrend(runs: readonly RunDetailV1[], windowSize = 10): R
     previousCount: previous.length,
     totalCount: sorted.length,
     score: trend((r) => r.score),
-    scorePerLaunch: trend((r) => r.scorePerLaunch),
+    seconds: trend((r) => r.seconds),
+    launches: trend((r) => r.launches),
+    lands: trend((r) => r.lands),
+    merges: trend((r) => r.merges),
+    supernovas: trend((r) => r.supernovas),
     maxChain: trend((r) => r.maxChain),
     bestTier: trend((r) => r.bestTier),
     overLimitSeconds: trend((r) => r.overLimitSeconds),
+    overLimitEntries: trend((r) => r.overLimitEntries),
+    scorePerLaunch: trend((r) => r.scorePerLaunch),
+    maxSingleScore: trend((r) => r.maxSingleScore),
+    maxImpactSpeed: trend((r) => r.maxImpactSpeed),
   };
 }

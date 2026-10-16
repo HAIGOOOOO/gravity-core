@@ -113,6 +113,31 @@ describe('統計アーカイブの保存', () => {
     expect(trend.totalCount).toBe(1);
     expect(trend.score.allTimeBest).toBe(100);
   });
+  it('load の戻り値を書き換えても、保存の中身は変わらない', () => {
+    const store = createStatsStore(fakeStorage());
+    store.add(detail('a', '2026-10-10T00:00:00.000Z'));
+    const loaded = store.load();
+    loaded.runs.push(detail('fake', '2026-10-11T00:00:00.000Z'));
+    (loaded.runs[0] as { score: number }).score = 999999;
+    (loaded.runs[0].mergesByTier as number[])[0] = 99;
+    const again = store.load();
+    expect(again.runs).toHaveLength(1);
+    expect(again.runs[0]?.score).toBe(100);
+    expect(again.runs[0]?.mergesByTier[0]).toBe(0);
+  });
+  it('save も移し替えを通して、壊れた項目を捨ててから書く', () => {
+    const store = createStatsStore(fakeStorage());
+    store.save({
+      version: 1,
+      runs: [detail('ok', '2026-10-10T00:00:00.000Z'), { id: 'bad' } as unknown as RunDetailV1],
+    });
+    expect(store.load().runs.map((r) => r.id)).toEqual(['ok']);
+  });
+  it('mergesByTier の形が違う記録は足さない', () => {
+    const store = createStatsStore(fakeStorage());
+    store.add(detail('bad', '2026-10-10T00:00:00.000Z', { mergesByTier: [1, 2, 3] }));
+    expect(store.load().runs).toHaveLength(0);
+  });
   it('読み込み・書き込みが拒否されてもメモリで続ける', () => {
     const storage = {
       getItem() {

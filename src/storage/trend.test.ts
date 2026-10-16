@@ -95,4 +95,45 @@ describe('上達の移り変わり', () => {
     expect(trend.maxChain.best).toBe(3);
     expect(trend.maxChain.allTimeBest).toBe(8);
   });
+  it('統計の全指標について平均・最大・伸び・自己ベストを出す', () => {
+    const runs = [
+      detail('old', days(0), { seconds: 100, launches: 20, lands: 18, merges: 4, supernovas: 0, overLimitEntries: 1, maxSingleScore: 100, maxImpactSpeed: 500, scorePerLaunch: 5 }),
+      detail('new', days(1), { seconds: 300, launches: 40, lands: 36, merges: 12, supernovas: 1, overLimitEntries: 3, maxSingleScore: 500, maxImpactSpeed: 900, scorePerLaunch: 15 }),
+    ];
+    const trend = summarizeTrend(runs, 1);
+    expect(trend.seconds.average).toBeCloseTo(300, 10);
+    expect(trend.seconds.previousAverage).toBeCloseTo(100, 10);
+    expect(trend.seconds.delta).toBeCloseTo(200, 10);
+    expect(trend.launches.delta).toBeCloseTo(20, 10);
+    expect(trend.lands.delta).toBeCloseTo(18, 10);
+    expect(trend.merges.delta).toBeCloseTo(8, 10);
+    expect(trend.supernovas.allTimeBest).toBe(1);
+    expect(trend.overLimitEntries.delta).toBeCloseTo(2, 10);
+    expect(trend.maxSingleScore.allTimeBest).toBe(500);
+    expect(trend.maxImpactSpeed.best).toBe(900);
+    expect(trend.scorePerLaunch.allTimeBest).toBe(15);
+    expect(trend.bestTier.allTimeBest).toBe(3);
+    expect(trend.overLimitSeconds.average).toBeCloseTo(0, 10);
+  });
+  it('窓の大きさがおかしくても 1 以上の整数に丸めて計算する', () => {
+    const runs = [detail('a', days(0), { score: 100 }), detail('b', days(1), { score: 300 })];
+    expect(summarizeTrend(runs, 0).window).toBe(1);
+    expect(summarizeTrend(runs, -5).window).toBe(1);
+    expect(summarizeTrend(runs, 2.9).window).toBe(2);
+    expect(summarizeTrend(runs, NaN).window).toBe(10);
+    expect(summarizeTrend(runs, Infinity).window).toBe(10);
+    expect(summarizeTrend(runs, 1).previousCount).toBe(1); // 窓 1 でも前の 1 件と比べられる
+  });
+  it('日時の読めない記録は並べ替えから外す', () => {
+    const runs = [
+      detail('bad', 'not-a-date', { score: 9999 }),
+      detail('a', days(0), { score: 100 }),
+      detail('b', days(1), { score: 300 }),
+    ];
+    const trend = summarizeTrend(runs, 1);
+    expect(trend.totalCount).toBe(2);
+    expect(trend.score.best).toBe(300);
+    expect(trend.score.allTimeBest).toBe(300);
+    expect(trend.score.previousAverage).toBeCloseTo(100, 10);
+  });
 });

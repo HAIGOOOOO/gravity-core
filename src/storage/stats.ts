@@ -3,7 +3,7 @@
 // 別のキーに版つきで蓄える。このファイルは出来事の数え上げだけ（保存は history.ts、
 // 検査と移し替えは archive.ts、推移は trend.ts）。
 
-import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
+import type { GameEvent, GameSnapshot, RunStats, Tick } from '../contracts/game';
 import { TICK_HZ, TIER_COUNT } from '../game/constants';
 
 /** 統計アーカイブの版。形を変えるときは 1 つ上げ、archive.ts の移し替えに足す。 */
@@ -98,6 +98,9 @@ export function createEventFold(): EventFold {
 const countInt = (value: number | undefined): number | null =>
   value !== undefined && Number.isFinite(value) ? Math.floor(value) : null;
 
+/** 限界区間の計算に使う tick。NaN・無限は区間を作れないので捨て、負は 0 に丸める。 */
+const saneTick = (tick: Tick): Tick | null => (Number.isFinite(tick) ? Math.max(0, tick) : null);
+
 /** 出来事を 1 件数える。並びが多少乱れていても負の値や NaN に崩れない。 */
 export function foldEvent(fold: EventFold, event: GameEvent): void {
   switch (event.kind) {
@@ -122,19 +125,24 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
     case 'supernova':
       fold.supernovas++;
       break;
-    case 'overLimitStart':
+    case 'overLimitStart': {
+      const tick = saneTick(event.tick);
       // 「越え始めた回数」は越えていない状態から越えた時だけ数える（重複した start は無視）
-      if (fold.overLimitSince === null) {
-        fold.overLimitSince = event.tick;
+      if (tick !== null && fold.overLimitSince === null) {
+        fold.overLimitSince = tick;
         fold.overLimitEntries++;
       }
       break;
-    case 'overLimitEnd':
-      if (fold.overLimitSince !== null) {
-        fold.overLimitTicks += Math.max(0, event.tick - fold.overLimitSince);
+    }
+    case 'overLimitEnd': {
+      const tick = saneTick(event.tick);
+      // 読めない時刻の end は「来なかった」のと同じ扱い: 区間は開いたまま、仕上げで閉じる
+      if (tick !== null && fold.overLimitSince !== null) {
+        fold.overLimitTicks += Math.max(0, tick - fold.overLimitSince);
         fold.overLimitSince = null;
       }
       break;
+    }
     case 'gameOver':
       break;
   }
@@ -157,11 +165,18 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
   const overLimitTicks = fold.overLimitTicks
     + (fold.overLimitSince !== null ? Math.max(0, tick - fold.overLimitSince) : 0);
   const score = nonNegativeInt(snapshot.score);
+  // 盤面の集計がまるごと欠けていても落ちないよう、ある分だけ読む
+  const simStats: Partial<RunStats> = snapshot.stats ?? {};
+  // 読めない日付は保存時の検査で 1 回分まるごと捨てられるので、原点に置き換える（順序だけが古い端にずれる）。
+  // id は捏造できないので、文字列でなければ空のまま渡して保存時の検査に落としてもらう
+  const playedAt = typeof meta.playedAt === 'string' && Number.isFinite(Date.parse(meta.playedAt))
+    ? meta.playedAt
+    : '1970-01-01T00:00:00.000Z';
   return {
-    id: meta.id,
-    playedAt: meta.playedAt,
+    id: typeof meta.id === 'string' ? meta.id : '',
+    playedAt,
     seed: nonNegativeInt(snapshot.seed),
-    gameVersion: meta.gameVersion,
+    gameVersion: typeof meta.gameVersion === 'string' ? meta.gameVersion : '',
     score,
     seconds: tick / TICK_HZ,
     launches: fold.launches,
@@ -169,7 +184,7 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
     merges: fold.merges,
     supernovas: fold.supernovas,
     // 出来事の連鎖と盤面の集計の大きい方（片方が欠けても正しい値を残す）
-    maxChain: Math.max(fold.chainMax, nonNegativeInt(snapshot.stats.maxChain)),
+    maxChain: Math.max(fold.chainMax, nonNegativeInt(simStats.maxChain ?? 0)),
     bestTier: Math.min(TIER_COUNT - 1, nonNegativeInt(snapshot.bestTierThisRun)),
     overLimitSeconds: overLimitTicks / TICK_HZ,
     overLimitEntries: fold.overLimitEntries,
