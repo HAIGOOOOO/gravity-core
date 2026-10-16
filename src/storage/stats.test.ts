@@ -166,6 +166,68 @@ describe('壊れた入力を通さない', () => {
     expect(d.playedAt).toBe('1970-01-01T00:00:00.000Z');
     expect(readRunDetail(d)).not.toBeNull();
   });
+  it('出来事の列に壊れた要素や未知の種類が混ざっていても、読める分だけ数える', () => {
+    const events = [
+      event('launch', 1),
+      null,
+      undefined,
+      42,
+      'broken',
+      { sequence: 9, tick: 5 }, // kind の無い物
+      { sequence: 10, tick: 5, kind: 'unknownKind' }, // 未来の版で増えた種類
+      event('merge', 10, { sourceTier: 0, chain: 1, scoreDelta: 50 }),
+    ] as unknown as GameEvent[];
+    const d = buildRunDetail(events, snapshot({}), META);
+    expect(d.launches).toBe(1);
+    expect(d.merges).toBe(1);
+    expect(d.mergesByTier[0]).toBe(1);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('終了時刻より後に閉じる区間は、プレイ時間までに切り詰める', () => {
+    const events = [event('overLimitStart', 10), event('overLimitEnd', 1000)];
+    const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
+    expect(d.seconds).toBeCloseTo(300 / TICK_HZ, 10);
+    // 区間 [10, 1000] を [0, 300] に切る → 290 tick
+    expect(d.overLimitSeconds).toBeCloseTo(290 / TICK_HZ, 10);
+    expect(d.overLimitSeconds).toBeLessThanOrEqual(d.seconds);
+  });
+  it('終了後に始まる区間は 0 tick とする（越え始めた回数自体は残す）', () => {
+    const events = [event('overLimitStart', 500), event('overLimitEnd', 600)];
+    const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
+    expect(d.overLimitSeconds).toBe(0);
+    expect(d.overLimitEntries).toBe(1);
+  });
+  it('出来事の時刻が前後して区間が重なっても、実際に越えていた時間を越えて数えない', () => {
+    const events = [
+      event('overLimitStart', 10),
+      event('overLimitEnd', 90), // [10, 90]
+      event('overLimitStart', 20),
+      event('overLimitEnd', 80), // [20, 80] は前の区間に内包
+      event('overLimitStart', 40), // 開き [40, 300] も前の区間と重なる
+    ];
+    const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
+    expect(d.overLimitEntries).toBe(3);
+    // 和集合は [10, 300] = 290 tick（区間をそのまま足すと 80 + 60 + 260 = 400 に膨らむ）
+    expect(d.overLimitSeconds).toBeCloseTo(290 / TICK_HZ, 10);
+    expect(d.overLimitSeconds).toBeLessThanOrEqual(d.seconds);
+  });
+  it('出来事の列が配列でなくても、0 件として仕上げる', () => {
+    const d = buildRunDetail(null as unknown as GameEvent[], snapshot({ tick: 120 }), META);
+    expect(d.launches).toBe(0);
+    expect(d.seconds).toBeCloseTo(120 / TICK_HZ, 10);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('盤面と識別情報がまるごと欠けても落ちない（id は捏造しないので保存側で捨てられる）', () => {
+    const d = buildRunDetail(
+      [],
+      null as unknown as GameSnapshot,
+      null as unknown as typeof META,
+    );
+    expect(d.score).toBe(0);
+    expect(d.seconds).toBe(0);
+    expect(d.id).toBe('');
+    expect(readRunDetail(d)).toBeNull();
+  });
 });
 
 describe('自動プレイとの照合', () => {
@@ -195,5 +257,26 @@ describe('自動プレイとの照合', () => {
     expect(d.overLimitSeconds).toBeGreaterThanOrEqual(0);
     expect(d.mergesByTier.reduce((a, b) => a + b, 0)).toBe(d.merges);
     expect(readRunDetail(d)).not.toBeNull();
+  });
+});
+
+describe('速度', () => {
+  it('1 万件の出来事を 1 プレイ分として畳み込んでも 50ms 以内', () => {
+    const events: GameEvent[] = [];
+    for (let i = 0; i < 2500; i++) {
+      const t = i * 4;
+      events.push(
+        event('merge', t, { sourceTier: asTier(i % TIER_COUNT), chain: (i % 7) + 1, scoreDelta: 100 + i }),
+        event('land', t + 1, { impactSpeed: 300 + (i % 400) }),
+        event('overLimitStart', t + 2),
+        event('overLimitEnd', t + 3),
+      );
+    }
+    const t0 = performance.now();
+    const d = buildRunDetail(events, snapshot({ tick: 10000 }), META);
+    const elapsed = performance.now() - t0;
+    expect(d.merges).toBe(2500);
+    expect(d.overLimitEntries).toBe(2500);
+    expect(elapsed).toBeLessThan(50);
   });
 });

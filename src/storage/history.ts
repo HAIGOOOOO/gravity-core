@@ -17,6 +17,11 @@ export interface StatsStore {
   save(archive: StatsArchive): void;
   /** 1 件足す。同じ id は置き換え、古い順に捨てて MAX_STATS_RUNS 件まで残す */
   add(detail: RunDetailV1): void;
+  /**
+   * まとめて足す（移し替えや一括取り込み用）。add を繰り返すと毎回全件を書き直すので、
+   * まとめて入るときはこちらを使う。書き込みは 1 回だけ。
+   */
+  addAll(details: readonly RunDetailV1[]): void;
   clear(): void;
 }
 
@@ -53,6 +58,22 @@ export function createStatsStore(storage: StoragePort | null = browserStorage())
       write(STATS_KEY, JSON.stringify(memory));
     }
   }
+  // 同じ id は新しい方で置き換え、playedAt の古い順に並べて件数を制限する。
+  // add も addAll もこの 1 本に通す（1 回の呼び出し = 1 回の書き込み）。
+  function addAll(details: readonly RunDetailV1[]): void {
+    initialize();
+    if (!Array.isArray(details)) return; // 配列でない呼び出しでは落ちない
+    const byId = new Map<string, RunDetailV1>();
+    for (const run of memory.runs) byId.set(run.id, run);
+    for (const item of details) {
+      const clean = readRunDetail(item);
+      if (clean) byId.set(clean.id, clean);
+    }
+    const runs = [...byId.values()];
+    runs.sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
+    memory = { version: STATS_VERSION, runs: runs.slice(-MAX_STATS_RUNS) };
+    write(STATS_KEY, JSON.stringify(memory));
+  }
   return {
     load() {
       initialize();
@@ -64,15 +85,9 @@ export function createStatsStore(storage: StoragePort | null = browserStorage())
       write(STATS_KEY, JSON.stringify(memory));
     },
     add(detail) {
-      initialize();
-      const clean = readRunDetail(detail);
-      if (!clean) return;
-      const runs = memory.runs.filter((run) => run.id !== clean.id);
-      runs.push(clean);
-      runs.sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
-      memory = { version: STATS_VERSION, runs: runs.slice(-MAX_STATS_RUNS) };
-      write(STATS_KEY, JSON.stringify(memory));
+      addAll([detail]);
     },
+    addAll,
     clear() {
       initialize();
       memory = defaultStatsArchive();

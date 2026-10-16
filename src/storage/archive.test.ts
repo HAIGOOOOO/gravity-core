@@ -74,12 +74,46 @@ describe('版の移し替え', () => {
     expect(readRunDetail(migrated)).not.toBeNull();
     expect(readRunDetail(detail('full', '2026-10-10T00:00:00.000Z'))).not.toBeNull();
   });
+  it('未検査の古い記録（負・非整数・範囲外）を渡しても、検査を通る統計にそろえる', () => {
+    const broken: RunRecord = {
+      ...legacyRecord('brk'),
+      score: -5,
+      seconds: -1,
+      launches: -2,
+      merges: NaN,
+      maxChain: Infinity,
+      bestTier: 99,
+      seed: 3.7,
+    };
+    const d = detailFromRecord(broken);
+    expect(d.score).toBe(0);
+    expect(d.seconds).toBe(0);
+    expect(d.launches).toBe(0);
+    expect(d.merges).toBe(0);
+    expect(d.maxChain).toBe(0);
+    expect(d.seed).toBe(3); // 非整数は切り捨て
+    expect(d.bestTier).toBe(TIER_COUNT - 1); // 範囲外は上端に丸める
+    expect(d.scorePerLaunch).toBe(0);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
   it.each([null, 42, 'broken', '{broken', { version: 2, runs: [] }, { version: 'x' }, [1, 2, 3], { runs: 'no' }])(
     '移せない保存値 %j は捨てて初期値にする',
     (value) => {
       expect(migrateStatsArchive(value)).toEqual(defaultStatsArchive());
     },
   );
+  it('版 1 の記録で mergesByTier が無くても、0 埋めで拾う', () => {
+    const without = { ...detail('no-tier', '2026-10-10T00:00:00.000Z'), mergesByTier: undefined };
+    const archive = migrateStatsArchive({ version: 1, runs: [without] });
+    expect(archive.runs).toHaveLength(1);
+    expect(archive.runs[0]?.mergesByTier).toEqual(new Array<number>(TIER_COUNT).fill(0));
+  });
+  it('detailFromRecord に null を渡しても落ちず、id は空のまま（保存側の検査で捨てられる）', () => {
+    const d = detailFromRecord(null as unknown as RunRecord);
+    expect(d.id).toBe('');
+    expect(d.score).toBe(0);
+    expect(readRunDetail(d)).toBeNull();
+  });
   it('id の重複は 1 件にし、playedAt の古い順に並べ、件数を制限する', () => {
     const runs = [
       detail('dup', '2026-10-12T00:00:00.000Z'),

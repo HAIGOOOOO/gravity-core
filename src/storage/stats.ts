@@ -69,7 +69,8 @@ export type EventFold = {
   supernovas: number;
   /** 出来事から数えた最大連鎖 */
   chainMax: number;
-  overLimitTicks: number;
+  /** 閉じた限界区間（越え始め〜終わりの tick）。終了時刻との兼ね合いは仕上げでそろえる */
+  overLimitIntervals: { from: Tick; to: Tick }[];
   overLimitEntries: number;
   /** 越え始めた tick。終わっていなければその時刻、越えていなければ null */
   overLimitSince: Tick | null;
@@ -85,7 +86,7 @@ export function createEventFold(): EventFold {
     merges: 0,
     supernovas: 0,
     chainMax: 0,
-    overLimitTicks: 0,
+    overLimitIntervals: [],
     overLimitEntries: 0,
     overLimitSince: null,
     maxSingleScore: 0,
@@ -101,8 +102,14 @@ const countInt = (value: number | undefined): number | null =>
 /** 限界区間の計算に使う tick。NaN・無限は区間を作れないので捨て、負は 0 に丸める。 */
 const saneTick = (tick: Tick): Tick | null => (Number.isFinite(tick) ? Math.max(0, tick) : null);
 
+/** 実行時に null・プリミティブなどの物体でない要素を落とす（kind が読めない物も同様）。 */
+const isEventLike = (value: unknown): boolean =>
+  value !== null && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string';
+
 /** 出来事を 1 件数える。並びが多少乱れていても負の値や NaN に崩れない。 */
 export function foldEvent(fold: EventFold, event: GameEvent): void {
+  // 列に壊れた要素が混ざっていても 1 件で止まらない（未知の種類は switch を素通りして無視される）
+  if (!isEventLike(event)) return;
   switch (event.kind) {
     case 'launch':
       fold.launches++;
@@ -138,7 +145,7 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
       const tick = saneTick(event.tick);
       // 読めない時刻の end は「来なかった」のと同じ扱い: 区間は開いたまま、仕上げで閉じる
       if (tick !== null && fold.overLimitSince !== null) {
-        fold.overLimitTicks += Math.max(0, tick - fold.overLimitSince);
+        fold.overLimitIntervals.push({ from: fold.overLimitSince, to: tick });
         fold.overLimitSince = null;
       }
       break;
@@ -155,28 +162,53 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
 }
 
 /** 壊れた盤面の値が統計を保存不能（検証落ち）にしないよう、非負の有限値にそろえる。 */
-const nonNegative = (value: number): number => (Number.isFinite(value) && value > 0 ? value : 0);
-const nonNegativeInt = (value: number): number => Math.floor(nonNegative(value));
+const nonNegative = (value: number | undefined): number =>
+  (value !== undefined && Number.isFinite(value) && value > 0 ? value : 0);
+const nonNegativeInt = (value: number | undefined): number => Math.floor(nonNegative(value));
+
+/**
+ * 限界を越えていた合計 tick を出す。区間はプレイ時間 [0, tick] の内側に切ってから
+ * 和集合を取る（出来事の時刻が前後して区間が重なっても、実際に越えていた時間より
+ * 多く数えない）。開いたままの区間は最後の盤面の tick まで越えていた扱いにする
+ * （gameOver 時は end が来ないため。0 に倒すと区間全体が消えて過小になる）。
+ */
+function overLimitTotalTicks(fold: EventFold, tick: number): number {
+  const raw = fold.overLimitSince !== null
+    ? [...fold.overLimitIntervals, { from: fold.overLimitSince, to: tick }]
+    : fold.overLimitIntervals;
+  const intervals = raw
+    .map((iv) => ({ from: Math.max(0, iv.from), to: Math.min(tick, iv.to) }))
+    .filter((iv) => iv.to > iv.from)
+    .sort((a, b) => a.from - b.from);
+  let total = 0;
+  let covered = 0; // 和集合の右端。これより左は数え済みなので重ねて足さない
+  for (const iv of intervals) {
+    if (iv.to <= covered) continue;
+    total += iv.to - Math.max(iv.from, covered);
+    covered = iv.to;
+  }
+  return total;
+}
 
 /** 数え上げの結果と最後の盤面・識別情報から 1 回分の統計に仕上げる。fold は変えない。 */
 export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDetailMeta): RunDetailV1 {
-  const tick = nonNegative(snapshot.tick);
-  // 終了時点でまだ越えていた分は、最後の盤面の tick まで数える（gameOver 時は end が来ない）
-  const overLimitTicks = fold.overLimitTicks
-    + (fold.overLimitSince !== null ? Math.max(0, tick - fold.overLimitSince) : 0);
-  const score = nonNegativeInt(snapshot.score);
-  // 盤面の集計がまるごと欠けていても落ちないよう、ある分だけ読む
-  const simStats: Partial<RunStats> = snapshot.stats ?? {};
+  // 盤面・識別情報がまるごと欠けた呼び出しでも落ちないよう、ある分だけ読む
+  const snap: Partial<GameSnapshot> = snapshot ?? {};
+  const info: Partial<RunDetailMeta> = meta ?? {};
+  const tick = nonNegative(snap.tick);
+  const overLimitTicks = overLimitTotalTicks(fold, tick);
+  const score = nonNegativeInt(snap.score);
+  const simStats: Partial<RunStats> = snap.stats ?? {};
   // 読めない日付は保存時の検査で 1 回分まるごと捨てられるので、原点に置き換える（順序だけが古い端にずれる）。
   // id は捏造できないので、文字列でなければ空のまま渡して保存時の検査に落としてもらう
-  const playedAt = typeof meta.playedAt === 'string' && Number.isFinite(Date.parse(meta.playedAt))
-    ? meta.playedAt
+  const playedAt = typeof info.playedAt === 'string' && Number.isFinite(Date.parse(info.playedAt))
+    ? info.playedAt
     : '1970-01-01T00:00:00.000Z';
   return {
-    id: typeof meta.id === 'string' ? meta.id : '',
+    id: typeof info.id === 'string' ? info.id : '',
     playedAt,
-    seed: nonNegativeInt(snapshot.seed),
-    gameVersion: typeof meta.gameVersion === 'string' ? meta.gameVersion : '',
+    seed: nonNegativeInt(snap.seed),
+    gameVersion: typeof info.gameVersion === 'string' ? info.gameVersion : '',
     score,
     seconds: tick / TICK_HZ,
     launches: fold.launches,
@@ -185,7 +217,7 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
     supernovas: fold.supernovas,
     // 出来事の連鎖と盤面の集計の大きい方（片方が欠けても正しい値を残す）
     maxChain: Math.max(fold.chainMax, nonNegativeInt(simStats.maxChain ?? 0)),
-    bestTier: Math.min(TIER_COUNT - 1, nonNegativeInt(snapshot.bestTierThisRun)),
+    bestTier: Math.min(TIER_COUNT - 1, nonNegativeInt(snap.bestTierThisRun)),
     overLimitSeconds: overLimitTicks / TICK_HZ,
     overLimitEntries: fold.overLimitEntries,
     scorePerLaunch: fold.launches > 0 ? score / fold.launches : 0,
@@ -206,6 +238,7 @@ export function buildRunDetail(
   meta: RunDetailMeta,
 ): RunDetailV1 {
   const fold = createEventFold();
-  for (const event of events) foldEvent(fold, event);
+  // 列そのものが壊れていても 0 件として仕上げる（1 件の壊れた呼び出しで落ちない）
+  if (Array.isArray(events)) for (const event of events) foldEvent(fold, event);
   return finishFold(fold, snapshot, meta);
 }

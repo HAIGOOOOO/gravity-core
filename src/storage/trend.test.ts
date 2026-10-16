@@ -124,6 +124,30 @@ describe('上達の移り変わり', () => {
     expect(summarizeTrend(runs, Infinity).window).toBe(10);
     expect(summarizeTrend(runs, 1).previousCount).toBe(1); // 窓 1 でも前の 1 件と比べられる
   });
+  it('合体の Tier 内訳の推移も Tier ごとに出す', () => {
+    const byTier = (entries: Record<number, number>): number[] => {
+      const list = new Array<number>(TIER_COUNT).fill(0);
+      for (const [tier, count] of Object.entries(entries)) list[Number(tier)] = count;
+      return list;
+    };
+    const runs = [
+      detail('old', days(0), { mergesByTier: byTier({ 0: 5, 1: 1 }) }),
+      detail('mid', days(1), { mergesByTier: byTier({ 0: 3 }) }),
+      detail('new', days(2), { mergesByTier: byTier({ 0: 8, 3: 2 }) }),
+      detail('short', days(3), { mergesByTier: [4] }), // 長さの足りない内訳
+    ];
+    const trend = summarizeTrend(runs, 2);
+    expect(trend.mergesByTier).toHaveLength(TIER_COUNT);
+    // 直近 2 件（new, short）の Tier 0: (8 + 4) / 2 = 6
+    expect(trend.mergesByTier[0]?.average).toBeCloseTo(6, 10);
+    // その前 2 件（old, mid）の Tier 0: (5 + 3) / 2 = 4
+    expect(trend.mergesByTier[0]?.previousAverage).toBeCloseTo(4, 10);
+    expect(trend.mergesByTier[0]?.delta).toBeCloseTo(2, 10);
+    expect(trend.mergesByTier[0]?.allTimeBest).toBe(8);
+    expect(trend.mergesByTier[3]?.allTimeBest).toBe(2);
+    // 内訳の無い Tier は 0 として数える
+    expect(trend.mergesByTier[5]?.average).toBeCloseTo(0, 10);
+  });
   it('日時の読めない記録は並べ替えから外す', () => {
     const runs = [
       detail('bad', 'not-a-date', { score: 9999 }),
@@ -135,5 +159,35 @@ describe('上達の移り変わり', () => {
     expect(trend.score.best).toBe(300);
     expect(trend.score.allTimeBest).toBe(300);
     expect(trend.score.previousAverage).toBeCloseTo(100, 10);
+  });
+  it('記録の列そのものや中身が壊れていても、読める分だけで計算する', () => {
+    const runs = [
+      null,
+      42,
+      'broken',
+      { playedAt: 'not-a-date' },
+      {},
+      detail('a', days(0), { score: 100 }),
+      detail('b', days(1), { score: 300 }),
+    ] as unknown as RunDetailV1[];
+    const trend = summarizeTrend(runs, 1);
+    expect(trend.totalCount).toBe(2);
+    expect(trend.score.best).toBe(300);
+    expect(trend.score.previousAverage).toBeCloseTo(100, 10);
+    expect(summarizeTrend(null as unknown as RunDetailV1[], 10).totalCount).toBe(0);
+    expect(summarizeTrend({} as unknown as RunDetailV1[], 10).score.average).toBeNull();
+  });
+  it('指標の値が壊れていても、その指標だけ有限の値で計算し、ほかは全部使う', () => {
+    const runs = [
+      detail('a', days(0), { score: 100, launches: 10, mergesByTier: [1, 0, 0, 0, 0, 0, 0, 0, 0] }),
+      detail('b', days(1), { score: NaN, launches: 40 }), // score だけ壊れた記録
+      { ...detail('c', days(2)), mergesByTier: undefined } as unknown as RunDetailV1, // 内訳の無い記録
+    ];
+    const trend = summarizeTrend(runs, 3);
+    expect(trend.totalCount).toBe(3);
+    expect(trend.score.average).toBeCloseTo(100, 10); // NaN は平均に入れない（(100 + 100) / 2）
+    expect(trend.score.allTimeBest).toBe(100);
+    expect(trend.launches.average).toBeCloseTo(20, 10); // launches は 3 件とも有限（(10 + 40 + 10) / 3）
+    expect(trend.mergesByTier[0]?.average).toBeCloseTo(1 / 3, 10); // 内訳の無い記録は 0 として数える
   });
 });

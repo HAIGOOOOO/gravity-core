@@ -53,6 +53,14 @@ describe('プレイ中の蓄積器', () => {
     expect(recorder.finish(snap, META)).toEqual(first); // 開いたままの限界区間を二重に足さない
     expect(first.launches).toBe(1);
   });
+  it('feed に配列でない物を渡しても落ちない', () => {
+    const recorder = createRunRecorder();
+    expect(() => recorder.feed(null as unknown as GameEvent[])).not.toThrow();
+    expect(() => recorder.feed({ 0: event('launch', 1), length: 1 } as unknown as GameEvent[])).not.toThrow();
+    const d = recorder.finish(snapshot({ tick: 60 }), META);
+    expect(d.launches).toBe(0);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
   it('reset で次のプレイに備える', () => {
     const recorder = createRunRecorder();
     recorder.feed([event('launch', 1), event('merge', 5, { sourceTier: 0, chain: 2, scoreDelta: 100 })]);

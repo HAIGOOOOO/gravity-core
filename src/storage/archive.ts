@@ -60,24 +60,36 @@ export function readRunDetail(value: unknown): RunDetailV1 | null {
   };
 }
 
-/** 古い形（得点順の 1 行だけの RunRecord）を版 1 の統計に移す。元の記録に無い項目は 0。 */
+const saneReal = (value: unknown): number =>
+  (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
+const saneInt = (value: unknown): number => Math.floor(saneReal(value));
+
+/**
+ * 古い形（得点順の 1 行だけの RunRecord）を版 1 の統計に移す。元の記録に無い項目は 0。
+ * 移し替え（readRecord 経由）では値は検査済みだが、未検査の記録・null を直接渡されても
+ * 検査落ちしないよう、数値はここで正規形にそろえる。id と日時は捏造しない（読めなければ
+ * そのまま渡して保存時の検査に落としてもらう）。
+ */
 export function detailFromRecord(record: RunRecord): RunDetailV1 {
+  const src: Partial<RunRecord> = record ?? {};
+  const score = saneInt(src.score);
+  const launches = saneInt(src.launches);
   return {
-    id: record.id,
-    playedAt: record.playedAt,
-    seed: record.seed,
-    gameVersion: record.gameVersion,
-    score: record.score,
-    seconds: record.seconds,
-    launches: record.launches,
+    id: typeof src.id === 'string' ? src.id : '',
+    playedAt: typeof src.playedAt === 'string' ? src.playedAt : '',
+    seed: saneInt(src.seed),
+    gameVersion: typeof src.gameVersion === 'string' ? src.gameVersion : '',
+    score,
+    seconds: saneReal(src.seconds),
+    launches,
     lands: 0,
-    merges: record.merges,
-    supernovas: record.supernovas,
-    maxChain: record.maxChain,
-    bestTier: record.bestTier,
+    merges: saneInt(src.merges),
+    supernovas: saneInt(src.supernovas),
+    maxChain: saneInt(src.maxChain),
+    bestTier: Math.min(TIER_COUNT - 1, saneInt(src.bestTier)),
     overLimitSeconds: 0,
     overLimitEntries: 0,
-    scorePerLaunch: record.launches > 0 ? record.score / record.launches : 0,
+    scorePerLaunch: launches > 0 ? score / launches : 0,
     maxSingleScore: 0,
     maxImpactSpeed: 0,
     mergesByTier: new Array<number>(TIER_COUNT).fill(0),

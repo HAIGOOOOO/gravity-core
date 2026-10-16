@@ -5,7 +5,7 @@ import { MAX_STATS_RUNS, STATS_VERSION } from './stats';
 import { defaultStatsArchive } from './archive';
 import { summarizeTrend } from './trend';
 import { createRunRecorder } from './recorder';
-import type { RunDetailV1 } from './stats';
+import type { RunDetailV1, StatsArchive } from './stats';
 import type { GameSnapshot } from '../contracts/game';
 import type { RunRecord } from '../contracts/app';
 
@@ -152,6 +152,87 @@ describe('統計アーカイブの保存', () => {
     expect(store.load().runs.map((r) => r.id)).toEqual(['a']);
     expect(() => store.clear()).not.toThrow();
   });
+  it('addAll でまとめて足す: 同じ id は新しい方、書き込みは 1 回だけ', () => {
+    const storage = fakeStorage();
+    const originalSet = storage.setItem;
+    let writes = 0;
+    storage.setItem = (key, value) => {
+      writes++;
+      originalSet(key, value);
+    };
+    const store = createStatsStore(storage);
+    store.add(detail('keep', '2026-10-10T00:00:00.000Z'));
+    writes = 0;
+    store.addAll([
+      detail('b', '2026-10-12T00:00:00.000Z'),
+      detail('a', '2026-10-11T00:00:00.000Z'),
+      detail('keep', '2026-10-13T00:00:00.000Z', { score: 999 }), // 既存 id は置き換え
+      { id: 'broken' } as unknown as RunDetailV1, // 形の違う物は捨てる
+    ]);
+    expect(writes).toBe(1);
+    const runs = store.load().runs;
+    expect(runs.map((r) => r.id)).toEqual(['a', 'b', 'keep']); // playedAt の古い順
+    expect(runs[2]?.score).toBe(999);
+  });
+  it('addAll でも件数の上限は守られる（1100 件 → 1000 件、1 回の書き込み）', () => {
+    const storage = fakeStorage();
+    const originalSet = storage.setItem;
+    let writes = 0;
+    storage.setItem = (key, value) => {
+      writes++;
+      originalSet(key, value);
+    };
+    const store = createStatsStore(storage);
+    store.addAll(
+      Array.from({ length: MAX_STATS_RUNS + 100 }, (_, i) =>
+        detail(`r${i}`, new Date(Date.UTC(2024, 0, 1) + i * 86400000).toISOString())),
+    );
+    expect(writes).toBe(1);
+    const runs = store.load().runs;
+    expect(runs).toHaveLength(MAX_STATS_RUNS);
+    expect(runs[0]?.id).toBe('r100'); // 一番古い 100 件が捨てられる
+  });
+  it('保存の受け口が無い端末（null）でも、メモリで続ける', () => {
+    const store = createStatsStore(null);
+    store.add(detail('a', '2026-10-10T00:00:00.000Z'));
+    expect(store.load().runs.map((r) => r.id)).toEqual(['a']);
+    expect(() => store.clear()).not.toThrow();
+  });
+  it('正規形の保存値は、読み込みで書き直さない（退避もしない）', () => {
+    const storage = fakeStorage();
+    createStatsStore(storage).addAll([detail('a', '2026-10-10T00:00:00.000Z')]);
+    let writes = 0;
+    const original = storage.setItem;
+    storage.setItem = (key, value) => {
+      writes++;
+      original(key, value);
+    };
+    const loaded = createStatsStore(storage).load();
+    expect(loaded.runs).toHaveLength(1);
+    expect(writes).toBe(0);
+    expect(storage.values.has(STATS_BACKUP_KEY)).toBe(false);
+  });
+  it('add は 1 回の呼び出しで 1 回だけ書き込む（呼び出しごと）', () => {
+    const storage = fakeStorage();
+    let writes = 0;
+    const original = storage.setItem;
+    storage.setItem = (key, value) => {
+      writes++;
+      original(key, value);
+    };
+    const store = createStatsStore(storage);
+    store.add(detail('a', '2026-10-10T00:00:00.000Z'));
+    store.add(detail('b', '2026-10-11T00:00:00.000Z'));
+    expect(writes).toBe(2);
+    expect(store.load().runs).toHaveLength(2);
+  });
+  it('addAll に配列でない物、save に別の版の形を渡しても落ちない', () => {
+    const store = createStatsStore(fakeStorage());
+    expect(() => store.addAll(null as unknown as RunDetailV1[])).not.toThrow();
+    expect(() => store.addAll(42 as unknown as RunDetailV1[])).not.toThrow();
+    store.save({ version: 99, runs: [{ id: 'x' }] } as unknown as StatsArchive);
+    expect(store.load()).toEqual(defaultStatsArchive());
+  });
 });
 
 describe('統計アーカイブの移し替え', () => {
@@ -195,5 +276,17 @@ describe('速度', () => {
     expect(archive.runs).toHaveLength(1000);
     expect(trend.recentCount).toBe(50);
     expect(elapsed).toBeLessThan(50);
+  });
+  it('1000 件の保存値は 1MB 未満に収まる（localStorage の上限 5MB に対し十分小さい）', () => {
+    const storage = fakeStorage();
+    createStatsStore(storage).addAll(
+      Array.from({ length: 1000 }, (_, i) =>
+        detail(`r${i}`, new Date(Date.UTC(2024, 0, 1) + i * 86400000).toISOString(), {
+          mergesByTier: [i % 5, i % 3, 1, 0, 0, 1, 0, 0, 0],
+        })),
+    );
+    const bytes = (storage.values.get(STATS_KEY) ?? '').length;
+    expect(bytes).toBeGreaterThan(0);
+    expect(bytes).toBeLessThan(1024 * 1024);
   });
 });

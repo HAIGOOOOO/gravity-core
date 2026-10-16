@@ -19,6 +19,8 @@ export function createRunRecorder(): RunRecorder {
   let fold: EventFold = createEventFold();
   return {
     feed(events) {
+      // 列そのものが壊れた呼び出しでは落ちない（中身の壊れた要素は foldEvent が捨てる）
+      if (!Array.isArray(events)) return;
       for (const event of events) foldEvent(fold, event);
     },
     finish(snapshot, meta) {
