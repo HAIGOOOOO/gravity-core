@@ -201,7 +201,16 @@ export function createDailyChallenge(storage: MetaStorage | null = null): DailyC
     },
     completeOfficial(run, result) {
       if (run.mode !== 'official') return false;
-      if (dayNumberOf(run.dateKey) === null) return false;
+      const day = dayNumberOf(run.dateKey);
+      if (day === null) return false;
+      // 本番ランとして成立しない物は記録しない。シードがその日の本番と違う物
+      // （練習ランの張り替え・別系列の盤面の成りすまし）と、終了時刻（JST）より
+      // 後の日付を名乗る物（未来日へ記録するとその日の本番を消してしまう）を除く。
+      if (run.seed !== dailySeed(run.dateKey)) return false;
+      if (Number.isFinite(result.endedAtMs)) {
+        const endDay = dayNumberOf(jstDateKey(result.endedAtMs));
+        if (endDay !== null && day > endDay) return false;
+      }
       if (Object.hasOwn(memory.official, run.dateKey)) return false;
       memory.official[run.dateKey] = {
         score: Math.max(0, Math.floor(Number.isFinite(result.score) ? result.score : 0)),

@@ -14,7 +14,13 @@ import type { CodexContext, CodexEntry } from './codex';
 import { JST_OFFSET_MS } from './daily';
 
 /** 偉業項目の目標値（meta 側の設計値なのでここにまとめる） */
-const SCORE_MARKS = [10_000, 50_000, 100_000] as const;
+// 得点項目の名前は閾値そのものにしない: 未発見の名前は「？？？」で隠す設計なのに、
+// 名前が閾値だと手がかり（閾値を書く）が名前を明かしてしまうため、呼び名にする
+const SCORE_MARKS = [
+  { mark: 10_000, name: '万点到達' },
+  { mark: 50_000, name: '五万点突破' },
+  { mark: 100_000, name: '十万点の域' },
+] as const;
 const CROWD_BODIES = 20;
 const OVERFLOW_BODIES = 30;
 const MERGES_IN_RUN = 25;
@@ -53,6 +59,19 @@ const snapshotWhen =
     cond(ctx.snapshot) ? ctx.snapshot.tick : null;
 
 const scoreAtLeast = (score: number) => snapshotWhen(s => s.score >= score);
+
+/**
+ * 「遊んだ」最低限の証拠。1 射もしない放置ランでも tick は進むので、
+ * 時間・時刻だけで判定する項目（生存・沈黙・深夜）はこれが無いと放置で取れてしまう。
+ * 最低限の門として「1 射以上」を使う（遊んでから放置したランまでは咎めない）。
+ */
+const engaged = (s: GameSnapshot): boolean => s.stats.launches >= 1;
+
+/** 「遊んだ」証拠が無い盤面では見つからない形にする包み方。 */
+const whenEngaged =
+  (found: CodexEntry['found']) =>
+  (ctx: CodexContext): number | null =>
+    engaged(ctx.snapshot) ? found(ctx) : null;
 
 /**
  * 「越えた瞬間」が分かる時間のしきい値（tick は単調に増えるので）。
@@ -126,6 +145,8 @@ const TIER_DESCRIPTIONS = [
   '最大の天体。どうしが触れると超新星になる',
 ] as const;
 
+// 手がかりは「Tier 番号」ではなく天体の名前で書く。
+// プレイ中に見えるのは名前なので、番号で言われても狙い方が分からない。
 const BODY_ENTRIES: CodexEntry[] = TIER_NAMES.map((name, index) => ({
   id: `body-t${index}`,
   category: 'body',
@@ -134,7 +155,7 @@ const BODY_ENTRIES: CodexEntry[] = TIER_NAMES.map((name, index) => ({
   hint:
     index === 0
       ? 'プレイを始めると盤面にいる天体'
-      : `Tier ${index - 1} の天体どうしを合体させる`,
+      : `「${TIER_NAMES[index - 1] ?? ''}」どうしを合体させる`,
   found: bodyAppeared(index as Tier),
 }));
 
@@ -145,12 +166,12 @@ const EVENT_ENTRIES: CodexEntry[] = [
     hint: '撃った天体を核か山に届かせる', found: hasEvent('land') },
   { id: 'evt-merge', category: 'event', name: '初めての合体', description: '同じ Tier どうしが触れて 1 つ上の天体になった',
     hint: '同じ天体どうしを触れさせる', found: hasEvent('merge') },
-  { id: 'evt-supernova', category: 'event', name: '超新星', description: 'Tier 8 どうしが消え、熱量が大きく下がった',
-    hint: 'Tier 8 の天体を 2 体作り、触れさせる', found: hasEvent('supernova') },
+  { id: 'evt-supernova', category: 'event', name: '超新星', description: `「${TIER_NAMES[8]}」どうしが消え、熱量が大きく下がった`,
+    hint: `「${TIER_NAMES[8]}」を 2 体作り、触れさせる`, found: hasEvent('supernova') },
   { id: 'evt-overlimit', category: 'event', name: '限界突破', description: '山が限界リングを越え、熱量が上がり始めた',
     hint: '山を限界リングの外まで積み上げる', found: hasEvent('overLimitStart') },
   { id: 'evt-recover', category: 'event', name: '立て直し', description: '限界を越えたあと、山をリングの内側へ戻した',
-    hint: '限界を越えたあと、はみ出した天体を消す', found: hasEvent('overLimitEnd') },
+    hint: '限界を越えたあと、合体を重ねて山をリングの内側に戻す', found: hasEvent('overLimitEnd') },
   { id: 'evt-gameover', category: 'event', name: '初めての終わり', description: '熱量が限界に達して終了した',
     hint: '熱量 100 で終わるところまで遊ぶ', found: hasEvent('gameOver') },
 ];
@@ -163,20 +184,24 @@ const CHAIN_ENTRIES: CodexEntry[] = ([2, 3, 4, 5] as const).map(n => ({
     n === 5
       ? `倍率 ${CHAIN_MULT_MAX} に達する連鎖。合体が次の合体を呼んだ`
       : `合体のあと ${CHAIN_WINDOW_SECONDS} 秒以内に、生まれた天体がまた合体した`,
-  hint: `合体のあと ${CHAIN_WINDOW_SECONDS} 秒以内に次の合体を起こす`,
+  // 手がかりは項目ごとに違う文にする（同じ文だと未発見どうしを見分けられない）
+  hint:
+    n === 2
+      ? `合体のあと ${CHAIN_WINDOW_SECONDS} 秒以内に次の合体を起こす`
+      : `連鎖を切らさず ${n} 連鎖まで伸ばす`,
   found: chainAtLeast(n),
 }));
 
 const FEAT_ENTRIES: CodexEntry[] = [
   ...CHAIN_ENTRIES,
   ...SCORE_MARKS.map(
-    (mark): CodexEntry => ({
-      id: `feat-score-${mark}`,
+    (m): CodexEntry => ({
+      id: `feat-score-${m.mark}`,
       category: 'feat',
-      name: `${mark.toLocaleString('ja-JP')} 点`,
-      description: `1 プレイで ${mark.toLocaleString('ja-JP')} 点に届いた`,
-      hint: `1 プレイで ${mark.toLocaleString('ja-JP')} 点を取る`,
-      found: scoreAtLeast(mark),
+      name: m.name,
+      description: `1 プレイで ${m.mark.toLocaleString('ja-JP')} 点に届いた`,
+      hint: `1 プレイで ${m.mark.toLocaleString('ja-JP')} 点を取る`,
+      found: scoreAtLeast(m.mark),
     }),
   ),
   { id: 'feat-crowd', category: 'feat', name: '満員御礼', description: `${CROWD_BODIES} 体の天体が同時に盤面に並んだ`,
@@ -188,18 +213,18 @@ const FEAT_ENTRIES: CodexEntry[] = [
   { id: 'feat-launches', category: 'feat', name: '百発運用', description: `1 プレイで ${LAUNCHES_IN_RUN} 回、天体を撃ち続けた`,
     hint: `1 プレイで ${LAUNCHES_IN_RUN} 回撃つ`, found: snapshotWhen(s => s.stats.launches >= LAUNCHES_IN_RUN) },
   { id: 'feat-survive', category: 'feat', name: '長距離運行', description: '1 プレイで 3 分間生き残った',
-    hint: '1 プレイで 3 分間、終わらずに遊ぶ', found: tickAtLeast(SURVIVE_TICKS) },
+    hint: '1 プレイで 3 分間、終わらずに遊ぶ', found: whenEngaged(tickAtLeast(SURVIVE_TICKS)) },
   { id: 'feat-quiet', category: 'feat', name: '沈黙の運行', description: '開始から 1 分間、一度も合体せずに持ちこたえた',
-    hint: '合体させずに 1 分間生き残る', found: quietMinute },
+    hint: '合体させずに 1 分間生き残る', found: whenEngaged(quietMinute) },
   { id: 'feat-night-owl', category: 'feat', name: '深夜の天文台', description: '日本時間の深夜（0 時〜5 時）に観測を続けた',
-    hint: '日本時間の深夜にプレイする', found: observedAtNight },
+    hint: `日本時間の ${NIGHT_HOURS[0]} 時〜${NIGHT_HOURS[1]} 時にプレイする`, found: whenEngaged(observedAtNight) },
   { id: 'feat-critical', category: 'feat', name: '臨界体験', description: `熱量が ${CRITICAL_HEAT} を越える「臨界」に達した`,
     hint: `熱量を ${CRITICAL_HEAT} まで上げて生き残る`, found: snapshotWhen(s => s.heat >= CRITICAL_HEAT) },
   { id: 'feat-brink', category: 'feat', name: '九死一生', description: `熱量が ${BRINK_HEAT} を越えたのに、まだ終わっていない`,
-    hint: `熱量 ${BRINK_HEAT} を越えても終わらずに持ちこたえる`,
+    hint: `熱量 ${BRINK_HEAT} を越えたら、超新星で下げて持ちこたえる`,
     found: snapshotWhen(s => s.phase === 'active' && s.heat >= BRINK_HEAT) },
-  { id: 'feat-nova-chain', category: 'feat', name: '連鎖超新星', description: '連鎖の勢いのまま、恒星級天体どうしが消えた',
-    hint: '連鎖の中で超新星を起こす',
+  { id: 'feat-nova-chain', category: 'feat', name: '連鎖超新星', description: `連鎖の勢いのまま、「${TIER_NAMES[8]}」どうしが消えた`,
+    hint: `連鎖の途中で「${TIER_NAMES[8]}」どうしを触れさせる`,
     found: firstEventTick(e => e.kind === 'supernova' && (e.chain ?? 0) >= NOVA_CHAIN) },
   { id: 'feat-triple-nova', category: 'feat', name: '超新星三昧', description: `1 プレイで ${NOVAS_IN_RUN} 度の超新星を起こした`,
     hint: `1 プレイで超新星を ${NOVAS_IN_RUN} 回起こす`, found: snapshotWhen(s => s.stats.supernovas >= NOVAS_IN_RUN) },

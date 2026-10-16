@@ -25,8 +25,11 @@ export type UnlockEntry = Readonly<{
   progress(ctx: UnlockContext): number;
 }>;
 
+/** 0〜1 に丸める。NaN は 0、∞ は 1 になる（unlocked() の結果と矛盾しない表示にする） */
+const clamp01 = (n: number): number => (Number.isNaN(n) ? 0 : Math.min(1, Math.max(0, n)));
+
 const ratio = (now: number, target: number): number =>
-  target <= 0 ? 1 : Math.min(1, Math.max(0, now) / target);
+  target <= 0 ? 1 : clamp01(now / target);
 
 const SHARE_SCORE = 10_000;
 

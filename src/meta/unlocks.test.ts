@@ -212,3 +212,59 @@ describe('解放の進み具合（実プレイで測る）', () => {
     expect(counts[7]).toBeGreaterThanOrEqual(5);
   });
 });
+
+// 200 プレイ規模で、どの解放がどのプレイで開くかを実プレイで測る。
+// 実測値は console.log で検査出力へ残し、遅すぎる解放・届かない項目の洗い出しに使う。
+describe('解放ペース（200 プレイ規模）', () => {
+  it('回数で開く物は設計した回数で開き、解放は後戻りしない', () => {
+    const codex = createCodexStore(memoryStorage());
+    const daily = createDailyChallenge(memoryStorage());
+    const noon = jstMs(2026, 10, 16) + 12 * 3_600_000; // 深夜項目が混ざらない昼の時刻
+    const firstOpenRun = new Map<string, number>();
+    const counts: number[] = [];
+    let bestScore = 0;
+    for (let run = 1; run <= 200; run++) {
+      const auto = createAutoPlay(1000 + run);
+      const events: GameEvent[] = [];
+      // 7.5 秒ぶんか終了まで。解放ペースの主役は回数条件なので、ランは短く切る
+      for (let i = 0; i < 900 && auto.sim.getSnapshot().phase === 'active'; i++) {
+        events.push(...auto.step());
+      }
+      const snap = auto.sim.getSnapshot();
+      bestScore = Math.max(bestScore, snap.score);
+      codex.feed(events, snap, { runIndex: run, nowMs: noon });
+      const summary = evaluateUnlocks(unlockContextFrom({ runs: run, bestScore, codex, daily }));
+      counts.push(summary.unlockedCount);
+      for (const e of summary.unlocked) {
+        if (!firstOpenRun.has(e.id)) firstOpenRun.set(e.id, run);
+      }
+    }
+    // プレイ回数だけで開く物は、設計した回数の瞬間に開く
+    expect(firstOpenRun.get('records')).toBe(1);
+    expect(firstOpenRun.get('replay')).toBe(2);
+    expect(firstOpenRun.get('daily')).toBe(3);
+    expect(firstOpenRun.get('stats')).toBe(5);
+    expect(firstOpenRun.get('growth')).toBe(10);
+    // 最初の盤面には必ず Tier 0 がいるので、図鑑は 1 プレイ目から育つ
+    expect(firstOpenRun.get('codex')).toBe(1);
+    // 一度開いた物は閉じない
+    for (let i = 1; i < counts.length; i++) {
+      expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]!);
+    }
+    // 200 プレイで、回数条件の 5 件＋図鑑の入口は必ず開いている
+    expect(counts[199]).toBeGreaterThanOrEqual(6);
+    console.log(
+      `[pace] codex ${codex.progress().found}/${codex.progress().total}` +
+        ` best=${bestScore} first-open=${[...firstOpenRun.entries()]
+          .map(([id, r]) => `${id}@${r}`)
+          .join(' ')}`,
+    );
+    console.log(
+      `[pace] codex unfound: ${codex
+        .list()
+        .filter(v => !v.found)
+        .map(v => v.id)
+        .join(' ')}`,
+    );
+  }, 60_000);
+});

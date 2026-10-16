@@ -227,6 +227,57 @@ describe('ランの記録の細部', () => {
   });
 });
 
+describe('記録の整合性', () => {
+  const t = jstMidnight(2026, 10, 16) + 12 * 3_600_000; // JST 10-16 昼
+
+  it('本番のシードでないランは記録できない（練習ランの張り替え・成りすましを除く）', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    // 練習系列のシードを本番として届ける
+    expect(
+      daily.completeOfficial(
+        { mode: 'official', dateKey: '2026-10-16', seed: practiceSeed('2026-10-16', 0) },
+        { score: 1, endedAtMs: t },
+      ),
+    ).toBe(false);
+    // でたらめな数のシードも同じ
+    expect(
+      daily.completeOfficial(
+        { mode: 'official', dateKey: '2026-10-16', seed: 999 },
+        { score: 1, endedAtMs: t },
+      ),
+    ).toBe(false);
+    expect(daily.history()).toHaveLength(0);
+    // 締め出されても、正しい本番は始められる
+    expect(daily.beginOfficial(t)).not.toBeNull();
+  });
+
+  it('終了時刻より後の日付のランは記録できない（未来日の本番を潰さない）', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    // 「10-17 のラン」と名乗るが、終了時刻はまだ 10-16。実在しないプレイなので捨てる
+    const futureRun = { mode: 'official' as const, dateKey: '2026-10-17', seed: dailySeed('2026-10-17') };
+    expect(daily.completeOfficial(futureRun, { score: 1, endedAtMs: t })).toBe(false);
+    expect(daily.history()).toHaveLength(0);
+    // 未来日の本番は消えていない。翌日になれば普通に始められる
+    const t17 = jstMidnight(2026, 10, 17) + 3_600_000;
+    const run = daily.beginOfficial(t17)!;
+    expect(run.dateKey).toBe('2026-10-17');
+    expect(daily.completeOfficial(run, { score: 1, endedAtMs: t17 + 60_000 })).toBe(true);
+  });
+
+  it('同日・0 時またぎの本番は変わらず記録できる', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    // 当日中に終わるラン
+    const sameDay = daily.beginOfficial(t)!;
+    expect(daily.completeOfficial(sameDay, { score: 1, endedAtMs: t + 300_000 })).toBe(true);
+    // 23:59 に始めて翌日 0:05 に終わるランは、開始日（昨日）へ記録される
+    const before = jstMidnight(2026, 10, 18) - 60_000;
+    const crossing = daily.beginOfficial(before)!;
+    const after = jstMidnight(2026, 10, 18) + 300_000;
+    expect(daily.completeOfficial(crossing, { score: 2, endedAtMs: after })).toBe(true);
+    expect(daily.history().map(r => r.dateKey)).toEqual(['2026-10-17', '2026-10-16']);
+  });
+});
+
 describe('本番と練習の区別', () => {
   const t = jstMidnight(2026, 10, 16) + 12 * 3_600_000; // JST 10-16 昼
 

@@ -162,6 +162,12 @@ describe('図鑑の発見', () => {
     expect(new Set(CODEX_ENTRIES.map(e => e.id)).size).toBe(CODEX_ENTRIES.length);
   });
 
+  it('id は素朴な文字列だけでできている（オブジェクト展開の壊れを防ぐ）', () => {
+    // 表の生成で `${obj}` のようにオブジェクトを埋めると '[object Object]' に化けて
+    // id が重複する。文字種を固定するとその類の壊れがすぐ見える
+    for (const e of CODEX_ENTRIES) expect(e.id).toMatch(/^[a-z0-9-]+$/);
+  });
+
   it('全部の項目に名前・説明・手がかりがあり、一覧は表の順で出る', () => {
     for (const e of CODEX_ENTRIES) {
       expect(e.id).not.toBe('');
@@ -199,17 +205,30 @@ describe('盤面だけで判定する項目', () => {
   });
 
   it('生存時間・合体なしの我慢・限界寸前を判定する', () => {
-    const stats0 = { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
-    expect(foundIds({ tick: 3 * 60 * 120 })).toContain('feat-survive');
-    expect(foundIds({ tick: 3 * 60 * 120 - 1 })).not.toContain('feat-survive');
-    expect(foundIds({ tick: 60 * 120, stats: stats0 })).toContain('feat-quiet');
+    // 時間系の項目は「遊んだ」証拠（1 射以上）が要るので、発射済みの統計で判定する
+    const played = { launches: 10, merges: 0, supernovas: 0, maxChain: 0 };
+    expect(foundIds({ tick: 3 * 60 * 120, stats: played })).toContain('feat-survive');
+    expect(foundIds({ tick: 3 * 60 * 120 - 1, stats: played })).not.toContain('feat-survive');
+    expect(foundIds({ tick: 60 * 120, stats: played })).toContain('feat-quiet');
     // 1 度でも合体していれば沈黙ではない
-    expect(foundIds({ tick: 60 * 120, stats: { ...stats0, merges: 1 } })).not.toContain('feat-quiet');
-    expect(foundIds({ tick: 60 * 120 - 1, stats: stats0 })).not.toContain('feat-quiet');
+    expect(foundIds({ tick: 60 * 120, stats: { ...played, merges: 1 } })).not.toContain('feat-quiet');
+    expect(foundIds({ tick: 60 * 120 - 1, stats: played })).not.toContain('feat-quiet');
     expect(foundIds({ heat: 90, phase: 'active' })).toContain('feat-brink');
     // 終わった盤面は九死ではない
     expect(foundIds({ heat: 90, phase: 'over' })).not.toContain('feat-brink');
     expect(foundIds({ heat: 89, phase: 'active' })).not.toContain('feat-brink');
+  });
+
+  it('1 射もしない放置ランでは、時間系の項目を取れない', () => {
+    // 撃たずに放置しても tick だけは進むので、こういう盤面は実際にありうる
+    const idle = { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
+    const ids = foundIds({ tick: 40_000, stats: idle });
+    expect(ids).not.toContain('feat-survive');
+    expect(ids).not.toContain('feat-quiet');
+    // 1 射でもしていれば、同じ経過時間で取れる
+    const played = { ...idle, launches: 1 };
+    expect(foundIds({ tick: 40_000, stats: played })).toContain('feat-survive');
+    expect(foundIds({ tick: 40_000, stats: played })).toContain('feat-quiet');
   });
 
   it('到達済み Tier より下の天体は、証拠が無くても出たとみなす', () => {
@@ -233,11 +252,22 @@ describe('観測時刻で判定する項目', () => {
   /** JST のその日の hour 時に相当する UTC ms。 */
   const jstMs = (hour: number) => Date.UTC(2026, 9, 16, hour) - JST_OFFSET_MS;
 
+  const played = { launches: 3, merges: 0, supernovas: 0, maxChain: 0 };
+
   it('日本時間の深夜（0 時〜5 時前）だけ見つかる。時刻が無ければ判定しない', () => {
-    expect(foundIds({}, [], jstMs(3))).toContain('feat-night-owl');
-    expect(foundIds({}, [], jstMs(5))).not.toContain('feat-night-owl');
-    expect(foundIds({}, [], jstMs(12))).not.toContain('feat-night-owl');
-    expect(foundIds({})).not.toContain('feat-night-owl');
+    const at = (h?: number) => foundIds({ stats: played }, [], h);
+    expect(at(jstMs(3))).toContain('feat-night-owl');
+    expect(at(jstMs(5))).not.toContain('feat-night-owl');
+    expect(at(jstMs(12))).not.toContain('feat-night-owl');
+    expect(at(undefined)).not.toContain('feat-night-owl');
+  });
+
+  it('深夜でも、1 射もしない放置では見つからない', () => {
+    const idle = { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
+    expect(foundIds({ stats: idle }, [], jstMs(3))).not.toContain('feat-night-owl');
+    expect(foundIds({ stats: { ...idle, launches: 1 } }, [], jstMs(3))).toContain(
+      'feat-night-owl',
+    );
   });
 });
 
@@ -277,6 +307,20 @@ describe('速さ', () => {
     }
     // 出来事が積み上がった終盤の 1 回でも 50ms 以内（実測は 1ms 前後）
     expect(worst).toBeLessThan(50);
+  });
+});
+
+// 未発見の人が読む手がかりの品質を固定する
+describe('手がかり（hint）', () => {
+  it('全部ちがう文で、隠した名前を明かさず、1 行で読める', () => {
+    const hints = CODEX_ENTRIES.map(e => e.hint);
+    // 同じ手がかりが 2 つあると、未発見の項目どうしを見分けられない
+    expect(new Set(hints).size).toBe(hints.length);
+    for (const e of CODEX_ENTRIES) {
+      expect(e.hint).not.toContain('？'); // 隠し名の表記を手がかり側で使わない
+      expect(e.hint).not.toBe(e.name); // 手がかりが答えを明かさない
+      expect(e.hint.length).toBeLessThanOrEqual(60); // 一覧の 1 行に収まる長さ
+    }
   });
 });
 
@@ -356,8 +400,15 @@ describe('静かな 1 分の検出', () => {
 
   it('発見 tick は条件を満たした瞬間そのものを指す', () => {
     const codex = createCodexStore(memoryStorage());
-    // 合体なしで 3 分強が経った盤面をまとめて feed する
-    codex.feed([], snapshot({ tick: 3 * 60 * 120 + 999 }), META);
+    // 発射はしたが合体なしで 3 分強が経った盤面をまとめて feed する
+    codex.feed(
+      [],
+      snapshot({
+        tick: 3 * 60 * 120 + 999,
+        stats: { launches: 4, merges: 0, supernovas: 0, maxChain: 0 },
+      }),
+      META,
+    );
     // 静かな 1 分は 1 分の瞬間、生存は 3 分の瞬間へ飛べる（feed した時点ではない）
     expect(codex.discovery('feat-quiet')!.tick).toBe(60 * 120);
     expect(codex.discovery('feat-survive')!.tick).toBe(3 * 60 * 120);
