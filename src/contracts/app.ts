@@ -113,6 +113,13 @@ export interface EffectsLayer {
   setReducedMotion(on: boolean): void;
   /** 新しいプレイの開始時に、残っている演出を全部消す */
   clear(): void;
+  /**
+   * ゲームの時間の速さを頼む（0 = 止める、1 = ふつう。ヒットストップやスローに使う）。毎フレーム読まれる。
+   * 進行役が上限をかける（止めるのは続けて 0.15 秒まで、スローは 0.2 倍まで・続けて 3 秒まで。`src/shared/time.ts`）。
+   * 速さはゲームの計算と盤面の動きに掛かる。update(dt) の dt は実際の時間のまま。止まっている間の操作は取りこぼさない。
+   * 無ければ常に 1。
+   */
+  timeScale?(): number;
 }
 
 export type UiSound = 'button' | 'bestScore';

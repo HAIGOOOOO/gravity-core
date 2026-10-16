@@ -2,41 +2,40 @@
 // 手元でも GitHub の自動チェックでも同じ物を使う。リーダーのブランチは何でも変えられる。
 import { execSync } from 'node:child_process';
 
-const OWNERS = {
-  // 続ける: 再生、図鑑、解放、日替わり、記録、共有
-  'team-b': ['src/storage/', 'src/meta/', 'src/replay/', 'src/dev/meta-demo.ts', 'dev/meta.html', 'docs/progress/B.md', 'docs/notes/B/'],
-  // 感じる: 演出、効果音、曲、手触り
-  'team-c': [
-    'src/effects/',
-    'src/dev/effects-demo.ts',
-    'dev/effects.html',
-    'docs/progress/C.md',
-    'docs/notes/C/',
-  ],
-  // 見る: 天体の絵、盤面、照準、全画面、入口、文字
-  'team-d': [
-    'src/render/',
-    'src/input/',
-    'src/ui/',
-    'src/styles/',
-    'src/ranking.ts',
-    'ranking.html',
-    'src/dev/board-demo.ts',
-    'src/dev/screens-demo.ts',
-    'src/dev/look-demo.ts',
-    'dev/board.html',
-    'dev/screens.html',
-    'dev/look.html',
-    'public/look/',
-    'docs/progress/D.md',
-    'docs/notes/D/',
-  ],
-};
+// 2026-10-16（方針の版 3）から: 3 本の枝はゲーム全体を作ってよい。触ってはいけない場所だけを決める。
+const TEAMS = ['team-b', 'team-c', 'team-d'];
+const LETTER = { 'team-b': 'B', 'team-c': 'C', 'team-d': 'D' };
+const FORBIDDEN = [
+  // リーダーの場所
+  'src/contracts/',
+  'src/game/',
+  'src/app/',
+  'src/shared/',
+  'src/fixtures/',
+  'src/main.ts',
+  'index.html',
+  'src/audio/',
+  // 決まり
+  'package.json',
+  'package-lock.json',
+  'tsconfig.json',
+  'vite.config.ts',
+  'vite.preview.config.ts',
+  '.github/',
+  'scripts/',
+  'AGENTS.md',
+  'SPEC.md',
+  'docs/方針.md',
+  'docs/RULES.md',
+  'docs/TEAM.md',
+  'docs/tasks/',
+  'docs/review/',
+];
 
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8' }).trim();
 
 const branch = process.env.GITHUB_HEAD_REF || sh('git rev-parse --abbrev-ref HEAD');
-const team = Object.keys(OWNERS).find((name) => branch === name || branch.startsWith(`${name}/`));
+const team = TEAMS.find((name) => branch === name || branch.startsWith(`${name}/`));
 if (!team) {
   console.log(`ブランチ「${branch}」は担当のブランチではないので、調べません。`);
   process.exit(0);
@@ -52,8 +51,11 @@ try {
   process.exit(1);
 }
 
-const allowed = OWNERS[team];
-const outside = changed.filter((file) => !allowed.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p)));
+const me = LETTER[team];
+const others = Object.values(LETTER).filter((x) => x !== me);
+// ほかの担当の進み具合と覚え書きも触らない
+const forbidden = [...FORBIDDEN, ...others.flatMap((x) => [`docs/progress/${x}.md`, `docs/notes/${x}/`])];
+const outside = changed.filter((file) => forbidden.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p)));
 
 if (outside.length > 0) {
   console.error(`「${team}」が触ってはいけない場所を変更しています:`);
@@ -62,4 +64,4 @@ if (outside.length > 0) {
   console.error('変えてほしい場合は docs/progress の「リーダーへの依頼」に書いてください（AGENTS.md 5 章）。');
   process.exit(1);
 }
-console.log(`「${team}」の変更は ${changed.length} 件で、すべて担当の場所の中です。`);
+console.log(`「${team}」の変更は ${changed.length} 件で、すべて触ってよい場所の中です。`);

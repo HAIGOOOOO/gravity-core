@@ -130,3 +130,14 @@ export const LAND_SOUND_MAX = 4;
 export const AUDIO_MASTER_GAIN = 0.8;
 
 export const DPR_CAP = 2;
+
+// ---- 時間を止める・遅くする（ヒットストップとスロー。演出の側が頼み、進行役が上限をかける） ----
+/** これより遅い速さは「止まっている」と数える */
+export const TIME_STOP_BELOW = 0.05;
+/** 続けて止めてよい長さ（秒）。超えたら、下の長さだけ必ず ふつうの速さに戻す */
+export const HITSTOP_MAX_SECONDS = 0.15;
+export const HITSTOP_RECOVER_SECONDS = 0.08;
+/** スローの一番遅い速さと、続けてよい長さ（秒）。超えたら、下の長さだけ ふつうに戻す */
+export const SLOWMO_MIN_SCALE = 0.2;
+export const SLOWMO_MAX_SECONDS = 3;
+export const SLOWMO_RECOVER_SECONDS = 0.5;

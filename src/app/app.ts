@@ -23,6 +23,7 @@ import {
   TIER_NAMES,
 } from '../game/constants';
 import { chainMultiplier, createSimulation } from '../game/simulation';
+import { createTimeGovernor } from '../shared/time';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
 import { createRankingStore, createSaveStore } from '../storage';
@@ -57,6 +58,7 @@ export function startApp(): void {
   let sim: SimulationPort = createSimulation(newSeed());
   let prev: GameSnapshot = sim.getSnapshot();
   let acc = 0;
+  const timeGovernor = createTimeGovernor();
   let last = performance.now();
   let timeSeconds = 0;
   let aim: AimView | null = null;
@@ -129,6 +131,7 @@ export function startApp(): void {
     pendingLaunch = null;
     result = undefined;
     effects.clear();
+    timeGovernor.reset();
     audio.setCritical(false);
     setState('playing');
     if (!save.hints.firstMergeDone) hud.showToast(STRINGS.hintStart, 6);
@@ -208,8 +211,10 @@ export function startApp(): void {
     last = now;
 
     if (state === 'playing' || state === 'title') {
-      timeSeconds += delta;
-      acc += delta;
+      // ヒットストップとスロー: 演出が頼んだ速さを、上限をかけてから計算の時間に掛ける
+      const scale = state === 'playing' ? timeGovernor.apply(effects.timeScale?.() ?? 1, delta) : 1;
+      timeSeconds += delta * scale;
+      acc += delta * scale;
       let steps = 0;
       while (acc >= DT && steps < MAX_STEPS_PER_FRAME && (state === 'playing' || state === 'title')) {
         if (state === 'playing' && pendingLaunch && sim.getSnapshot().launchCooldownLeftSeconds <= 0) {
