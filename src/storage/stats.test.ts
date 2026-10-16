@@ -58,7 +58,9 @@ describe('プレイ統計の作成', () => {
     expect(d.merges).toBe(2);
     expect(d.supernovas).toBe(1);
     expect(d.maxChain).toBe(5);
-    expect(d.bestTier).toBe(5);
+    // 超新星の記録がある以上 Tier 8 には届いている。盤面の到達 Tier が下を向いていても
+    // （欠損・別版の盤面など）実績の大きい方を採る。merges 等の counted() と同じ考え方
+    expect(d.bestTier).toBe(TIER_COUNT - 1);
     // 越えていたのは tick 100〜220 と 300〜400（終了まで開きっぱなし）
     expect(d.overLimitSeconds).toBeCloseTo(220 / TICK_HZ, 10);
     expect(d.overLimitEntries).toBe(2);
@@ -231,6 +233,16 @@ describe('壊れた入力を通さない', () => {
 });
 
 describe('盤面の集計との照合', () => {
+  it('合体の出来事が示す到達 Tier が盤面を上回るときは、出来事側を採る', () => {
+    // 盤面の集計が欠けた・古い版の記録でも、「この Tier が生まれた」出来事は到達の証拠。
+    // 逆に出来事が示さない分（待ち行列から直接落ちた高い Tier 等）は盤面側が担う
+    const d = buildRunDetail(
+      [event('merge', 5, { sourceTier: 3, resultTier: 4 })],
+      snapshot({ bestTierThisRun: 2 }),
+      META,
+    );
+    expect(d.bestTier).toBe(4);
+  });
   it('出来事の取りこぼしで数が足りない時は、盤面の集計を採る', () => {
     const d = buildRunDetail(
       [event('launch', 1), event('merge', 5, { sourceTier: 0, chain: 1, scoreDelta: 100 })],

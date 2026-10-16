@@ -25,7 +25,12 @@ function readMergesByTier(value: unknown): number[] | null {
   return [...value] as number[];
 }
 
-/** 壊れた項目を渡さないための検査（data.ts の readRecord と同じ方針）。 */
+/**
+ * 壊れた項目を渡さないための検査（data.ts の readRecord と同じ方針）。
+ * 項目どうしの関係（着地 ≤ 射出、内訳の合計 ≤ 合体数、限界超過 ≤ プレイ時間、
+ * 超過時間があるなら回数 ≥ 1）は作り側が保証する物なので、
+ * 崩れた保存値は項目を捨てずに関係だけ直す（1 回分まるごと落とすほどの壊れではない）。
+ */
 export function readRunDetail(value: unknown): RunDetailV1 | null {
   if (!isObject(value)) return null;
   if (typeof value.id !== 'string' || !value.id) return null;
@@ -38,24 +43,35 @@ export function readRunDetail(value: unknown): RunDetailV1 | null {
   if ((value.bestTier as number) >= TIER_COUNT) return null;
   const mergesByTier = readMergesByTier(value.mergesByTier);
   if (mergesByTier === null) return null;
+  const score = value.score as number;
+  const seconds = value.seconds as number;
+  const lands = value.lands as number;
+  // 着地は撃った天体にだけ出る出来事。着地が残る分は、射出の記録が欠けていても撃った扱いにする
+  const launches = Math.max(value.launches as number, lands);
+  // 内訳に数えられた合体は起きた証拠。合計が欠けた形でも、内訳の分だけは合体した扱いにする
+  const merges = Math.max(value.merges as number, mergesByTier.reduce((a, b) => a + b, 0));
+  const overLimitSeconds = Math.min(seconds, value.overLimitSeconds as number);
+  // 越えていた時間があるのに回数 0 は「越え始めの記録だけ欠けた」形。回数だけは立てる
+  const overLimitEntries =
+    overLimitSeconds > 0 ? Math.max(1, value.overLimitEntries as number) : (value.overLimitEntries as number);
   return {
     id: value.id,
     playedAt: value.playedAt,
     seed: value.seed as number,
     gameVersion: value.gameVersion,
-    score: value.score as number,
-    seconds: value.seconds as number,
-    launches: value.launches as number,
-    lands: value.lands as number,
-    merges: value.merges as number,
+    score,
+    seconds,
+    launches,
+    lands,
+    merges,
     supernovas: value.supernovas as number,
     maxChain: value.maxChain as number,
     bestTier: value.bestTier as number,
-    // 作り側は「限界超過 ≤ プレイ時間」を保証する。それを越える保存値は壊れているので、
-    // 項目を捨てずに関係だけ直す（1 回分まるごと落とすほどの壊れではない）
-    overLimitSeconds: Math.min(value.seconds as number, value.overLimitSeconds as number),
-    overLimitEntries: value.overLimitEntries as number,
-    scorePerLaunch: value.scorePerLaunch as number,
+    overLimitSeconds,
+    overLimitEntries,
+    // 派生の値は保存値を信じず元の値から計算し直す（合計と矛盾する組み合わせを通さない）
+    scorePerLaunch: launches > 0 ? score / launches : 0,
+    // 単発得点は作り側が出来事の記録をそのまま残す項目なので削らない（合計を越える値も通す）
     maxSingleScore: value.maxSingleScore as number,
     maxImpactSpeed: value.maxImpactSpeed as number,
     mergesByTier,
