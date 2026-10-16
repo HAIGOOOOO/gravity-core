@@ -18,6 +18,11 @@ const SHORT = 20 * TICK_HZ;
 const MEDIUM = 60 * TICK_HZ;
 
 describe('ボットの決定性', () => {
+  it('ALL_BOTS の名前は全部ちがう（レポートの行名がかぶらない）', () => {
+    const names = ALL_BOTS.map((m) => m(0).name);
+    expect(new Set(names).size).toBe(ALL_BOTS.length);
+  });
+
   for (const make of ALL_BOTS) {
     const name = make(0).name;
     it(
@@ -167,6 +172,30 @@ describe('狙いを定める判断（予測を差し替える）', () => {
     const cmd = curveBot(1).decide(snap(), predict);
     expect(Math.hypot(cmd.vx, cmd.vy)).toBeCloseTo(DROP_SPEED, 9);
   });
+
+  it('curve: 全部の候補が invalid なら、24 刻みの直投げに倒れる', () => {
+    const cmd = curveBot(1).decide(snap(), () => pred({ valid: false }));
+    const grid = (Math.PI * 2) / 24;
+    const k = cmd.originAngleRadians / grid;
+    expect(Math.abs(k - Math.round(k))).toBeLessThan(1e-9);
+    expect(Math.hypot(cmd.vx, cmd.vy)).toBeCloseTo(DROP_SPEED, 9);
+  });
+
+  it('merge: 合体すると予測されても当たる天体が盤面に無い方角は、実在する相手に負ける', () => {
+    const ghost = 3 * GRID48; // 合体する予測だが hitBodyId は盤面に無い → score 0 扱い
+    const solid = 17 * GRID48; // 実在する Tier 5 に当たる → score 5
+    const s = snap({ bodies: [body({ id: 7, tier: 5 })] });
+    const predict: PredictFn = (c) => {
+      if (Math.abs(c.originAngleRadians - ghost) < 1e-9) {
+        return pred({ end: 'body', willMerge: true, hitBodyId: 999, points: [{ x: 100, y: 0, t: 1 }] });
+      }
+      if (Math.abs(c.originAngleRadians - solid) < 1e-9) {
+        return pred({ end: 'body', willMerge: true, hitBodyId: 7, points: [{ x: 100, y: 0, t: 1 }] });
+      }
+      return pred({ valid: false });
+    };
+    expect(mergeBot(1).decide(s, predict).originAngleRadians).toBeCloseTo(solid, 9);
+  });
 });
 
 describe('near（同じ Tier の隣に置く）', () => {
@@ -241,6 +270,10 @@ describe('isSafeLanding（着地先の安全判定）', () => {
   });
   it('points が空でも落ちない', () => {
     expect(isSafeLanding(pred({ end: 'body', hitBodyId: 1 }), snap(), R)).toBe(true);
+  });
+  it('当たる天体が盤面に見つからなければ安全側に数える', () => {
+    // hitBodyId が一致する天体が無い（合体などで消えた後の予測を再利用した時など）
+    expect(isSafeLanding(pred({ end: 'body', points: [{ x: 200, y: 0, t: 1 }], hitBodyId: 42 }), snap(), R)).toBe(true);
   });
 });
 

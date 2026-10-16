@@ -57,6 +57,11 @@ describe('runBatch', () => {
     expect(runs.map((r) => r.seed)).toEqual([10, 11, 12, 13]);
   });
 
+  it('seedStart を省略するとシード 1 から始まる', () => {
+    const runs = runBatch(randomBot, { runs: 2, maxTicks: 2 * TICK_HZ });
+    expect(runs.map((r) => r.seed)).toEqual([1, 2]);
+  });
+
   it('同じ条件なら結果が完全に一致する', () => {
     const a = runBatch(randomBot, { runs: 3, seedStart: 5, maxTicks: 15 * TICK_HZ });
     const b = runBatch(randomBot, { runs: 3, seedStart: 5, maxTicks: 15 * TICK_HZ });
@@ -91,6 +96,21 @@ describe('playOnce の抜けている場合', () => {
     expect(sim.getInputLog()).toHaveLength(0);
     expect(result.ticks).toBeGreaterThanOrEqual(10 * TICK_HZ);
     expect(result.timedOut).toBe(true);
+  });
+
+  it('射出が断られ続けている間にゲームが終わっても、待ちの途中で止まる', () => {
+    // いつも断られるボット + すぐ終わる盤面（熱量 95 のはみ出す山）。
+    // やり直しの待ち tick の途中で phase が 'over' になるので、上限までは進まない
+    const stubborn: Bot = { name: 'stubborn', decide: () => ({ originAngleRadians: 0, vx: 0, vy: 0 }) };
+    const { result, sim } = playOnce(stubborn, {
+      seed: 1,
+      maxTicks: 30 * TICK_HZ,
+      setup: { bodies: [at(7, 130, 0), at(6, 280, 0), at(5, 400, 0)], heat: 95, bestTier: 8 },
+    });
+    expect(result.launches).toBe(0);
+    expect(result.timedOut).toBe(false);
+    expect(sim.getSnapshot().phase).toBe('over');
+    expect(result.ticks).toBeLessThan(5 * TICK_HZ);
   });
 
   it('setup の bestTier がシミュレーションに渡る', () => {

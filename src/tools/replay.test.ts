@@ -71,6 +71,28 @@ describe('replayLaunches', () => {
     expect(s.tick).toBeLessThan(5 * TICK_HZ);
   });
 
+  it('記録された tick を過ぎた入力は、いまの tick で撃つ（手で並べ替えたログ向け）', () => {
+    // 先に tick 200 の無効な射出（受理されない）、あとから tick 50 の有効な射出。
+    // 50 はもう過ぎているので、現在の 200 で撃つ → 新しいログには tick 200 で残る
+    const log = [
+      { tick: 200, originAngleRadians: 0, vx: 0, vy: 0 },
+      { tick: 50, ...dropAt(1) },
+    ];
+    const replay = replayLaunches(1, log, { stopTick: 400 });
+    expect(replay.submitted).toBe(1);
+    const recorded = replay.sim.getInputLog();
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.tick).toBe(200);
+  });
+
+  it('stopTick が最後の入力より前でも、入力は全部撃ってから止まる', () => {
+    const log = [{ tick: 5 * TICK_HZ, ...dropAt(0) }];
+    const replay = replayLaunches(1, log, { stopTick: TICK_HZ });
+    expect(replay.submitted).toBe(1);
+    // 入力の時点までは必ず進むので、終点は stopTick を越えた 5 秒
+    expect(replay.sim.getSnapshot().tick).toBe(5 * TICK_HZ);
+  });
+
   it('stopTick を省略すると、終了まで進んで止まる（既定の上限に届かない）', () => {
     const replay = replayLaunches(1, [], { setup: PILE });
     const s = replay.sim.getSnapshot();

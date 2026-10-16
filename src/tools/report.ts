@@ -1,6 +1,7 @@
 // まわした結果を Markdown の表にする。文字列を作るだけ（ファイルには書かない）。
 
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
+import { diffRuns } from './compare';
 import type { Stats } from './stats';
 
 /** 指標の表示名 */
@@ -80,6 +81,31 @@ export function statsTable(name: string, runs: readonly PlayResult[]): string {
     }),
   );
   return `### ${name}\n\n${table}`;
+}
+
+/**
+ * 「A → B（同じシードどうし）」の差の表。各行は指標で、「B − A」の分布を出す。
+ * 分布どうしの見比べよりシードのばらつきを除けるので、小さい差も見えやすい。
+ * 件名には対の数と、両側の打ち切り数（A→B）を出す。
+ */
+export function diffTable(nameA: string, nameB: string, a: readonly PlayResult[], b: readonly PlayResult[]): string {
+  const d = diffRuns(a, b);
+  const sa = summarizeRuns(a);
+  const sb = summarizeRuns(b);
+  const timeoutsA = a.filter((r) => r.timedOut).length;
+  const timeoutsB = b.filter((r) => r.timedOut).length;
+  const table = markdownTable(
+    ['指標', `${nameA} 中央値`, `${nameB} 中央値`, '差の中央値', '差の10%', '差の90%'],
+    RUN_METRICS.map((m) => [
+      METRIC_LABELS[m],
+      formatNumber(sa[m].median),
+      formatNumber(sb[m].median),
+      formatNumber(d.deltas[m].median),
+      formatNumber(d.deltas[m].p10),
+      formatNumber(d.deltas[m].p90),
+    ]),
+  );
+  return `### ${nameA} → ${nameB}（${d.paired} 対・打ち切り ${timeoutsA}→${timeoutsB}）\n\n${table}`;
 }
 
 /** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */

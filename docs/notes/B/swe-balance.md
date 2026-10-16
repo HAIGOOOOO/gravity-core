@@ -2,9 +2,9 @@
 
 ## いま / つぎ
 
-- いま: ボット 6 種・バッチ・分布・表・決定性・速さ・再現（replay）まで通っている（5 回目）。
-- 5 回目に足した物: `replay.ts`（入力ログからプレイを完全に再現。異常シードの検査用）、指標 `peakHeat`（終わらなかった回の危険度）、`result.setup`（再現用に setup を残す）。`heat75Count` は開始時に越えていれば 1 回と数えるよう揃えた。
-- つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値と速さの数字をここに写す → near の実戦での強さを表で見比べる。
+- いま: ボット 6 種・バッチ・分布・表・決定性・速さ・再現（replay）に加え、6 回目で「同じシードどうしの差」の比較（`compare.ts` の `diffRuns` と `report.ts` の `diffTable`）を足した。全部通っている。
+- 6 回目に足した物: ① `diffRuns`（シードで対を作り B−A の分布を出す。ばらつきを除けるので小さい差も見える）② `diffTable`（指標ごとに両側の中央値と差の 10%〜90%）③ FULL レポートに「ボットの差（random 基準）」と setup 差し替えの対比較 ④ 抜けていたテスト（待ち tick 中の終了、再現で過ぎた入力・stopTick が入力より前、幽霊 hitBodyId、ALL_BOTS 名の一意、seedStart 既定、curve の全 invalid 倒れ）。
+- つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す → 次は「予測どおり合体したか」の精度を測る道具（predict は盤面停止前提なので、当たり率が分かればボットの数字の信頼度が分かる）。
 
 ## 構成（`src/tools/`）
 
@@ -12,7 +12,8 @@
 - `batch.ts`: `playOnce`（1 回）と `runBatch`（N 回・シード順）。指標は秒数・得点・到達 Tier・合体数・合体効率・最大連鎖・熱量 75 超え回数・最高熱量・限界越え秒・射出数・超新星数。
 - `replay.ts`: `replayLaunches`（入力ログを同じ tick に撃ち直して完全再現。異常シードの検査・「同じ手順で条件だけ変えたら」用）。
 - `stats.ts`: 平均・中央値・10%・90%（線形補間）。
-- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別）。
+- `compare.ts`: `diffRuns`（シードで対を作り、指標ごとの「B − A」の分布を出す）。
+- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較）。
 - `speed.test.ts`: 各ボット 30 秒ぶんを回して tick/秒を出す。下限は「実時間の 2 倍」。
 - `balance.report.test.ts`: ふだん各 3 回で動作確認。`VITE_BALANCE=1` で各 100 回 + setup 差し替え比較を console.log に出す。
 
@@ -30,6 +31,7 @@
 - `replayLaunches` は「受理された射出」を同じ tick に撃ち直すだけで完全に再現できる（弾かれた射出は盤面を変えない = `submitLaunch` が判定前に return するのでログに不要）。`stopTick` は入力を全部撃った後の終点で、入力の時点までは必ず進む。`result.setup` に使った setup を残したので、`replayLaunches(result.seed, log, { stopTick: result.ticks, setup: result.setup })` で丸ごと再現できる。
 - `peakHeat`: 熱量 75 超の「回数」や「越えていた秒」だけだと、一度も危なくならなかった回とギリギリだった回の区別が付かない。打ち切りが多い条件で特に効く。
 - `heat75Count` の数え方: 「越えていたエピソードの回数」。開始時にすで越えていれば 1 で始め、下がってまた越えたら +1（setup で熱量 80 開始・猶予時間に 75 を割って再上がり → 2 回、とテストで固定した）。
+- `diffRuns` の理由: setup の差し替え比較は `balanceTable` を並べるだけだとシードのばらつきで差が読めない。同じシードの対ごとの差を取れば、ばらつきが相殺されて小さい差も見える（ペア検定の考え方）。対にならないシード（片方だけ）は `onlyA` / `onlyB` に数えて外す。秒数の差は打ち切りの回で実際より小さく出るので、表の件名に打ち切り数も出す。
 
 ## リーダーへの依頼
 

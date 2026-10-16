@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { PlayResult } from './batch';
-import { balanceTable, formatNumber, formatRange, markdownTable, seedTable, statsTable } from './report';
+import { RUN_METRICS, type PlayResult } from './batch';
+import {
+  balanceTable,
+  diffTable,
+  formatNumber,
+  formatRange,
+  markdownTable,
+  seedTable,
+  statsTable,
+} from './report';
 import { summarize } from './stats';
 
 const base: PlayResult = {
@@ -99,6 +107,32 @@ describe('statsTable', () => {
     const t = statsTable('empty', []);
     expect(t).toContain('### empty');
     expect(t.split('\n')).toHaveLength(15);
+    expect(t).toContain('—');
+  });
+});
+
+describe('diffTable', () => {
+  it('見出しに対の数と打ち切り数、行は指標ごとに「B−A」の分布', () => {
+    const a = [
+      { ...base, seed: 1, score: 100 },
+      { ...base, seed: 2, score: 200, timedOut: true },
+    ];
+    const b = [
+      { ...base, seed: 1, score: 160 },
+      { ...base, seed: 2, score: 260 },
+    ];
+    const t = diffTable('下', '上', a, b);
+    expect(t).toContain('### 下 → 上（2 対・打ち切り 1→0）');
+    // 「### …」・空行・ヘッダ・区切り・11 指標 = 15 行
+    expect(t.split('\n')).toHaveLength(4 + RUN_METRICS.length);
+    // 得点の差は +60 と +60 → 差の中央値 60 が載る
+    const scoreRow = t.split('\n').find((l) => l.includes('得点'))!;
+    expect(scoreRow).toContain('| 60 |');
+  });
+
+  it('対が無くても表を作れる（差はすべて「—」）', () => {
+    const t = diffTable('a', 'b', [{ ...base, seed: 1 }], [{ ...base, seed: 2 }]);
+    expect(t).toContain('0 対');
     expect(t).toContain('—');
   });
 });
