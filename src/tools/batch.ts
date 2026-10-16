@@ -6,6 +6,7 @@ import type {
   GameEvent,
   GameSnapshot,
   LaunchCommand,
+  LaunchRejectReason,
   Prediction,
   SimulationPort,
   Tick,
@@ -19,6 +20,8 @@ import type { Bot, BotFactory } from './bots';
 const HEAT_HOT = HEAT_STATE_LIMITS[2];
 /** 射出が断られた時に、どれだけ進めてからやり直すか */
 const RETRY_WAIT_TICKS = 12;
+/** 断り理由の全部（内訳の初期化と表の列に使う。よく出る順に並べた） */
+export const REJECT_REASONS: readonly LaunchRejectReason[] = ['overlap', 'speed', 'cooldown', 'gameOver'];
 /** 既定の上限: 10 分ぶん */
 export const DEFAULT_MAX_TICKS = 10 * 60 * TICK_HZ;
 
@@ -33,6 +36,13 @@ export type PlayResult = Readonly<{
   launches: number;
   /** 射出を断られた回数（撃てない射出を返した分。1 回あたり 0.1 秒の待ちになる） */
   rejects: number;
+  /**
+   * rejects の理由ごとの内訳。全部足すと rejects と一致する。
+   * 狙いを定めるボットの射出は必ず速度帯内・内向きで、待ち時間が終わってから撃つので、
+   * ふつうは全部 'overlap'（発射点が天体で塞がっていた）になる。
+   * 'speed' / 'cooldown' / 'gameOver' が出たらボットの作りの欠陥の印。
+   */
+  rejectsByReason: Readonly<Record<LaunchRejectReason, number>>;
   merges: number;
   /** 射出 1 回あたりの合体数（打つ効率）。0 射出なら 0 */
   mergesPerLaunch: number;
@@ -104,6 +114,8 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
   const sim = createSimulation(options.seed, options.setup);
   let overLimitTicks = 0;
   let rejects = 0;
+  const rejectsByReason = {} as Record<LaunchRejectReason, number>;
+  for (const r of REJECT_REASONS) rejectsByReason[r] = 0;
   let peakHeat = sim.getSnapshot().heat;
   let wasHot = sim.getSnapshot().heat > HEAT_HOT;
   // 開始時点ですで 75 を越えていたなら、それも「越えていた 1 回」と数える
@@ -131,6 +143,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
       const res = sim.submitLaunch(command);
       if (!res.accepted) {
         rejects++;
+        rejectsByReason[res.reason]++;
         // 射出点が塞がっていた等。少し進めてからやり直す
         for (let i = 0; i < RETRY_WAIT_TICKS; i++) {
           if (sim.getSnapshot().phase !== 'active') break;
@@ -154,6 +167,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
       bestTier: snap.bestTierThisRun,
       launches: snap.stats.launches,
       rejects,
+      rejectsByReason,
       merges: snap.stats.merges,
       mergesPerLaunch: snap.stats.launches > 0 ? snap.stats.merges / snap.stats.launches : 0,
       supernovas: snap.stats.supernovas,

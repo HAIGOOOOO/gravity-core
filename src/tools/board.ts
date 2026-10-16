@@ -41,6 +41,20 @@ export type BoardSummary = Readonly<{
   overLimitRate: number;
   /** 各熱量帯にいた秒数（index = 帯。合計は seconds と同じ） */
   heatBandSeconds: readonly number[];
+  /**
+   * 熱量が初めて「臨界」（境目の一番上 = 75 超）に入った秒。
+   * 入らなければ null。「危険域に届くのは序盤か終盤か」を見る。
+   */
+  firstHotSeconds: number | null;
+  /**
+   * 終わった tick の天体数・占有率・熱量（記録が無ければ null）。
+   * peakHeat（途中の最高値）とは別に終わった瞬間を見る:
+   * 「一度危なくて持ち直した」（終了時は低い）のか「危ないまま終わった」のかを分ける。
+   * 打ち切りの回では「まだ余裕があったか」= 上限を伸ばせるかの目安にもなる。
+   */
+  endBodies: number | null;
+  endFillRatio: number | null;
+  endHeat: number | null;
 }>;
 
 /**
@@ -56,6 +70,10 @@ export function createBoardTracker(): {
   const bodies: number[] = [];
   const fills: number[] = [];
   const bands: number[] = new Array<number>(HEAT_BAND_COUNT).fill(0);
+  let firstHotTick: number | null = null;
+  let lastBodies = 0;
+  let lastFill = 0;
+  let lastHeat = 0;
   return {
     onStep(s) {
       ticks++;
@@ -63,8 +81,14 @@ export function createBoardTracker(): {
       bodies.push(s.bodies.length);
       let area = 0;
       for (const b of s.bodies) area += b.radius * b.radius;
-      fills.push(area / (LIMIT_RADIUS * LIMIT_RADIUS));
-      bands[heatBand(s.heat)] += 1;
+      const fill = area / (LIMIT_RADIUS * LIMIT_RADIUS);
+      fills.push(fill);
+      const band = heatBand(s.heat);
+      bands[band] += 1;
+      if (firstHotTick === null && band === HEAT_BAND_COUNT - 1) firstHotTick = s.tick;
+      lastBodies = s.bodies.length;
+      lastFill = fill;
+      lastHeat = s.heat;
     },
     finish() {
       return {
@@ -74,6 +98,10 @@ export function createBoardTracker(): {
         fillRatio: summarize(fills),
         overLimitRate: ticks > 0 ? overLimitTicks / ticks : NaN,
         heatBandSeconds: bands.map((t) => t / TICK_HZ),
+        firstHotSeconds: firstHotTick === null ? null : firstHotTick / TICK_HZ,
+        endBodies: ticks > 0 ? lastBodies : null,
+        endFillRatio: ticks > 0 ? lastFill : null,
+        endHeat: ticks > 0 ? lastHeat : null,
       };
     },
   };
@@ -120,6 +148,14 @@ export type BoardBatchSummary = Readonly<{
   heatBandRate: readonly number[];
   /** 回ごとの限界越え率の分布 */
   overLimitRate: Stats;
+  /** 「臨界」に一度でも入った回だけの「入った秒」の分布（危険域に届くのが序盤か終盤か） */
+  firstHotSeconds: Stats;
+  /** 「臨界」に一度でも入った回の割合（0〜1。0 回なら NaN） */
+  hotRate: number;
+  /** 終わった瞬間の天体数・占有率・熱量の回ごとの分布（記録の無い回は外す） */
+  endBodies: Stats;
+  endFillRatio: Stats;
+  endHeat: Stats;
 }>;
 
 /**
@@ -134,6 +170,8 @@ export function summarizeBoardBatch(summaries: readonly BoardSummary[]): BoardBa
     totalSeconds += s.seconds;
     for (let i = 0; i < HEAT_BAND_COUNT; i++) bands[i] += s.heatBandSeconds[i] ?? 0;
   }
+  const nonNull = (v: number | null): number[] => (v === null ? [] : [v]);
+  const firsts = summaries.flatMap((s) => nonNull(s.firstHotSeconds));
   return {
     runs: summaries.length,
     peakBodies: summarize(summaries.map((s) => s.bodies.max)),
@@ -142,6 +180,11 @@ export function summarizeBoardBatch(summaries: readonly BoardSummary[]): BoardBa
     usualFill: summarize(summaries.map((s) => s.fillRatio.median)),
     heatBandRate: bands.map((t) => (totalSeconds > 0 ? t / totalSeconds : NaN)),
     overLimitRate: summarize(summaries.map((s) => s.overLimitRate)),
+    firstHotSeconds: summarize(firsts),
+    hotRate: summaries.length > 0 ? firsts.length / summaries.length : NaN,
+    endBodies: summarize(summaries.flatMap((s) => nonNull(s.endBodies))),
+    endFillRatio: summarize(summaries.flatMap((s) => nonNull(s.endFillRatio))),
+    endHeat: summarize(summaries.flatMap((s) => nonNull(s.endHeat))),
   };
 }
 

@@ -14,6 +14,7 @@ function run(over: Partial<PlayResult>): PlayResult {
     bestTier: 3,
     launches: 8,
     rejects: 0,
+    rejectsByReason: { cooldown: 0, overlap: 0, speed: 0, gameOver: 0 },
     merges: 4,
     mergesPerLaunch: 0.5,
     supernovas: 0,

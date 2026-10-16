@@ -9,8 +9,9 @@ import {
   type ShotOutcome,
   type ShotRecord,
 } from './accuracy';
+import type { LaunchRejectReason } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
-import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
+import { REJECT_REASONS, RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
 import type { BoardBatchSummary } from './board';
 import { diffRuns } from './compare';
 import type { OverBatchSummary, OverSummary } from './overlimit';
@@ -254,10 +255,12 @@ export function paceTable(name: string, paces: readonly TierPace[]): string {
  * 盤面の詰まりと熱の滞在の表（ボット別）。
  * 「最大天体」は回ごとの一番詰まった瞬間の天体数の分布、「占有率」は天体面積÷リング面積。
  * 熱の帯は全 tick を合わせた滞在の割合。「臨界」が長いほど終了寸前を引きずっている。
+ * 「臨界到達率」は一度でも臨界に入った回の割合、「初臨界秒」はそれが起きる時刻、
+ * 「終了占有率」「終了熱量」は終わった瞬間の盤面（peak と違い持ち直した回も分かる）。
  */
 export function boardTable(entries: readonly { name: string; summary: BoardBatchSummary }[]): string {
   return markdownTable(
-    ['ボット', '回数', '最大天体（中央）', '最大天体（90%）', '最大占有率', 'ふだんの占有率', '安定', '上昇', '過熱', '臨界', '限界越え率'],
+    ['ボット', '回数', '最大天体（中央）', '最大天体（90%）', '最大占有率', 'ふだんの占有率', '安定', '上昇', '過熱', '臨界', '限界越え率', '臨界到達率', '初臨界秒', '終了占有率', '終了熱量'],
     entries.map(({ name, summary: s }) => [
       name,
       String(s.runs),
@@ -270,7 +273,44 @@ export function boardTable(entries: readonly { name: string; summary: BoardBatch
       formatPercent(s.heatBandRate[2] ?? NaN),
       formatPercent(s.heatBandRate[3] ?? NaN),
       formatPercent(s.overLimitRate.median),
+      formatPercent(s.hotRate),
+      formatRange(s.firstHotSeconds),
+      formatPercent(s.endFillRatio.median),
+      formatNumber(s.endHeat.median),
     ]),
+  );
+}
+
+/**
+ * 断られた射出の理由ごとの表。「塞がり」が多い = 山が発射リングの近くまで育つ盤面が多い。
+ * 「速度」「待ち」「終了後」はボットの作りの欠陥の印（正しく作ったボットでは 0 になる）。
+ * 失敗率 = 失敗 ÷（受理 + 失敗）。待ち 0.1 秒の無駄がどれだけあったかの目安。
+ */
+export function rejectTable(entries: readonly { name: string; runs: readonly PlayResult[] }[]): string {
+  return markdownTable(
+    ['ボット', '射出', '失敗', '失敗率', '塞がり', '速度', '待ち', '終了後'],
+    entries.map(({ name, runs }) => {
+      let launches = 0;
+      let rejects = 0;
+      const byReason = {} as Record<LaunchRejectReason, number>;
+      for (const k of REJECT_REASONS) byReason[k] = 0;
+      for (const r of runs) {
+        launches += r.launches;
+        rejects += r.rejects;
+        for (const k of REJECT_REASONS) byReason[k] += r.rejectsByReason[k];
+      }
+      const attempts = launches + rejects;
+      return [
+        name,
+        String(launches),
+        String(rejects),
+        formatPercent(attempts > 0 ? rejects / attempts : NaN),
+        String(byReason.overlap),
+        String(byReason.speed),
+        String(byReason.cooldown),
+        String(byReason.gameOver),
+      ];
+    }),
   );
 }
 

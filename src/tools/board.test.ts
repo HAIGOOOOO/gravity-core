@@ -70,6 +70,10 @@ function summary(ticks: number, bands: readonly number[], over: Partial<BoardSum
     fillRatio: { n: 2, mean: 0.3, median: 0.3, p10: 0.22, p90: 0.38, min: 0.2, max: 0.4 },
     overLimitRate: 0.2,
     heatBandSeconds: bands.map((t) => t / TICK_HZ),
+    firstHotSeconds: null,
+    endBodies: null,
+    endFillRatio: null,
+    endHeat: null,
     ...over,
   };
 }
@@ -112,7 +116,7 @@ describe('createBoardTracker', () => {
     expect(s.heatBandSeconds).toEqual([1 / TICK_HZ, 0, 1 / TICK_HZ, 1 / TICK_HZ]);
   });
 
-  it('何も記録しなければ tick 0・率は NaN', () => {
+  it('何も記録しなければ tick 0・率は NaN、初臨界と終了時の値は null', () => {
     const s = createBoardTracker().finish();
     expect(s.ticks).toBe(0);
     expect(s.seconds).toBe(0);
@@ -120,6 +124,39 @@ describe('createBoardTracker', () => {
     expect(s.bodies.median).toBeNaN();
     expect(s.overLimitRate).toBeNaN();
     expect(s.heatBandSeconds).toEqual([0, 0, 0, 0]);
+    expect(s.firstHotSeconds).toBeNull();
+    expect(s.endBodies).toBeNull();
+    expect(s.endFillRatio).toBeNull();
+    expect(s.endHeat).toBeNull();
+  });
+
+  it('初めて「臨界」に入った tick を秒で残す（一度入れば以降は更新しない）', () => {
+    const tr = createBoardTracker();
+    tr.onStep(snap({ tick: 10, heat: 20 })); // 安定
+    tr.onStep(snap({ tick: 40, heat: 80 })); // 臨界（初）
+    tr.onStep(snap({ tick: 60, heat: 90 })); // 臨界のまま
+    tr.onStep(snap({ tick: 80, heat: 30 })); // 上昇まで戻る
+    expect(tr.finish().firstHotSeconds).toBeCloseTo(40 / TICK_HZ, 9);
+  });
+
+  it('75 ちょうどはまだ臨界ではない。一度も入らなければ null', () => {
+    const tr = createBoardTracker();
+    tr.onStep(snap({ tick: 1, heat: 75 }));
+    tr.onStep(snap({ tick: 2, heat: 74 }));
+    expect(tr.finish().firstHotSeconds).toBeNull();
+  });
+
+  it('終わった tick の天体数・占有率・熱量を残す', () => {
+    const tr = createBoardTracker();
+    tr.onStep(snap({ tick: 1, bodies: [body({ radius: 160 })], heat: 10 }));
+    tr.onStep(
+      snap({ tick: 2, bodies: [body({ radius: 160 }), body({ id: 2, radius: 160 })], heat: 60 }),
+    );
+    const s = tr.finish();
+    expect(s.endBodies).toBe(2);
+    // 半径 160 の天体 2 体 → 2·160² / 320² = 0.5
+    expect(s.endFillRatio).toBeCloseTo(0.5, 9);
+    expect(s.endHeat).toBe(60);
   });
 });
 
@@ -148,12 +185,45 @@ describe('summarizeBoardBatch', () => {
     expect(s.overLimitRate.median).toBe(0.2);
   });
 
+  it('臨界に入った率・入った秒の分布・終了時の盤面をまとめる（null の回は分布から外す）', () => {
+    const a = summary(120, [60, 30, 20, 10], {
+      firstHotSeconds: 30,
+      endBodies: 8,
+      endFillRatio: 0.4,
+      endHeat: 90,
+    });
+    const b = summary(240, [120, 60, 40, 20], {
+      firstHotSeconds: 60,
+      endBodies: 6,
+      endFillRatio: 0.2,
+      endHeat: 20,
+    });
+    const c = summary(120, [120, 0, 0, 0]); // 臨界にも終了時の値も無い回（firstHot・end* は null）
+    const s = summarizeBoardBatch([a, b, c]);
+    expect(s.runs).toBe(3);
+    // 臨界に入ったのは 2/3 回
+    expect(s.hotRate).toBeCloseTo(2 / 3, 9);
+    // 入った回だけの [30, 60] → 中央 45
+    expect(s.firstHotSeconds.n).toBe(2);
+    expect(s.firstHotSeconds.median).toBe(45);
+    // 終了時の値は c を除いた [8,6]・[0.4,0.2]・[90,20]
+    expect(s.endBodies.n).toBe(2);
+    expect(s.endBodies.median).toBe(7);
+    expect(s.endFillRatio.median).toBeCloseTo(0.3, 9);
+    expect(s.endHeat.median).toBe(55);
+  });
+
   it('空なら回数 0・値は NaN', () => {
     const s = summarizeBoardBatch([]);
     expect(s.runs).toBe(0);
     expect(s.peakBodies.median).toBeNaN();
     expect(s.overLimitRate.median).toBeNaN();
     expect(s.heatBandRate).toEqual([NaN, NaN, NaN, NaN]);
+    expect(s.hotRate).toBeNaN();
+    expect(s.firstHotSeconds.median).toBeNaN();
+    expect(s.endBodies.median).toBeNaN();
+    expect(s.endFillRatio.median).toBeNaN();
+    expect(s.endHeat.median).toBeNaN();
   });
 });
 
@@ -194,6 +264,37 @@ describe('実シミュレーションでの計測', () => {
     expect(result.launches).toBe(0);
     expect(summary.bodies.max).toBe(1); // START_BODY だけ
     expect(summary.heatBandSeconds[0]).toBeCloseTo(result.seconds, 9); // 全部「安定」
+    // 臨界には入らない。終了時の盤面は開始の 1 体・熱量 0
+    expect(summary.firstHotSeconds).toBeNull();
+    expect(summary.endBodies).toBe(1);
+    expect(summary.endHeat).toBe(0);
+  });
+
+  it('終了時の値は最後の tick の盤面と一致する（危なくて持ち直した回も終了時は低い）', () => {
+    const { result, sim, summary } = measureBoard(mergeBot(3), { seed: 3, maxTicks: 10 * TICK_HZ });
+    const last = sim.getSnapshot();
+    expect(last.tick).toBe(result.ticks);
+    expect(summary.endBodies).toBe(last.bodies.length);
+    expect(summary.endHeat).toBe(last.heat);
+    let area = 0;
+    for (const b of last.bodies) area += b.radius * b.radius;
+    expect(summary.endFillRatio).toBeCloseTo(area / (LIMIT_RADIUS * LIMIT_RADIUS), 9);
+    // 終了時の熱量は最高熱量以下（持ち直せば低いまま終わる）
+    expect(summary.endHeat!).toBeLessThanOrEqual(result.peakHeat);
+  });
+
+  it('熱量 95 開始のはみ出す山では、最初の観測から「臨界」で終了熱量は 100', () => {
+    const { result, summary } = measureBoard(randomBot(1), {
+      seed: 1,
+      maxTicks: 30 * TICK_HZ,
+      setup: PILE,
+    });
+    expect(result.timedOut).toBe(false);
+    // 95 開始なので最初の tick ですでに臨界
+    expect(summary.firstHotSeconds).toBeCloseTo(1 / TICK_HZ, 9);
+    // 熱量 100 で終了したので、終了時の熱量は 100（peak と同じ）
+    expect(summary.endHeat).toBe(100);
+    expect(result.peakHeat).toBe(100);
   });
 
   it('決定的: 同じシードで 2 度測るとまとめは全く同じ', () => {

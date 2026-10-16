@@ -146,6 +146,40 @@ describe('playOnce の抜けている場合', () => {
   });
 });
 
+describe('rejectsByReason（断りの内訳）', () => {
+  it('速さ 0 の射出は全部「speed」で断られ、合計は rejects と一致する', () => {
+    const stubborn: Bot = { name: 'stubborn', decide: () => ({ originAngleRadians: 0, vx: 0, vy: 0 }) };
+    const { result } = playOnce(stubborn, { seed: 1, maxTicks: 10 * TICK_HZ });
+    expect(result.rejectsByReason).toEqual({ cooldown: 0, overlap: 0, speed: 100, gameOver: 0 });
+    const r = result.rejectsByReason;
+    expect(r.cooldown + r.overlap + r.speed + r.gameOver).toBe(result.rejects);
+  });
+
+  it('発射点が天体で塞がれていれば「overlap」で断られる', () => {
+    // 角度 0 の発射点 (425, 0) から 25 の所に Tier 5（半径 52）があるので必ず塞がる
+    const zero: Bot = { name: 'zero', decide: () => dropAt(0) };
+    const { result } = playOnce(zero, {
+      seed: 1,
+      maxTicks: 5 * TICK_HZ,
+      setup: { bodies: [at(7, 130, 0), at(6, 280, 0), at(5, 400, 0)], bestTier: 8 },
+    });
+    expect(result.rejectsByReason.overlap).toBeGreaterThanOrEqual(1);
+    // このボットが出す dropAt は速度帯内・内向きなので、塞がり以外の断りは起きない
+    expect(result.rejectsByReason.speed).toBe(0);
+    expect(result.rejectsByReason.cooldown).toBe(0);
+    expect(result.rejectsByReason.gameOver).toBe(0);
+  });
+
+  it('普通のボットの断りは全部「overlap」（速度・待ち・終了後は 0 のまま）', () => {
+    const { result } = playOnce(randomBot(1), { seed: 1, maxTicks: 20 * TICK_HZ });
+    const r = result.rejectsByReason;
+    expect(r.cooldown + r.overlap + r.speed + r.gameOver).toBe(result.rejects);
+    expect(r.speed).toBe(0);
+    expect(r.cooldown).toBe(0);
+    expect(r.gameOver).toBe(0);
+  });
+});
+
 describe('rejects（射出を断られた回数）', () => {
   it('断られるたびに 12 tick 待つので、回数は待ちの回数とつり合う', () => {
     // 速さ 0 は必ず 'speed' で断られる。撃てないまま盤面は動かないので、

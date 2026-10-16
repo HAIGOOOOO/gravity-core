@@ -23,6 +23,7 @@ import {
   outcomeTable,
   overTable,
   paceTable,
+  rejectTable,
   seedTable,
   statsTable,
   tierTable,
@@ -81,6 +82,12 @@ describe('数値調整レポート', () => {
           expect(botBoards[i]!.ticks).toBe(runs[i]!.ticks);
           expect(botOvers[i]!.summary.ticks).toBe(runs[i]!.ticks);
           expect(botOvers[i]!.summary.overSeconds).toBeCloseTo(runs[i]!.overLimitSeconds, 9);
+          // このボットたちが出す射出は必ず速度帯内・内向きで、待ちが終わってから撃つので、
+          // 断られても全部「塞がり」。speed / cooldown / gameOver が出たらボットの欠陥
+          expect(runs[i]!.rejectsByReason.speed).toBe(0);
+          expect(runs[i]!.rejectsByReason.cooldown).toBe(0);
+          expect(runs[i]!.rejectsByReason.gameOver).toBe(0);
+          expect(runs[i]!.rejectsByReason.overlap).toBe(runs[i]!.rejects);
         }
         const s = summarizeRuns(runs);
         expect(s.launches.mean).toBeGreaterThan(0);
@@ -134,6 +141,10 @@ describe('数値調整レポート', () => {
       // 予測の的中率。低いボットほど「狙っているのに外れる」ので、出た数字は実力より低い
       console.log('\n## 予測の的中率（ボット別）\n');
       console.log(accuracyTable(accuracies));
+
+      // 断られた射出の理由。「塞がり」が多いほど、山が発射リングまで育つ盤面が多い
+      console.log('\n## 射出の失敗（ボット別）\n');
+      console.log(rejectTable(collected));
 
       // 外れの内訳（どの結末・どの Tier に散ったか）と個票。
       // 個票の シード+tick から boardBeforeShot で直前の盤面を再現できる

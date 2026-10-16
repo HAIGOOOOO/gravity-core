@@ -20,6 +20,7 @@ import {
   outcomeTable,
   overTable,
   paceTable,
+  rejectTable,
   seedTable,
   statsTable,
   tierTable,
@@ -34,6 +35,7 @@ const base: PlayResult = {
   bestTier: 3,
   launches: 8,
   rejects: 0,
+  rejectsByReason: { cooldown: 0, overlap: 0, speed: 0, gameOver: 0 },
   merges: 4,
   mergesPerLaunch: 0.5,
   supernovas: 0,
@@ -351,7 +353,7 @@ describe('paceTable', () => {
 });
 
 describe('boardTable', () => {
-  it('詰まり具合・熱の帯・限界越え率を列に出す', () => {
+  it('詰まり具合・熱の帯・限界越え率・臨界への届き方・終了時の盤面を列に出す', () => {
     const s: BoardBatchSummary = {
       runs: 3,
       peakBodies: summarize([10, 12, 14]),
@@ -360,14 +362,21 @@ describe('boardTable', () => {
       usualFill: summarize([0.2, 0.3]),
       heatBandRate: [0.7, 0.15, 0.1, 0.05],
       overLimitRate: summarize([0.02, 0.04]),
+      firstHotSeconds: summarize([30, 60]),
+      hotRate: 2 / 3,
+      endBodies: summarize([6, 8]),
+      endFillRatio: summarize([0.4, 0.6]),
+      endHeat: summarize([20, 80]),
     };
     const t = boardTable([{ name: 'a', summary: s }]);
     const lines = t.split('\n');
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain('最大天体');
     expect(lines[0]).toContain('限界越え率');
-    // 最大天体(中央) = 12、(90%) = 13.6、占有率 = 50% / 25%、臨界 = 5%
-    expect(lines[2]).toBe('| a | 3 | 12 | 13.6 | 50% | 25% | 70% | 15% | 10% | 5% | 3% |');
+    expect(lines[0]).toContain('臨界到達率');
+    // 最大天体(中央) = 12、(90%) = 13.6、占有率 = 50% / 25%、臨界 = 5%、臨界到達 67%、
+    // 初臨界 = [30,60] → 45（33〜57）、終了占有率 = 50%、終了熱量 = 50
+    expect(lines[2]).toBe('| a | 3 | 12 | 13.6 | 50% | 25% | 70% | 15% | 10% | 5% | 3% | 67% | 45（33〜57） | 50% | 50 |');
   });
 
   it('0 件でも「—」で埋められる', () => {
@@ -375,6 +384,35 @@ describe('boardTable', () => {
     expect(t.split('\n')).toHaveLength(3);
     expect(t).toContain('empty');
     expect(t).toContain('—');
+  });
+});
+
+describe('rejectTable', () => {
+  it('断り理由ごとの合計と失敗率を出す', () => {
+    const t = rejectTable([
+      {
+        name: 'a',
+        runs: [
+          { ...base, launches: 10, rejects: 3, rejectsByReason: { cooldown: 0, overlap: 3, speed: 0, gameOver: 0 } },
+          { ...base, launches: 5, rejects: 1, rejectsByReason: { cooldown: 0, overlap: 0, speed: 1, gameOver: 0 } },
+        ],
+      },
+      { name: 'b', runs: [{ ...base, launches: 2, rejects: 0 }] },
+    ]);
+    const lines = t.split('\n');
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toContain('塞がり');
+    // a: 15 射・4 失敗・失敗率 4/19 ≈ 21%、内訳は overlap 3 + speed 1
+    expect(lines[2]).toBe('| a | 15 | 4 | 21% | 3 | 1 | 0 | 0 |');
+    // b: 2 射・失敗なし
+    expect(lines[3]).toBe('| b | 2 | 0 | 0% | 0 | 0 | 0 | 0 |');
+  });
+
+  it('射出も失敗も無ければ失敗率は「—」', () => {
+    const t = rejectTable([{ name: 'x', runs: [{ ...base, launches: 0, rejects: 0 }] }]);
+    const line = t.split('\n')[2]!;
+    expect(line).toContain('x');
+    expect(line).toContain('—');
   });
 });
 
