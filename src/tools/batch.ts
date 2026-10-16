@@ -31,6 +31,8 @@ export type PlayResult = Readonly<{
   score: number;
   bestTier: number;
   launches: number;
+  /** 射出を断られた回数（撃てない射出を返した分。1 回あたり 0.1 秒の待ちになる） */
+  rejects: number;
   merges: number;
   /** 射出 1 回あたりの合体数（打つ効率）。0 射出なら 0 */
   mergesPerLaunch: number;
@@ -68,6 +70,12 @@ export type PlayHooks = Readonly<{
   ) => void;
   /** stepFixed が返したイベント（その tick に起きた分）。launch イベントもここに来る */
   onEvents?: (events: readonly GameEvent[]) => void;
+  /**
+   * 1 tick 進むごとに、その tick の終わりの盤面を渡す（onEvents のあとに呼ぶ）。
+   * 終了した tick の盤面も来るので「終わった瞬間の状態」も記録できる。
+   * 盤面の詰まり具合や熱量の滞在を記録する用（board.ts）。
+   */
+  onStep?: (snapshot: GameSnapshot) => void;
 }>;
 
 export type PlayOptions = Readonly<{
@@ -95,6 +103,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
   const maxTicks = options.maxTicks ?? DEFAULT_MAX_TICKS;
   const sim = createSimulation(options.seed, options.setup);
   let overLimitTicks = 0;
+  let rejects = 0;
   let peakHeat = sim.getSnapshot().heat;
   let wasHot = sim.getSnapshot().heat > HEAT_HOT;
   // 開始時点ですで 75 を越えていたなら、それも「越えていた 1 回」と数える
@@ -108,6 +117,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
     if (s.heat > peakHeat) peakHeat = s.heat;
     if (s.heat > HEAT_HOT && !wasHot) heat75Count++;
     wasHot = s.heat > HEAT_HOT;
+    options.hooks?.onStep?.(s);
   };
 
   for (;;) {
@@ -120,6 +130,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
       const predicted = hook === undefined ? undefined : sim.predict(command);
       const res = sim.submitLaunch(command);
       if (!res.accepted) {
+        rejects++;
         // 射出点が塞がっていた等。少し進めてからやり直す
         for (let i = 0; i < RETRY_WAIT_TICKS; i++) {
           if (sim.getSnapshot().phase !== 'active') break;
@@ -142,6 +153,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
       score: snap.score,
       bestTier: snap.bestTierThisRun,
       launches: snap.stats.launches,
+      rejects,
       merges: snap.stats.merges,
       mergesPerLaunch: snap.stats.launches > 0 ? snap.stats.merges / snap.stats.launches : 0,
       supernovas: snap.stats.supernovas,
@@ -187,6 +199,7 @@ export const RUN_METRICS = [
   'overLimitSeconds',
   'launches',
   'supernovas',
+  'rejects',
 ] as const;
 export type RunMetric = (typeof RUN_METRICS)[number];
 

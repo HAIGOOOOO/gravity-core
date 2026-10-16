@@ -10,6 +10,7 @@ import {
   type ShotRecord,
 } from './accuracy';
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
+import type { BoardBatchSummary } from './board';
 import { diffRuns } from './compare';
 import { summarizePace, type TierPace } from './pace';
 import type { Stats } from './stats';
@@ -27,6 +28,7 @@ export const METRIC_LABELS: Record<RunMetric, string> = {
   overLimitSeconds: '限界越え秒',
   launches: '射出数',
   supernovas: '超新星',
+  rejects: '射出失敗',
 };
 
 /** 数値の表示。整数はそのまま、小数は 1 桁、NaN/無限は「—」。 */
@@ -56,7 +58,7 @@ export function markdownTable(headers: readonly string[], rows: readonly (readon
 /** ボットどうし（または設定どうし）を並べた比較表。各マスは「中央値（10%〜90%）」。 */
 export function balanceTable(entries: readonly { name: string; runs: readonly PlayResult[] }[]): string {
   return markdownTable(
-    ['ボット', '回数', '秒数', '得点', '到達Tier', '合体数', '合体効率', '最大連鎖', '限界越え秒', '熱量Max', '熱量75超（平均）', '打ち切り'],
+    ['ボット', '回数', '秒数', '得点', '到達Tier', '合体数', '合体効率', '最大連鎖', '限界越え秒', '熱量Max', '熱量75超（平均）', '射出失敗（平均）', '打ち切り'],
     entries.map(({ name, runs }) => {
       const s = summarizeRuns(runs);
       const timeouts = runs.filter((r) => r.timedOut).length;
@@ -72,6 +74,7 @@ export function balanceTable(entries: readonly { name: string; runs: readonly Pl
         formatRange(s.overLimitSeconds),
         formatRange(s.peakHeat),
         formatNumber(s.heat75Count.mean),
+        formatNumber(s.rejects.mean),
         String(timeouts),
       ];
     }),
@@ -243,6 +246,30 @@ export function paceTable(name: string, paces: readonly TierPace[]): string {
     ]),
   );
   return `### ${name}: Tier ごとの初到達\n\n${table}`;
+}
+
+/**
+ * 盤面の詰まりと熱の滞在の表（ボット別）。
+ * 「最大天体」は回ごとの一番詰まった瞬間の天体数の分布、「占有率」は天体面積÷リング面積。
+ * 熱の帯は全 tick を合わせた滞在の割合。「臨界」が長いほど終了寸前を引きずっている。
+ */
+export function boardTable(entries: readonly { name: string; summary: BoardBatchSummary }[]): string {
+  return markdownTable(
+    ['ボット', '回数', '最大天体（中央）', '最大天体（90%）', '最大占有率', 'ふだんの占有率', '安定', '上昇', '過熱', '臨界', '限界越え率'],
+    entries.map(({ name, summary: s }) => [
+      name,
+      String(s.runs),
+      formatNumber(s.peakBodies.median),
+      formatNumber(s.peakBodies.p90),
+      formatPercent(s.peakFill.median),
+      formatPercent(s.usualFill.median),
+      formatPercent(s.heatBandRate[0] ?? NaN),
+      formatPercent(s.heatBandRate[1] ?? NaN),
+      formatPercent(s.heatBandRate[2] ?? NaN),
+      formatPercent(s.heatBandRate[3] ?? NaN),
+      formatPercent(s.overLimitRate.median),
+    ]),
+  );
 }
 
 /** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { at } from '../fixtures/index';
+import { at, dropAt } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
 import type { SimulationSetup } from '../game/simulation';
 import { playOnce, runBatch, summarizeRuns } from './batch';
@@ -143,6 +143,30 @@ describe('playOnce の抜けている場合', () => {
     expect(played.launches).toBeGreaterThan(0);
     expect(played.mergesPerLaunch).toBeGreaterThanOrEqual(0);
     expect(played.mergesPerLaunch).toBe(played.merges / played.launches);
+  });
+});
+
+describe('rejects（射出を断られた回数）', () => {
+  it('断られるたびに 12 tick 待つので、回数は待ちの回数とつり合う', () => {
+    // 速さ 0 は必ず 'speed' で断られる。撃てないまま盤面は動かないので、
+    // 「断る → 12 tick 待つ」を上限まで繰り返す: 1200 tick でちょうど 100 回
+    const stubborn: Bot = { name: 'stubborn', decide: () => ({ originAngleRadians: 0, vx: 0, vy: 0 }) };
+    const { result } = playOnce(stubborn, { seed: 1, maxTicks: 10 * TICK_HZ });
+    expect(result.launches).toBe(0);
+    expect(result.rejects).toBe(100);
+    expect(result.ticks).toBe(10 * TICK_HZ);
+  });
+
+  it('断られた射出は回数だけ増え、あとの受理には影響しない', () => {
+    // 最初の 1 回だけ撃てない射出を返し、あとは普通に撃つボット
+    let calls = 0;
+    const clumsy: Bot = {
+      name: 'clumsy',
+      decide: () => (calls++ === 0 ? { originAngleRadians: 0, vx: 0, vy: 0 } : dropAt(0)),
+    };
+    const { result } = playOnce(clumsy, { seed: 1, maxTicks: 5 * TICK_HZ });
+    expect(result.rejects).toBe(1);
+    expect(result.launches).toBeGreaterThan(0);
   });
 });
 

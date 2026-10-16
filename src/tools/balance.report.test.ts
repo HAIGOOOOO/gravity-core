@@ -8,12 +8,14 @@ import { setupAllTiers } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
 import { measureAccuracy, summarizeAccuracy, type AccuracySummary, type ShotRecord } from './accuracy';
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
+import { createBoardTracker, summarizeBoardBatch, type BoardBatchSummary, type BoardSummary } from './board';
 import { ALL_BOTS, randomBot } from './bots';
 import { diffRuns } from './compare';
 import { createPaceTracker, setupTiers, tierPace, type TierPace } from './pace';
 import {
   accuracyTable,
   balanceTable,
+  boardTable,
   diffTable,
   missTable,
   outcomeTable,
@@ -32,19 +34,22 @@ describe('数値調整レポート', () => {
   const collected: { name: string; runs: PlayResult[] }[] = [];
   const accuracies: { name: string; summary: AccuracySummary; shots: ShotRecord[] }[] = [];
   const paces: { name: string; paces: TierPace[] }[] = [];
+  const boards: { name: string; summary: BoardBatchSummary }[] = [];
 
   for (const make of ALL_BOTS) {
     const name = make(0).name;
     it(
       `ボット「${name}」を ${RUNS} 回まわせる`,
       () => {
-        // 結果・的中率・Tier の育ち方を、同じまわしで全部取る（まわし直しの分を増やさない）
+        // 結果・的中率・Tier の育ち方・盤面の詰まりを、同じまわしで全部取る（まわし直しの分を増やさない）
         const runs: PlayResult[] = [];
         const shots: ShotRecord[] = [];
         const botPaces: TierPace[] = [];
+        const botBoards: BoardSummary[] = [];
         for (let i = 0; i < RUNS; i++) {
           const seed = 100 + i;
           const tracker = createPaceTracker(setupTiers(undefined));
+          const boardTracker = createBoardTracker();
           const m = measureAccuracy(make(seed), {
             seed,
             maxTicks: MAX_TICKS,
@@ -52,19 +57,24 @@ describe('数値調整レポート', () => {
               onEvents: (events) => {
                 for (const e of events) tracker.handleEvent(e);
               },
+              onStep: boardTracker.onStep,
             },
           });
           runs.push(m.result);
           shots.push(...m.shots);
           botPaces.push(tierPace(seed, tracker.finish()));
+          botBoards.push(boardTracker.finish());
         }
         expect(runs).toHaveLength(RUNS);
+        // 盤面の記録はプレイの tick 数と一致するはず（取りこぼしが無い）
+        for (let i = 0; i < RUNS; i++) expect(botBoards[i]!.ticks).toBe(runs[i]!.ticks);
         const s = summarizeRuns(runs);
         expect(s.launches.mean).toBeGreaterThan(0);
         expect(s.seconds.mean).toBeGreaterThan(0);
         collected.push({ name, runs });
         accuracies.push({ name, summary: summarizeAccuracy(shots), shots });
         paces.push({ name, paces: botPaces });
+        boards.push({ name, summary: summarizeBoardBatch(botBoards) });
       },
       TIMEOUT,
     );
@@ -93,6 +103,10 @@ describe('数値調整レポート', () => {
       for (const p of paces) {
         console.log(`\n${paceTable(p.name, p.paces)}`);
       }
+
+      // 盤面の詰まりと熱の滞在。「臨界」が長い = 終了寸前を引きずっている
+      console.log('\n## 盤面の詰まりと熱の滞在（ボット別）\n');
+      console.log(boardTable(boards));
 
       // 予測の的中率。低いボットほど「狙っているのに外れる」ので、出た数字は実力より低い
       console.log('\n## 予測の的中率（ボット別）\n');

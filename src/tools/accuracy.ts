@@ -308,6 +308,7 @@ export function measureAccuracy(bot: Bot, options: PlayOptions): AccuracyOutcome
         for (const e of events) tracker.handleEvent(e);
         options.hooks?.onEvents?.(events);
       },
+      onStep: options.hooks?.onStep,
     },
   });
   const shots = tracker.finish();

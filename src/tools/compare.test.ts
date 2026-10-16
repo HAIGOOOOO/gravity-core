@@ -13,6 +13,7 @@ function run(over: Partial<PlayResult>): PlayResult {
     score: 1000,
     bestTier: 3,
     launches: 8,
+    rejects: 0,
     merges: 4,
     mergesPerLaunch: 0.5,
     supernovas: 0,

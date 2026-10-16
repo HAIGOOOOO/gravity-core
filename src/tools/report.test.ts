@@ -3,10 +3,12 @@ import { dropAt } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
 import type { AccuracySummary, ShotRecord } from './accuracy';
 import { RUN_METRICS, type PlayResult } from './batch';
+import { summarizeBoardBatch, type BoardBatchSummary } from './board';
 import { tierPace } from './pace';
 import {
   accuracyTable,
   balanceTable,
+  boardTable,
   diffTable,
   formatNumber,
   formatPercent,
@@ -28,6 +30,7 @@ const base: PlayResult = {
   score: 1000,
   bestTier: 3,
   launches: 8,
+  rejects: 0,
   merges: 4,
   mergesPerLaunch: 0.5,
   supernovas: 0,
@@ -142,14 +145,15 @@ describe('statsTable', () => {
     expect(t).toContain('最高熱量');
     expect(t).toContain('限界越え秒');
     expect(t).toContain('合体効率');
-    // 「### a」・空行・ヘッダ・区切り・11 指標 = 15 行
-    expect(t.split('\n')).toHaveLength(15);
+    // 「### a」・空行・ヘッダ・区切り・指標の数だけ = 4 + 指標数 行
+    expect(t.split('\n')).toHaveLength(4 + RUN_METRICS.length);
+    expect(t).toContain('射出失敗');
   });
 
   it('0 件でも表を作れる（値はすべて「—」）', () => {
     const t = statsTable('empty', []);
     expect(t).toContain('### empty');
-    expect(t.split('\n')).toHaveLength(15);
+    expect(t.split('\n')).toHaveLength(4 + RUN_METRICS.length);
     expect(t).toContain('—');
   });
 });
@@ -340,6 +344,34 @@ describe('paceTable', () => {
     expect(t).toContain('### empty');
     expect(t.split('\n')).toHaveLength(13);
     expect(t).toContain('| 0 | — | — | — | — | — |');
+  });
+});
+
+describe('boardTable', () => {
+  it('詰まり具合・熱の帯・限界越え率を列に出す', () => {
+    const s: BoardBatchSummary = {
+      runs: 3,
+      peakBodies: summarize([10, 12, 14]),
+      peakFill: summarize([0.4, 0.6]),
+      usualBodies: summarize([6, 7, 8]),
+      usualFill: summarize([0.2, 0.3]),
+      heatBandRate: [0.7, 0.15, 0.1, 0.05],
+      overLimitRate: summarize([0.02, 0.04]),
+    };
+    const t = boardTable([{ name: 'a', summary: s }]);
+    const lines = t.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('最大天体');
+    expect(lines[0]).toContain('限界越え率');
+    // 最大天体(中央) = 12、(90%) = 13.6、占有率 = 50% / 25%、臨界 = 5%
+    expect(lines[2]).toBe('| a | 3 | 12 | 13.6 | 50% | 25% | 70% | 15% | 10% | 5% | 3% |');
+  });
+
+  it('0 件でも「—」で埋められる', () => {
+    const t = boardTable([{ name: 'empty', summary: summarizeBoardBatch([]) }]);
+    expect(t.split('\n')).toHaveLength(3);
+    expect(t).toContain('empty');
+    expect(t).toContain('—');
   });
 });
 

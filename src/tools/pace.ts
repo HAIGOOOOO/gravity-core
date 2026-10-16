@@ -91,6 +91,7 @@ export function measurePace(bot: Bot, options: PlayOptions): PaceOutcome {
         for (const e of events) tracker.handleEvent(e);
         options.hooks?.onEvents?.(events);
       },
+      onStep: options.hooks?.onStep,
     },
   });
   return { result, sim, pace: tierPace(options.seed, tracker.finish()) };
