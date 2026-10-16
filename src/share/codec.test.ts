@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { LaunchInput } from '../contracts/game';
+import type { LaunchInput, SimulationPort } from '../contracts/game';
+import { createAutoPlay } from '../fixtures';
 import { DROP_SPEED } from '../game/constants';
 import { createRng } from '../game/rng';
 import {
   decodePlay,
   encodePlay,
+  encodeSimulation,
   MAX_INPUTS,
   MAX_TICKS,
   SHARE_RULES_VERSION,
@@ -426,5 +428,67 @@ describe('decodePlay の頑丈さ', () => {
       }
       expect(decodePlay(s).ok).toBe(false);
     }
+  });
+});
+
+describe('encodeSimulation', () => {
+  it('プレイ中の sim から作ると、手で組んだ物と同じ文字列で endTick は共有した時点', () => {
+    const auto = createAutoPlay(314);
+    for (let i = 0; i < 1500; i++) auto.step();
+    const snap = auto.sim.getSnapshot();
+    const text = encodeSimulation(auto.sim);
+    // 手で必要な物を全部集めて encodePlay した物と同じ（糖衣であることの確かめ）
+    expect(text).toBe(
+      encodePlay({
+        rulesVersion: SHARE_RULES_VERSION,
+        seed: snap.seed,
+        inputs: auto.sim.getInputLog(),
+        endTick: snap.tick,
+      }),
+    );
+    const d = decodePlay(text);
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    // endTick は「最後の入力の tick」ではなく共有した時点の tick。
+    // 省略するとここが静かに短くなるので、それを防ぐのがこの関数の仕事
+    expect(d.play.endTick).toBe(snap.tick);
+    const last = d.play.inputs[d.play.inputs.length - 1];
+    if (last) expect(last.tick).toBeLessThanOrEqual(snap.tick);
+  });
+
+  it('入力が 1 つも無い新規の sim でも文字列になる', () => {
+    // createAutoPlay は step を呼ぶまで入力を記録しないので、素のままの sim が手に入る
+    const sim = createAutoPlay(7).sim;
+    const text = encodeSimulation(sim);
+    const d = decodePlay(text);
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expect(d.play.seed).toBe(7);
+    expect(d.play.inputs).toHaveLength(0);
+    expect(d.play.endTick).toBe(0);
+  });
+
+  it('契約を越えた物を渡されても、例外を投げず空文字列を返す', () => {
+    expect(encodeSimulation(null as unknown as SimulationPort)).toBe('');
+    expect(encodeSimulation(42 as unknown as SimulationPort)).toBe('');
+    // getSnapshot が投げる
+    const throwing = {
+      getSnapshot(): never {
+        throw new Error('trap');
+      },
+    } as unknown as SimulationPort;
+    expect(encodeSimulation(throwing)).toBe('');
+    // おかしい値を返す（seed が文字列・入力ログが配列でない）→ encodePlay 側の検査で空文字列
+    const weird = {
+      getSnapshot: () => ({ seed: 'x', tick: 0 }),
+      getInputLog: () => null,
+    } as unknown as SimulationPort;
+    expect(encodeSimulation(weird)).toBe('');
+    // 入力ログが将来の tick を持つ（endTick より後の入力）→ encodePlay が弾く
+    const future = {
+      getSnapshot: () => ({ seed: 1, tick: 10 }),
+      getInputLog: () => [drop(999, 0.5)],
+    } as unknown as SimulationPort;
+    expect(encodeSimulation(future)).toBe('');
   });
 });

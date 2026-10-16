@@ -107,6 +107,16 @@ describe('extractShareText', () => {
     expect(extractShareText(`${WITH_INPUTS}。`)).toBe(WITH_INPUTS);
   });
 
+  it('base64（標準）の = + / は区切りとして働き、URL を通しても壊れない', () => {
+    // 手で padding を付け足した形・data URL 風の形でも、連なりがそこで切れるので取り出せる
+    expect(extractShareText(`${WITH_INPUTS}==`)).toBe(WITH_INPUTS);
+    expect(extractShareText(`${WITH_INPUTS}+`)).toBe(WITH_INPUTS);
+    expect(extractShareText(`data:text/plain;base64,${WITH_INPUTS}`)).toBe(WITH_INPUTS);
+    // base64url の文字は URL を通しても変化しない（パーセントエンコードされない）
+    const url = new URL(`https://example.com/r?d=${WITH_INPUTS}`);
+    expect(extractShareText(url.toString())).toBe(WITH_INPUTS);
+  });
+
   it('MAX_TEXT_LENGTH を越える連なりは候補から外す', () => {
     const huge = 'A'.repeat(MAX_TEXT_LENGTH + 7); // 連なりが長すぎても落ちない
     expect(extractShareText(huge)).toBe(null);

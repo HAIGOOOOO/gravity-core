@@ -112,6 +112,12 @@ describe('bytesToBase64Url / base64UrlToBytes', () => {
     expect([...base64UrlToBytes(text)!]).toEqual([...bytes]);
   });
 
+  it('出力は URL エンコードで変化しない（そのままクエリに載る文字だけ）', () => {
+    // 全 256 バイトを通した文字列 = 64 文字全部を含む。encodeURIComponent が恒等なら URL 安全
+    const all = bytesToBase64Url(Uint8Array.from({ length: 256 }, (_, i) => i));
+    expect(encodeURIComponent(all)).toBe(all);
+  });
+
   it('表に無い文字・base64 で出ない長さ・余りビットの立った詰めは null', () => {
     expect(base64UrlToBytes('A')).toBe(null); // 長さ %4==1 は出ない
     expect(base64UrlToBytes('AB!D')).toBe(null); // 表に無い文字

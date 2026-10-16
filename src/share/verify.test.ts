@@ -4,7 +4,7 @@ import { createAutoPlay, dropAt } from '../fixtures';
 import { DROP_SPEED, TICK_HZ } from '../game/constants';
 import { createRng } from '../game/rng';
 import { createSimulation } from '../game/simulation';
-import { decodePlay, encodePlay, SHARE_RULES_VERSION } from './codec';
+import { decodePlay, encodePlay, encodeSimulation, SHARE_RULES_VERSION } from './codec';
 import { verifyPlay, type VerifyOptions } from './verify';
 
 describe('verifyPlay', () => {
@@ -21,6 +21,7 @@ describe('verifyPlay', () => {
       if (!v.ok) continue;
       expect(v.result.score).toBe(snap.score);
       expect(v.result.ticks).toBe(snap.tick);
+      expect(v.result.bestTier).toBe(snap.bestTierThisRun);
       expect(v.result.stats).toEqual(snap.stats); // 戦績も再生し直した値が入る
       expect(v.result.inputsApplied).toBe(v.result.inputsTotal);
       expect(v.result.inputsTotal).toBeGreaterThan(0);
@@ -52,10 +53,27 @@ describe('verifyPlay', () => {
     expect(v.ok).toBe(true);
     if (v.ok) {
       expect(v.result.score).toBe(snap.score);
+      expect(v.result.bestTier).toBe(snap.bestTierThisRun);
       expect(v.result.stats).toEqual(snap.stats); // 合体・連鎖などの戦績も一致する
       expect(v.result.inputsApplied).toBe(3);
     }
   });
+
+  it('encodeSimulation で作った文字列を再生すると、その時点の結果と一致する', () => {
+    const auto = createAutoPlay(2024);
+    for (let i = 0; i < 2400; i++) auto.step(); // 20 秒ぶん
+    const snap = auto.sim.getSnapshot();
+    const text = encodeSimulation(auto.sim);
+    expect(text).not.toBe('');
+    const v = verifyPlay(text);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.result.score).toBe(snap.score);
+    expect(v.result.ticks).toBe(snap.tick);
+    expect(v.result.bestTier).toBe(snap.bestTierThisRun);
+    expect(v.result.stats).toEqual(snap.stats);
+    expect(v.result.inputsApplied).toBe(v.result.inputsTotal);
+  }, 120_000);
 
   it('途中までの共有: endTick がプレイより前ならそこで止まり、その時点の得点を返す', () => {
     const seed = 555;
@@ -170,6 +188,15 @@ describe('verifyPlay', () => {
     expect(v.result.score).toBe(found.snap.score);
     expect(v.result.inputsApplied).toBe(base.length); // オーバー後の入力は捨てられる
     expect(v.result.inputsTotal).toBe(inputs.length);
+
+    // 終了済みの sim から encodeSimulation で作った文字列も、同じ終了時点で再生できる
+    const fromOver = verifyPlay(encodeSimulation(found.sim));
+    expect(fromOver.ok).toBe(true);
+    if (fromOver.ok) {
+      expect(fromOver.result.score).toBe(found.snap.score);
+      expect(fromOver.result.ticks).toBe(found.snap.tick);
+      expect(fromOver.result.gameOver).toBe(true);
+    }
   }, 120_000);
 
   it('同じ tick に複数の入力がある文字列は、受理された分だけ正直に数える', () => {
@@ -324,6 +351,58 @@ describe('verifyPlay', () => {
     const v = verifyPlay(text, evil);
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.reason).toBe('badData');
+  });
+
+  it('途中に受理されない入力があっても、その入力を捨てただけのプレイと結果が一致する', () => {
+    const drop = (tick: number, angle: number): LaunchInput => ({
+      tick,
+      originAngleRadians: angle,
+      vx: -Math.cos(angle) * DROP_SPEED,
+      vy: -Math.sin(angle) * DROP_SPEED,
+    });
+    // 速さが上限（620+0.5）を大きく越える入力は 'speed' で必ず拒否され、状態を変えない
+    const bad: LaunchInput = { tick: 120, originAngleRadians: 0.5, vx: 9999, vy: 9999 };
+    const withBad: LaunchInput[] = [drop(0, 0.5), bad, drop(240, 1.1)];
+    const clean: LaunchInput[] = [drop(0, 0.5), drop(240, 1.1)];
+    const a = verifyPlay(encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 77, endTick: 480, inputs: withBad }));
+    const b = verifyPlay(encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 77, endTick: 480, inputs: clean }));
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.result.inputsTotal).toBe(3);
+    expect(b.result.inputsTotal).toBe(2);
+    // 拒否された入力はキューもクールダウンも進めないので、
+    // 結果は「最初からその入力が無かった」プレイと一致しなければならない
+    expect(b.result.inputsApplied).toBe(b.result.inputsTotal); // clean は全受理が前提
+    expect(a.result.inputsApplied).toBe(b.result.inputsApplied);
+    expect(a.result.score).toBe(b.result.score);
+    expect(a.result.ticks).toBe(b.result.ticks);
+    expect(a.result.stats).toEqual(b.result.stats);
+    // 成功時は読み取ったプレイの中身も一緒に返る
+    expect(a.play.seed).toBe(77);
+    expect(a.play.endTick).toBe(480);
+  });
+
+  it('同じ tick で先の入力が拒否されても、クールダウンは始まらず後の入力が受理される', () => {
+    const drop = (tick: number, angle: number): LaunchInput => ({
+      tick,
+      originAngleRadians: angle,
+      vx: -Math.cos(angle) * DROP_SPEED,
+      vy: -Math.sin(angle) * DROP_SPEED,
+    });
+    const bad: LaunchInput = { tick: 120, originAngleRadians: 0.3, vx: 9999, vy: 0 };
+    // bad は 'speed' で拒否されるので射出は起きない。もし拒否でもクールダウンが始まるなら
+    // 同じ tick の drop まで拒否されて受理数が減るはず → clean と一致すれば無かった証拠
+    const withBad: LaunchInput[] = [drop(0, 0.5), bad, drop(120, 1.1)];
+    const clean: LaunchInput[] = [drop(0, 0.5), drop(120, 1.1)];
+    const a = verifyPlay(encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 78, endTick: 300, inputs: withBad }));
+    const b = verifyPlay(encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 78, endTick: 300, inputs: clean }));
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.result.inputsTotal).toBe(3);
+    expect(b.result.inputsApplied).toBe(b.result.inputsTotal); // clean は全受理が前提
+    expect(a.result.inputsApplied).toBe(b.result.inputsApplied);
+    expect(a.result.score).toBe(b.result.score);
+    expect(a.result.stats).toEqual(b.result.stats);
   });
 });
 

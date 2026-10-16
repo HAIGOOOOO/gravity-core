@@ -21,7 +21,7 @@
 // 格子に乗らない「まっすぐ落とす」は 8 バイト、それ以外（投げる）は 24 バイトで
 // 値のビットをそのまま入れる。どの経路でも誤差は 0 で、再生は元のプレイと完全に一致する。
 
-import type { LaunchInput } from '../contracts/game';
+import type { LaunchInput, SimulationPort } from '../contracts/game';
 import { DROP_SPEED, TICK_HZ } from '../game/constants';
 import {
   base64UrlToBytes,
@@ -192,6 +192,27 @@ function encodeInner(args: EncodePlayArgs): string {
 }
 
 /**
+ * プレイ中（または終了した）シミュレーションから共有文字列を作る。
+ * endTick にスナップショットの tick を必ず付ける。encodePlay で endTick を省略すると
+ * 「最後の入力の tick」になり、共有した時点より短いプレイとして再生されてしまうので、
+ * プレイの共有にはこちらを使う。ルールの版はこの実装の SHARE_RULES_VERSION。
+ * 契約外の物（getter が投げる、おかしい値を返す sim もどき）が来ても空文字列を返す。
+ */
+export function encodeSimulation(sim: SimulationPort): string {
+  try {
+    const snap = sim.getSnapshot();
+    return encodePlay({
+      rulesVersion: SHARE_RULES_VERSION,
+      seed: snap.seed,
+      inputs: sim.getInputLog(),
+      endTick: snap.tick,
+    });
+  } catch {
+    return '';
+  }
+}
+
+/**
  * 文字列を読み戻す。どんな文字列が来ても例外を投げず、失敗は理由付きで返す。
  * 先に検査値を確かめてから読むので、壊れた文字列は読み途中で変な値を拾わない。
  */
@@ -210,6 +231,8 @@ export function decodePlay(text: string): DecodePlayResult {
       bytes[bytes.length - 2]! * 65536 +
       bytes[bytes.length - 1]! * 16777216;
     if (fnv1a(body) !== sum) return fail('checksum');
+    // ヘッダ（版 + 4 つの varint）は最小でも 5 バイト。それ未満は中身を読む以前に切れている
+    if (body.length < 5) return fail('truncated');
     if (body[0] !== SHARE_FORMAT_VERSION) return fail('badVersion');
 
     const pos = { i: 1 };
