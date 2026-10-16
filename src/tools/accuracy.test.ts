@@ -11,9 +11,11 @@ import { TICK_HZ } from '../game/constants';
 import { playOnce } from './batch';
 import { mergeBot, randomBot, type Bot } from './bots';
 import {
+  countOutcomes,
   createAccuracyTracker,
   measureAccuracy,
   measureAccuracyBatch,
+  mergeMisses,
   summarizeAccuracy,
   type ShotRecord,
 } from './accuracy';
@@ -26,12 +28,14 @@ function shot(over: Partial<ShotRecord> = {}): ShotRecord {
     seed: 1,
     tick: 0,
     bodyId: 1,
+    tier: 0,
     command: dropAt(0),
     predictedEnd: 'body',
     predictedMerge: false,
     predictedHitBodyId: null,
     predictedPoint: null,
     outcome: 'noContact',
+    landTick: null,
     landPoint: null,
     mergePartners: [],
     mergeTick: null,
@@ -113,26 +117,71 @@ describe('summarizeAccuracy', () => {
     expect(s.landError.n).toBe(1);
     expect(s.landError.median).toBe(4);
   });
+
+  it('合体を予測して着地→合体した射出も「外れ」に数える（最初の接触が合体ではない）', () => {
+    const s = summarizeAccuracy([
+      shot({ predictedMerge: true, predictedHitBodyId: 3, outcome: 'landedThenMerged', mergePartners: [3], mergeTick: 9 }),
+    ]);
+    expect(s.mergeHits).toBe(0);
+    expect(s.mergeMisses).toBe(1);
+    // landedThenMerged は「最初の接触が合体」の母数に入らないので、相手一致の母数にも入らない
+    expect(s.actualMerges).toBe(0);
+    expect(s.partnerMatchRate).toBeNaN();
+  });
+});
+
+describe('外れを拾う・内訳を数える', () => {
+  it('mergeMisses: 「合体を予測したのに合体しなかった」射出だけを返す', () => {
+    const shots = [
+      shot({ bodyId: 1, predictedMerge: true, outcome: 'merged' }),
+      shot({ bodyId: 2, predictedMerge: true, outcome: 'landed', landTick: 9 }),
+      shot({ bodyId: 3, predictedMerge: true, outcome: 'landedThenMerged', landTick: 8, mergeTick: 40 }),
+      shot({ bodyId: 4, predictedMerge: true, outcome: 'noContact' }),
+      shot({ bodyId: 5, predictedMerge: false, outcome: 'landed' }),
+      shot({ bodyId: 6, predictedMerge: false, outcome: 'merged' }), // 予測外の合体は外れではない
+    ];
+    const misses = mergeMisses(shots);
+    expect(misses.map((s) => s.bodyId)).toEqual([2, 3, 4]);
+    expect(mergeMisses([])).toEqual([]);
+  });
+
+  it('countOutcomes: 結末ごとの件数を予測の有無で分ける', () => {
+    const c = countOutcomes([
+      shot({ predictedMerge: true, outcome: 'merged' }),
+      shot({ predictedMerge: true, outcome: 'landed' }),
+      shot({ predictedMerge: true, outcome: 'landed' }),
+      shot({ predictedMerge: false, outcome: 'landed' }),
+      shot({ predictedMerge: false, outcome: 'noContact' }),
+      shot({ predictedMerge: false, outcome: 'merged' }),
+    ]);
+    expect(c.merged).toEqual({ predicted: 1, other: 1 });
+    expect(c.landed).toEqual({ predicted: 2, other: 1 });
+    expect(c.landedThenMerged).toEqual({ predicted: 0, other: 0 });
+    expect(c.noContact).toEqual({ predicted: 0, other: 1 });
+  });
 });
 
 // ---------------------------------------------------------------------------
 
 describe('createAccuracyTracker', () => {
-  it('land イベントで着地と位置を記録する', () => {
+  it('land イベントで着地の時刻と位置を記録する', () => {
     const tr = createAccuracyTracker(7);
-    tr.beginShot(10, dropAt(0), pred({ end: 'body', hitBodyId: 3, points: [{ x: 10, y: 5, t: 0.5 }] }), 42);
+    tr.beginShot(10, dropAt(0), pred({ end: 'body', hitBodyId: 3, points: [{ x: 10, y: 5, t: 0.5 }] }), 42, 3);
     tr.handleEvent(ev('land', { tick: 12, bodyIds: [42], x: 30, y: 40 }));
     const rec = tr.finish()[0]!;
     expect(rec.outcome).toBe('landed');
+    expect(rec.landTick).toBe(12);
     expect(rec.landPoint).toEqual({ x: 30, y: 40 });
     expect(rec.predictedPoint).toEqual({ x: 10, y: 5 });
     expect(rec.tick).toBe(10);
     expect(rec.seed).toBe(7);
+    // beginShot に渡した Tier が記録に残る（どの Tier の射出が外れたかを見るため）
+    expect(rec.tier).toBe(3);
   });
 
   it('land 前に merge で消費されたら merged。相手は末尾の子を除いた残り', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred({ willMerge: true, hitBodyId: 20 }), 10);
+    tr.beginShot(0, dropAt(0), pred({ willMerge: true, hitBodyId: 20 }), 10, 0);
     tr.handleEvent(ev('merge', { tick: 5, bodyIds: [10, 20, 99] }));
     const rec = tr.finish()[0]!;
     expect(rec.outcome).toBe('merged');
@@ -142,8 +191,8 @@ describe('createAccuracyTracker', () => {
 
   it('追跡中の 2 体どうしが合体したら、お互いが相手になる', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred(), 10);
-    tr.beginShot(5, dropAt(1), pred(), 20);
+    tr.beginShot(0, dropAt(0), pred(), 10, 0);
+    tr.beginShot(5, dropAt(1), pred(), 20, 0);
     tr.handleEvent(ev('merge', { tick: 30, bodyIds: [10, 20, 99] }));
     const [a, b] = tr.finish();
     expect(a!.mergePartners).toEqual([20]);
@@ -152,7 +201,7 @@ describe('createAccuracyTracker', () => {
 
   it('merge イベントの末尾（生まれた子）は消費として数えない', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred(), 99);
+    tr.beginShot(0, dropAt(0), pred(), 99, 0);
     tr.handleEvent(ev('merge', { tick: 5, bodyIds: [10, 20, 99] }));
     const rec = tr.finish()[0]!;
     expect(rec.outcome).toBe('noContact');
@@ -160,8 +209,8 @@ describe('createAccuracyTracker', () => {
 
   it('supernova は末尾の子がいないので 2 体とも消費', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred(), 10);
-    tr.beginShot(0, dropAt(1), pred(), 20);
+    tr.beginShot(0, dropAt(0), pred(), 10, 0);
+    tr.beginShot(0, dropAt(1), pred(), 20, 0);
     tr.handleEvent(ev('supernova', { tick: 8, bodyIds: [10, 20] }));
     const [a, b] = tr.finish();
     expect(a!.outcome).toBe('merged');
@@ -170,27 +219,29 @@ describe('createAccuracyTracker', () => {
 
   it('land のあと merge で消費されたら landedThenMerged', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred(), 10);
+    tr.beginShot(0, dropAt(0), pred(), 10, 0);
     tr.handleEvent(ev('land', { tick: 5, bodyIds: [10], x: 1, y: 2 }));
     tr.handleEvent(ev('merge', { tick: 50, bodyIds: [10, 30, 40] }));
     const rec = tr.finish()[0]!;
     expect(rec.outcome).toBe('landedThenMerged');
+    expect(rec.landTick).toBe(5);
     expect(rec.landPoint).toEqual({ x: 1, y: 2 });
     expect(rec.mergePartners).toEqual([30]);
   });
 
   it('何も起きなければ noContact。予測の points が空なら predictedPoint は null', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred({ points: [] }), 10);
+    tr.beginShot(0, dropAt(0), pred({ points: [] }), 10, 0);
     const rec = tr.finish()[0]!;
     expect(rec.outcome).toBe('noContact');
     expect(rec.predictedPoint).toBeNull();
+    expect(rec.landTick).toBeNull();
     expect(rec.landPoint).toBeNull();
   });
 
   it('知らない天体・bodyIds の無いイベントは無視する', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred(), 10);
+    tr.beginShot(0, dropAt(0), pred(), 10, 0);
     tr.handleEvent(ev('land', { tick: 1, bodyIds: [777], x: 0, y: 0 }));
     tr.handleEvent(ev('launch', { tick: 1 }));
     tr.handleEvent(ev('overLimitStart', { tick: 2 }));
@@ -200,7 +251,7 @@ describe('createAccuracyTracker', () => {
 
   it('merge の bodyIds が 2 件しか無ければ全部消費として扱う（防御）', () => {
     const tr = createAccuracyTracker(1);
-    tr.beginShot(0, dropAt(0), pred(), 10);
+    tr.beginShot(0, dropAt(0), pred(), 10, 0);
     tr.handleEvent(ev('merge', { tick: 5, bodyIds: [10, 20] }));
     expect(tr.finish()[0]!.outcome).toBe('merged');
     expect(tr.finish()[0]!.mergePartners).toEqual([20]);
@@ -228,6 +279,9 @@ describe('実シミュレーションでの計測', () => {
     expect(first.predictedHitBodyId).toBe(1); // setup の天体は id 1
     expect(first.outcome).toBe('merged');
     expect(first.mergePartners).toEqual([1]);
+    // 撃った天体の Tier はキューの先頭（[0,0,0] なので 0）、着地していないので landTick は null
+    expect(first.tier).toBe(0);
+    expect(first.landTick).toBeNull();
     expect(summary.predictedMerges).toBeGreaterThanOrEqual(1);
     expect(summary.mergeHits).toBeGreaterThanOrEqual(1);
     expect(summary.mergeHitRate).toBeGreaterThan(0);
@@ -247,6 +301,44 @@ describe('実シミュレーションでの計測', () => {
     expect(shots).toEqual([]);
     expect(summary.shots).toBe(0);
     expect(summary.mergeHitRate).toBeNaN();
+  });
+
+  it('キューの Tier が記録に残る（撃った天体が何だったか分かる）', () => {
+    // 撃つ直前に見えたキューを全部残し、記録の Tier と照合する
+    const queues: number[][] = [];
+    const { shots } = measureAccuracy(randomBot(1), {
+      seed: 1,
+      maxTicks: 5 * TICK_HZ,
+      setup: { queue: [4, 4, 4] },
+      hooks: {
+        onLaunch: (_c, _p, _id, _t, snap) => {
+          queues.push([...snap.nextQueue]);
+        },
+      },
+    });
+    expect(shots.length).toBeGreaterThanOrEqual(3);
+    expect(queues).toHaveLength(shots.length);
+    // キュー [4,4,4] を先から消費するので、最初の 3 射は Tier 4
+    for (const s of shots.slice(0, 3)) expect(s.tier).toBe(4);
+    // 4 射目以降の値は抽選次第（Tier 4 どうしの合体で bestTier が上がると Tier 4 も出る）。
+    // 決められるのは「記録の Tier = 撃つ直前のキューの先頭」と「キューは順に消費される」だけ
+    for (let i = 0; i < shots.length; i++) expect(shots[i]!.tier).toBe(queues[i]![0]);
+    for (let i = 1; i < shots.length; i++) {
+      expect(queues[i]![0]).toBe(queues[i - 1]![1]);
+      expect(queues[i]![1]).toBe(queues[i - 1]![2]);
+    }
+  });
+
+  it('着地した射出には landTick が付き、撃った tick 以降になる', () => {
+    const { shots } = measureAccuracy(randomBot(3), { seed: 3, maxTicks: 10 * TICK_HZ });
+    const landed = shots.filter((s) => s.outcome === 'landed' || s.outcome === 'landedThenMerged');
+    expect(landed.length).toBeGreaterThan(0);
+    for (const s of landed) {
+      expect(s.landTick).not.toBeNull();
+      expect(s.landTick!).toBeGreaterThanOrEqual(s.tick);
+    }
+    // 着地も合体もしなかった射出には landTick が付かない
+    for (const s of shots.filter((x) => x.outcome === 'noContact')) expect(s.landTick).toBeNull();
   });
 
   it('measureAccuracyBatch: 回ごとの結果と、まとめた記録・集計を返す', () => {
@@ -272,12 +364,15 @@ describe('playOnce の観察用フック', () => {
       seed: 3,
       maxTicks: 5 * TICK_HZ,
       hooks: {
-        onLaunch: (_command, prediction, bodyId, tick) => {
+        onLaunch: (_command, prediction, bodyId, tick, snapshot) => {
           launches++;
           // 撃つ直前に取った予測なので、有効な予測が来ている
           expect(prediction.valid).toBe(true);
           expect(bodyId).toBeGreaterThan(0);
           expect(tick).toBeLessThanOrEqual(5 * TICK_HZ);
+          // 撃つ直前の盤面も渡る（nextQueue[0] が撃った天体の Tier）
+          expect(snapshot.bodies.length).toBeGreaterThan(0);
+          expect(snapshot.tick).toBe(tick);
         },
         onEvents: (list) => {
           eventTicks++;

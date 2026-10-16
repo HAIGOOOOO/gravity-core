@@ -2,8 +2,8 @@
 
 ## いま / つぎ
 
-- いま: 9 回目に「予測どおりにいったか」を測る道具（`accuracy.ts`）を足した。射出ごとに予測と実際の結末を追跡し、的中率・相手一致率・着地誤差を出す。ボットの数字が実力よりどれだけ低く出ているかが分かる。
-- 追加した物: ① `accuracy.ts`（`createAccuracyTracker` が射出とイベントを食わせて結末を記録、`summarizeAccuracy` が集計、`measureAccuracy` / `measureAccuracyBatch` が playOnce の観察用フックで実戦を計測）② `batch.ts` に `PlayHooks`（onLaunch = 受理された射出、onEvents = 各 tick のイベント）③ `report.ts` に `accuracyTable` と `formatPercent` ④ FULL レポートに「予測の的中率」の表（まわし直し不要。measureAccuracyBatch が結果と的中率を同時に取る）。
+- いま: 10 回目の検査で accuracy.test.ts の「キューの Tier が記録に残る」が落ちたので直した。原因はテストの前提:「キュー [4,4,4] の 4 射目以降は bestTier 0 の抽選で Tier 0〜1 しか出ない」は誤りで、撃った Tier 4 どうしが合体すると bestTier が 5 に上がり抽選に Tier 4 も出る（`drawTier(bestTier)` が射出時点の bestTier を見る）。
+- 直し方: 抽選結果の値を決めつけず、hooks.onLaunch の snapshot で「記録の Tier = 撃つ直前のキュー先頭」と「キューは順に消費される（次の先頭 = 前の 2 番目）」を確かめる形にした。最初の 3 射が Tier 4 の断言は残した。
 - つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す → 外れの多い射出（predictedMerge なのに landed）を seedTable 的に拾って原因を見る道具を考える。
 
 ## 構成（`src/tools/`）

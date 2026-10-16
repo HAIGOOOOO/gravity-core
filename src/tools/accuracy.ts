@@ -21,6 +21,7 @@ import type {
   Prediction,
   SimulationPort,
   Tick,
+  Tier,
 } from '../contracts/game';
 import { playOnce, type BatchOptions, type PlayOptions, type PlayResult } from './batch';
 import { summarize, type Stats } from './stats';
@@ -29,6 +30,9 @@ import type { Bot, BotFactory } from './bots';
 /** 1 射の結末（最初に起きたイベントで決まる） */
 export type ShotOutcome = 'merged' | 'landed' | 'landedThenMerged' | 'noContact';
 
+/** 結末の並び（表の行順などに使う） */
+export const SHOT_OUTCOMES: readonly ShotOutcome[] = ['merged', 'landed', 'landedThenMerged', 'noContact'];
+
 /** 1 射の記録。 */
 export type ShotRecord = Readonly<{
   seed: number;
@@ -36,6 +40,8 @@ export type ShotRecord = Readonly<{
   tick: Tick;
   /** 撃って生まれた天体 */
   bodyId: BodyId;
+  /** 撃った天体の Tier（撃つ直前の nextQueue[0]） */
+  tier: Tier;
   command: LaunchCommand;
   predictedEnd: Prediction['end'];
   predictedMerge: boolean;
@@ -43,7 +49,8 @@ export type ShotRecord = Readonly<{
   /** 予測の道すじの最後の点（最初に触れる場所）。invalid 等で無ければ null */
   predictedPoint: { x: number; y: number } | null;
   outcome: ShotOutcome;
-  /** 着地した場所（landed / landedThenMerged の時） */
+  /** 着地した tick と場所（landed / landedThenMerged の時） */
+  landTick: Tick | null;
   landPoint: { x: number; y: number } | null;
   /** 合体で消えた時の相手（自分を除く消費された側。子は含まない） */
   mergePartners: readonly BodyId[];
@@ -55,12 +62,14 @@ type MutableShot = {
   seed: number;
   tick: Tick;
   bodyId: BodyId;
+  tier: Tier;
   command: LaunchCommand;
   predictedEnd: Prediction['end'];
   predictedMerge: boolean;
   predictedHitBodyId: BodyId | null;
   predictedPoint: { x: number; y: number } | null;
   landed: boolean;
+  landTick: Tick | null;
   landPoint: { x: number; y: number } | null;
   merged: boolean;
   mergePartners: BodyId[];
@@ -73,25 +82,27 @@ type MutableShot = {
  * プレイの終わりに finish で記録を取り出す。
  */
 export function createAccuracyTracker(seed: number): {
-  beginShot(tick: Tick, command: LaunchCommand, prediction: Prediction, bodyId: BodyId): void;
+  beginShot(tick: Tick, command: LaunchCommand, prediction: Prediction, bodyId: BodyId, tier: Tier): void;
   handleEvent(event: GameEvent): void;
   finish(): ShotRecord[];
 } {
   const shots: MutableShot[] = [];
   const byBody = new Map<BodyId, MutableShot>();
   return {
-    beginShot(tick, command, prediction, bodyId) {
+    beginShot(tick, command, prediction, bodyId, tier) {
       const last = prediction.points[prediction.points.length - 1];
       const shot: MutableShot = {
         seed,
         tick,
         bodyId,
+        tier,
         command,
         predictedEnd: prediction.end,
         predictedMerge: prediction.willMerge,
         predictedHitBodyId: prediction.hitBodyId,
         predictedPoint: last ? { x: last.x, y: last.y } : null,
         landed: false,
+        landTick: null,
         landPoint: null,
         merged: false,
         mergePartners: [],
@@ -108,6 +119,7 @@ export function createAccuracyTracker(seed: number): {
           const s = byBody.get(id);
           if (s !== undefined && !s.landed && !s.merged) {
             s.landed = true;
+            s.landTick = e.tick;
             s.landPoint = e.x !== undefined && e.y !== undefined ? { x: e.x, y: e.y } : null;
           }
         }
@@ -131,6 +143,7 @@ export function createAccuracyTracker(seed: number): {
         seed: s.seed,
         tick: s.tick,
         bodyId: s.bodyId,
+        tier: s.tier,
         command: s.command,
         predictedEnd: s.predictedEnd,
         predictedMerge: s.predictedMerge,
@@ -143,6 +156,7 @@ export function createAccuracyTracker(seed: number): {
           : s.landed
             ? ('landed' as const)
             : ('noContact' as const),
+        landTick: s.landTick,
         landPoint: s.landPoint,
         mergePartners: s.mergePartners,
         mergeTick: s.mergeTick,
@@ -222,6 +236,32 @@ export function summarizeAccuracy(shots: readonly ShotRecord[]): AccuracySummary
   };
 }
 
+/**
+ * 「合体する」と予測したのに最初の接触が合体でなかった射出だけを拾う。
+ * 外れの原因を調べる用: 記録の seed と tick から replayLaunches で
+ * 「撃つ直前の盤面」を再現して、何がずれたかを見られる。
+ * （'landedThenMerged' も外れに入る: 最終的に合体はしたが、予測の「最初の接触が合体」は外れている）
+ */
+export function mergeMisses(shots: readonly ShotRecord[]): ShotRecord[] {
+  return shots.filter((s) => s.predictedMerge && s.outcome !== 'merged');
+}
+
+/**
+ * 結末ごとの件数を「合体を予測した射出」と「予測していない射出」に分けて数える。
+ * 外れが「着地」「着地→合体」「未接触」のどれに散っているかが一目で分かる。
+ */
+export function countOutcomes(
+  shots: readonly ShotRecord[],
+): Record<ShotOutcome, { predicted: number; other: number }> {
+  const out = {} as Record<ShotOutcome, { predicted: number; other: number }>;
+  for (const o of SHOT_OUTCOMES) out[o] = { predicted: 0, other: 0 };
+  for (const s of shots) {
+    if (s.predictedMerge) out[s.outcome].predicted++;
+    else out[s.outcome].other++;
+  }
+  return out;
+}
+
 export type AccuracyOutcome = Readonly<{
   result: PlayResult;
   sim: SimulationPort;
@@ -238,9 +278,9 @@ export function measureAccuracy(bot: Bot, options: PlayOptions): AccuracyOutcome
   const { result, sim } = playOnce(bot, {
     ...options,
     hooks: {
-      onLaunch: (command, prediction, bodyId, tick) => {
-        tracker.beginShot(tick, command, prediction, bodyId);
-        options.hooks?.onLaunch?.(command, prediction, bodyId, tick);
+      onLaunch: (command, prediction, bodyId, tick, snapshot) => {
+        tracker.beginShot(tick, command, prediction, bodyId, snapshot.nextQueue[0]);
+        options.hooks?.onLaunch?.(command, prediction, bodyId, tick, snapshot);
       },
       onEvents: (events) => {
         for (const e of events) tracker.handleEvent(e);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { AccuracySummary } from './accuracy';
+import { dropAt } from '../fixtures/index';
+import type { AccuracySummary, ShotRecord } from './accuracy';
 import { RUN_METRICS, type PlayResult } from './batch';
 import {
   accuracyTable,
@@ -9,6 +10,8 @@ import {
   formatPercent,
   formatRange,
   markdownTable,
+  missTable,
+  outcomeTable,
   seedTable,
   statsTable,
 } from './report';
@@ -30,6 +33,28 @@ const base: PlayResult = {
   overLimitSeconds: 5,
   timedOut: false,
 };
+
+/** 指標は全部入った射出の見本。表の中身だけ確かめればよいので値は適当でよい */
+const shotBase: ShotRecord = {
+  seed: 1,
+  tick: 0,
+  bodyId: 1,
+  tier: 0,
+  command: dropAt(0),
+  predictedEnd: 'body',
+  predictedMerge: false,
+  predictedHitBodyId: null,
+  predictedPoint: null,
+  outcome: 'landed',
+  landTick: null,
+  landPoint: null,
+  mergePartners: [],
+  mergeTick: null,
+};
+
+function shot(over: Partial<ShotRecord>): ShotRecord {
+  return { ...shotBase, ...over };
+}
 
 describe('formatNumber', () => {
   it('整数はそのまま、小数は 1 桁、NaN や無限は「—」', () => {
@@ -182,6 +207,77 @@ describe('accuracyTable', () => {
     const line = t.split('\n')[2]!;
     expect(line).toContain('empty');
     expect(line).toContain('—');
+  });
+});
+
+describe('outcomeTable', () => {
+  it('結末ごとの件数を「合体を予測した/していない」で分けて出す', () => {
+    const shots = [
+      shot({ predictedMerge: true, outcome: 'merged' }),
+      shot({ predictedMerge: true, outcome: 'landed' }),
+      shot({ predictedMerge: false, outcome: 'noContact' }),
+    ];
+    const t = outcomeTable('b', shots);
+    expect(t).toContain('### b: 予測 × 結末（3 射）');
+    const lines = t.split('\n');
+    // 見出し・空行・ヘッダ・区切り・結末 4 行 = 8 行
+    expect(lines).toHaveLength(8);
+    expect(lines[4]).toBe('| 合体 | 1 | 0 | 1 |');
+    expect(lines[5]).toBe('| 着地 | 1 | 0 | 1 |');
+    expect(lines[6]).toBe('| 着地→合体 | 0 | 0 | 0 |');
+    expect(lines[7]).toBe('| 未接触 | 0 | 1 | 1 |');
+  });
+
+  it('0 件なら見出しと空の表だけ', () => {
+    const t = outcomeTable('empty', []);
+    expect(t).toContain('（0 射）');
+    expect(t.split('\n')).toHaveLength(8);
+  });
+});
+
+describe('missTable', () => {
+  it('「合体を予測したのに合体しなかった」射出だけを、シード→tick 順に出す', () => {
+    const shots = [
+      shot({ seed: 2, tick: 50, bodyId: 9, tier: 3, predictedMerge: true, outcome: 'landed', predictedHitBodyId: 5, landTick: 90 }),
+      shot({ seed: 1, tick: 80, bodyId: 8, predictedMerge: true, outcome: 'noContact', predictedHitBodyId: 4 }),
+      shot({ seed: 2, tick: 10, bodyId: 7, predictedMerge: true, outcome: 'landedThenMerged', predictedHitBodyId: 6, landTick: 30 }),
+      shot({ seed: 2, tick: 99, bodyId: 6, predictedMerge: true, outcome: 'merged', predictedHitBodyId: 1 }), // 的中は出ない
+      shot({ seed: 1, tick: 5, bodyId: 5, predictedMerge: false, outcome: 'landed' }), // 予測していない着地は出ない
+    ];
+    const t = missTable('m', shots, 10);
+    const lines = t.split('\n');
+    expect(t).toContain('### m: 予測合体の外れ（3 件中 3 件）');
+    // 見出し・空行・ヘッダ・区切り・3 行 = 7 行
+    expect(lines).toHaveLength(7);
+    // シード→tick 順: (1,80) → (2,10) → (2,50)
+    expect(lines[4]).toContain('| 1 | 80 |');
+    expect(lines[5]).toContain('| 2 | 10 |');
+    expect(lines[6]).toContain('| 2 | 50 |');
+    // 結末の表示名と「着地まで」の tick 差（90 - 50 = 40）
+    expect(lines[6]).toContain('着地');
+    expect(lines[6]).toContain('| 40 |');
+    // 未接触は着地まで・誤差とも「—」
+    expect(lines[4]).toContain('未接触');
+  });
+
+  it('件数を超えた分は切る。撃った角度と速さを度数・px/秒で出す', () => {
+    const shots = [
+      // 1 rad ≈ 57.3°、3-4-5 の速さ 500（どちらも丸めに左右されない値を選んだ）
+      shot({ seed: 1, tick: 1, predictedMerge: true, outcome: 'landed', command: { originAngleRadians: 1, vx: -300, vy: -400 } }),
+      shot({ seed: 1, tick: 2, predictedMerge: true, outcome: 'landed' }),
+    ];
+    const t = missTable('m', shots, 1);
+    expect(t).toContain('2 件中 1 件');
+    const lines = t.split('\n');
+    expect(lines).toHaveLength(5);
+    expect(lines[4]).toContain('| 57.3 |');
+    expect(lines[4]).toContain('| 500 |');
+  });
+
+  it('外れが無ければ見出しと空の表だけ', () => {
+    const t = missTable('m', [shot({ predictedMerge: true, outcome: 'merged' })], 12);
+    expect(t).toContain('0 件中 0 件');
+    expect(t.split('\n')).toHaveLength(4);
   });
 });
 

@@ -33,6 +33,15 @@ export type ReplayOutcome = Readonly<{
   submitted: number;
 }>;
 
+/** phase が 'active' の間、指定の tick まで進める。すでに過ぎていたり終了していたら何もしない。 */
+export function stepUntil(sim: SimulationPort, tick: number): void {
+  for (;;) {
+    const s = sim.getSnapshot();
+    if (s.phase !== 'active' || s.tick >= tick) return;
+    sim.stepFixed();
+  }
+}
+
 /**
  * 入力ログを同じ tick に撃ち直してプレイを再現する。
  * 途中で終了した場合、残りの入力は全部弾かれてそのまま止まる。
@@ -40,17 +49,10 @@ export type ReplayOutcome = Readonly<{
 export function replayLaunches(seed: number, inputs: readonly LaunchInput[], options: ReplayOptions = {}): ReplayOutcome {
   const sim = createSimulation(seed, options.setup);
   const until = options.stopTick ?? options.maxTicks ?? DEFAULT_MAX_TICKS;
-  const stepUntil = (tick: number): void => {
-    for (;;) {
-      const s = sim.getSnapshot();
-      if (s.phase !== 'active' || s.tick >= tick) return;
-      sim.stepFixed();
-    }
-  };
 
   let submitted = 0;
   for (const input of inputs) {
-    stepUntil(input.tick);
+    stepUntil(sim, input.tick);
     const res = sim.submitLaunch({
       originAngleRadians: input.originAngleRadians,
       vx: input.vx,
@@ -58,6 +60,6 @@ export function replayLaunches(seed: number, inputs: readonly LaunchInput[], opt
     });
     if (res.accepted) submitted++;
   }
-  stepUntil(until);
+  stepUntil(sim, until);
   return { sim, submitted };
 }

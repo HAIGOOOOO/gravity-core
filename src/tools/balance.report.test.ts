@@ -6,11 +6,11 @@
 import { describe, expect, it } from 'vitest';
 import { setupAllTiers } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
-import { measureAccuracyBatch, type AccuracySummary } from './accuracy';
+import { measureAccuracyBatch, type AccuracySummary, type ShotRecord } from './accuracy';
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
 import { ALL_BOTS, randomBot } from './bots';
 import { diffRuns } from './compare';
-import { accuracyTable, balanceTable, diffTable, seedTable, statsTable } from './report';
+import { accuracyTable, balanceTable, diffTable, missTable, outcomeTable, seedTable, statsTable } from './report';
 
 const FULL = import.meta.env.VITE_BALANCE === '1';
 const RUNS = FULL ? 100 : 3;
@@ -19,7 +19,7 @@ const TIMEOUT = FULL ? 600_000 : 30_000;
 
 describe('数値調整レポート', () => {
   const collected: { name: string; runs: PlayResult[] }[] = [];
-  const accuracies: { name: string; summary: AccuracySummary }[] = [];
+  const accuracies: { name: string; summary: AccuracySummary; shots: ShotRecord[] }[] = [];
 
   for (const make of ALL_BOTS) {
     const name = make(0).name;
@@ -33,7 +33,7 @@ describe('数値調整レポート', () => {
         expect(s.launches.mean).toBeGreaterThan(0);
         expect(s.seconds.mean).toBeGreaterThan(0);
         collected.push({ name, runs: m.runs });
-        accuracies.push({ name, summary: m.summary });
+        accuracies.push({ name, summary: m.summary, shots: m.shots });
       },
       TIMEOUT,
     );
@@ -60,6 +60,13 @@ describe('数値調整レポート', () => {
       // 予測の的中率。低いボットほど「狙っているのに外れる」ので、出た数字は実力より低い
       console.log('\n## 予測の的中率（ボット別）\n');
       console.log(accuracyTable(accuracies));
+
+      // 外れの内訳（どの結末に散ったか）と個票。個票の シード+tick から replay で直前の盤面を再現できる
+      console.log('\n## 予測の外れの内訳と例（ボット別）\n');
+      for (const a of accuracies) {
+        console.log(`\n${outcomeTable(a.name, a.shots)}`);
+        console.log(`\n${missTable(a.name, a.shots, 12)}`);
+      }
 
       // random を基準に、同じシードどうしの差を出す（シードのばらつきを除いた強さの差）
       const baseline = collected.find((e) => e.name === 'random');

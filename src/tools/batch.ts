@@ -4,6 +4,7 @@
 import type {
   BodyId,
   GameEvent,
+  GameSnapshot,
   LaunchCommand,
   Prediction,
   SimulationPort,
@@ -56,8 +57,15 @@ export type PlayHooks = Readonly<{
    * 受理された射出 1 回ごとに呼ぶ。
    * prediction は撃つ直前の盤面で取ったもの（撃った後に predict すると、
    * 撃った天体自身に衝突する予測が返るので使い物にならない）。
+   * snapshot は撃つ直前の盤面（decide が見たのと同じ。nextQueue[0] = 撃った天体の Tier）。
    */
-  onLaunch?: (command: LaunchCommand, prediction: Prediction, bodyId: BodyId, tick: Tick) => void;
+  onLaunch?: (
+    command: LaunchCommand,
+    prediction: Prediction,
+    bodyId: BodyId,
+    tick: Tick,
+    snapshot: GameSnapshot,
+  ) => void;
   /** stepFixed が返したイベント（その tick に起きた分）。launch イベントもここに来る */
   onEvents?: (events: readonly GameEvent[]) => void;
 }>;
@@ -119,7 +127,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
         }
         continue;
       }
-      if (hook !== undefined && predicted !== undefined) hook(command, predicted, res.bodyId, snap.tick);
+      if (hook !== undefined && predicted !== undefined) hook(command, predicted, res.bodyId, snap.tick, snap);
     }
     step();
   }

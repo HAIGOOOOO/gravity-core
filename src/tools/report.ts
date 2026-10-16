@@ -1,6 +1,6 @@
 // まわした結果を Markdown の表にする。文字列を作るだけ（ファイルには書かない）。
 
-import type { AccuracySummary } from './accuracy';
+import { countOutcomes, mergeMisses, SHOT_OUTCOMES, type AccuracySummary, type ShotOutcome, type ShotRecord } from './accuracy';
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
 import { diffRuns } from './compare';
 import type { Stats } from './stats';
@@ -137,6 +137,62 @@ export function accuracyTable(entries: readonly { name: string; summary: Accurac
       formatNumber(s.landError.median),
     ]),
   );
+}
+
+/** 結末の表示名 */
+const OUTCOME_LABELS: Record<ShotOutcome, string> = {
+  merged: '合体',
+  landed: '着地',
+  landedThenMerged: '着地→合体',
+  noContact: '未接触',
+};
+
+/**
+ * 「合体を予測したか」×「実際の結末」の件数表。
+ * 外れが「着地」「着地→合体」「未接触」のどれに散るかで原因の当たりを付ける:
+ *   - 着地が多い → 狙いは合っていたが相手が先に動いた（盤面の揺れ）
+ *   - 未接触が多い → 途中で弾かれた等、道すじ自体が外れた
+ */
+export function outcomeTable(name: string, shots: readonly ShotRecord[]): string {
+  const c = countOutcomes(shots);
+  const table = markdownTable(
+    ['結末', '合体を予測', '予測なし', '合計'],
+    SHOT_OUTCOMES.map((o) => [
+      OUTCOME_LABELS[o],
+      String(c[o].predicted),
+      String(c[o].other),
+      String(c[o].predicted + c[o].other),
+    ]),
+  );
+  return `### ${name}: 予測 × 結末（${shots.length} 射）\n\n${table}`;
+}
+
+/**
+ * 「合体を予測したのに合体しなかった」射出の個票（シード→tick 順、最大 count 件）。
+ * シードと tick があれば、replayLaunches(seed, ログ, { stopTick: tick }) で
+ * 撃つ直前の盤面を再現して目で確かめられる。
+ * 着地まで = 撃ってから着地するまでの tick（長いほど予測が崩れる隙が大きい）。
+ */
+export function missTable(name: string, shots: readonly ShotRecord[], count: number): string {
+  const all = mergeMisses(shots).sort((a, b) => a.seed - b.seed || a.tick - b.tick);
+  const list = all.slice(0, Math.max(0, count));
+  const table = markdownTable(
+    ['シード', 'tick', 'Tier', '角度°', '速さ', '予測の相手', '結末', '着地まで', '誤差px'],
+    list.map((s) => [
+      String(s.seed),
+      String(s.tick),
+      String(s.tier),
+      formatNumber((s.command.originAngleRadians * 180) / Math.PI),
+      formatNumber(Math.hypot(s.command.vx, s.command.vy)),
+      s.predictedHitBodyId === null ? '—' : String(s.predictedHitBodyId),
+      OUTCOME_LABELS[s.outcome],
+      s.landTick === null ? '—' : String(s.landTick - s.tick),
+      s.landPoint !== null && s.predictedPoint !== null
+        ? formatNumber(Math.hypot(s.landPoint.x - s.predictedPoint.x, s.landPoint.y - s.predictedPoint.y))
+        : '—',
+    ]),
+  );
+  return `### ${name}: 予測合体の外れ（${all.length} 件中 ${list.length} 件）\n\n${table}`;
 }
 
 /** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */
