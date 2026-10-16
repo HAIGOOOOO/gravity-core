@@ -2,7 +2,7 @@
 
 ## いま / つぎ
 
-- いま: 18 回目。盤面の「詰まり」と「熱の滞在」を測る `board.ts` を足した。`PlayHooks` に `onStep`（各 tick の終わりの盤面）を新設し、それを食う `createBoardTracker` で天体数・占有率（Σr²/リング²）・熱量帯（安定/上昇/過熱/臨界）の滞在秒を記録。`PlayResult` には射出を断られた回数 `rejects` を足した（やり直しの待ち = プレイの無駄）。
+- いま: 21 回目。「はみ出しエピソード」の分析 `overlimit.ts` を足した。`onStep` の盤面で `overLimit` の立ち上がり/下がりを見て「はみ出し→戻り」を 1 回ずつ記録: 回数・初回秒・長さ・最深はみ出し px・方角・Tier・天体数・戻れたか。`board.ts` の滞在率とは別の切り口（1 回 1 回を区別する）。`overTable`（ボット別）と `episodeTable`（全回の深い順の個票）をレポートに追加。
 - つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す → 抜けテストを探す。
 
 ## 構成（`src/tools/`）
@@ -13,9 +13,10 @@
 - `accuracy.ts`: `measureAccuracy` / `measureAccuracyBatch`（playOnce のフックで射出の予測と結末を記録）。結末は最初のイベントで決める: land 前に合体消費 = 'merged'、land のみ = 'landed'、land 後に合体消費 = 'landedThenMerged'、何も無し = 'noContact'。集計は的中率・外れ・予測外合体・相手一致率・着地誤差と、Tier 別の `summarizeByTier`。
 - `pace.ts`: `createPaceTracker`（イベントから Tier ごとの初到達 tick を追跡）と `measurePace` / `measurePaceBatch`（playOnce のフックに乗せる）。`summarizePace` は Tier ごとに「届いた率」と秒の分布。`setupTiers` で開始時の天体（setup.bodies、無ければ START_BODY）を 0 秒で到達扱いにする。「届いた一番上 = bestTier」ではない点に注意（キューの抽選や setup 由来は bestTier に入らない）。
 - `board.ts`: `createBoardTracker`（`hooks.onStep` に渡すと各 tick の盤面を記録）と `measureBoard` / `measureBoardBatch`。出す物は天体数・占有率（天体面積÷リング面積）の分布、限界越え率、熱量帯（安定/上昇/過熱/臨界）の滞在秒。`summarizeBoardBatch` は回ごとの「一番詰まった瞬間」と「ふだん」を分けて分布にする（最大だけ高い = 終盤に急に伸びて終わる型）。`heatBand` の境目は「越えたら上の帯」（75 はまだ過熱。`heat75Count` と同じ基準）。
+- `overlimit.ts`: `createOverTracker`（`hooks.onStep` に渡すと「はみ出し→戻り」をエピソードとして記録）と `measureOver` / `measureOverBatch` / `summarizeOverBatch`。board.ts が「全 tick の滞在率」なのに対し、こちらは 1 回 1 回を区別する。エピソードごとに開始/終了 tick・秒数・最深はみ出し px・最深天体の方角と Tier・はみ出た天体の種類数を出す。`openAtEnd` = 終わる時点で越えたまま（打ち切りなら「打ち切り時点で危険」、終了なら「その山で終わった」）。`firstOverSeconds` は「危険が来るのは序盤か終盤か」、`recoveredRate` は「はみ出しても戻れた率」。
 - `stats.ts`: 平均・中央値・10%・90%（線形補間）。
 - `compare.ts`: `diffRuns`（シードで対を作り、指標ごとの「B − A」の分布を出す）。
-- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較・`accuracyTable`/`outcomeTable`/`tierTable`/`missTable` 的中率まわり・`paceTable` Tier ごとの初到達・`boardTable` 盤面の詰まりと熱の滞在）。
+- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較・`accuracyTable`/`outcomeTable`/`tierTable`/`missTable` 的中率まわり・`paceTable` Tier ごとの初到達・`boardTable` 盤面の詰まりと熱の滞在・`overTable` はみ出しエピソード・`episodeTable` はみ出しの深い順の個票）。
 - `speed.test.ts`: 各ボット 30 秒ぶんを回して tick/秒を出す。下限は「実時間の 2 倍」。
 - `balance.report.test.ts`: ふだん各 3 回で動作確認。`VITE_BALANCE=1` で各 100 回 + setup 差し替え比較を console.log に出す。
 
@@ -40,6 +41,7 @@
 - `pace` の「到達」は「その Tier の天体が盤面に 1 度でも存在したか」。合体だけでなくキュー由来（launch の sourceTier）や setup 由来も数えるので、bestTierThisRun（合体で作った Tier だけ）より広い。普通のプレイでは「届いた一番上 ≤ max(bestTier, 1)」: キューの抽選が bestTier より上を出せるのは bestTier=0 の時の Tier 1 だけ（QUEUE_TABLE の先頭行）。setup.bodies があると上振れはいくらでも起きる（届いた Tier と bestTier が一致しない）。
 - `onStep` フックの位置: `stepFixed` の直後・`onEvents` のあと。終了した tick の盤面も来るので「終わった瞬間の状態」まで取れる。呼ばれる回数は `result.ticks` と必ず一致する（やり直しの待ち tick でも呼ばれる。テストで固定）。tick 0（開始時の盤面）は来ないので、開始時点を含めたい記録は自分で初値を足す（pace の setupTiers と同じ考え方）。
 - `rejects` を指標に足した理由: 断られた射出は盤面を変えないので入力ログに残らず、今まで「無駄な待ち」は秒数に溶けて見えなかった。random / spiral は予測を見ないので、山が発射リング近くまで育つと overlap で断られる。狙いを定めるボットは予測で invalid を除くので、断られるのは「全部の方角が invalid」の時の予備射出だけ —— 数が多いなら「撃てない盤面が続いた」証拠になる。
+- `overlimit.ts` の決め事: ① エピソードの境界は `snapshot.overLimit` の true↔false（`overLimitStart`/`End` イベントと同じ位置だが、onStep だけで深さまで取れるのでこちらを使う）② `endTick` は「戻ったと最初に観測した tick」なので、エピソードの長さは `endTick - startTick` tick ③ 最深はみ出しは `hypot(x,y)+radius−LIMIT_RADIUS` のエピソード中の最大値で、その瞬間の天体の方角・Tier も一緒に残す（「どの方角の山が危なかったか」が分かる）④ setup.bodies は猶予（1.2 秒）で tick ≥144 からしかはみ出さないので、初はみ出し秒 ≧1.2 を実機テストで固定した ⑤ はみ出しが「戻る」のを実シミュレーションで強制的に作るのは難しい（合体で消すには天体を減らすしかなく、減るとたいてい越えたまま）——閉じる処理は偽盤面の単体テストで確かめ、実機では「閉じたエピソードがあれば端点と秒数が整合する」までを確認に留めた。
 
 ## リーダーへの依頼
 

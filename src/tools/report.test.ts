@@ -4,18 +4,21 @@ import { TICK_HZ } from '../game/constants';
 import type { AccuracySummary, ShotRecord } from './accuracy';
 import { RUN_METRICS, type PlayResult } from './batch';
 import { summarizeBoardBatch, type BoardBatchSummary } from './board';
+import type { OverBatchSummary, OverEpisode, OverSummary } from './overlimit';
 import { tierPace } from './pace';
 import {
   accuracyTable,
   balanceTable,
   boardTable,
   diffTable,
+  episodeTable,
   formatNumber,
   formatPercent,
   formatRange,
   markdownTable,
   missTable,
   outcomeTable,
+  overTable,
   paceTable,
   seedTable,
   statsTable,
@@ -372,6 +375,105 @@ describe('boardTable', () => {
     expect(t.split('\n')).toHaveLength(3);
     expect(t).toContain('empty');
     expect(t).toContain('—');
+  });
+});
+
+describe('overTable', () => {
+  const batch: OverBatchSummary = {
+    runs: 3,
+    overRate: 2 / 3,
+    episodeCount: summarize([0, 1, 2]),
+    firstOverSeconds: summarize([30, 60]),
+    episodeSeconds: summarize([1, 2, 3]),
+    peakOverhang: summarize([10, 40, 90]),
+    recoveredRate: 0.5,
+    openAtEndRate: 1 / 3,
+  };
+
+  it('はみ出し率・回数・初回・長さ・深さ・戻り率を列に出す', () => {
+    const t = overTable([{ name: 'a', summary: batch }]);
+    const lines = t.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('はみ出し率');
+    expect(lines[0]).toContain('初はみ出し秒');
+    // 67% はみ出した・1 回/回・初回 45 秒・長さ中央 2 秒・最深 90px・戻れた 50%・終了時 33%
+    expect(lines[2]).toBe('| a | 3 | 67% | 1 | 45（33〜57） | 2（1.2〜2.8） | 40（16〜80） | 50% | 33% |');
+  });
+
+  it('0 件でも「—」で埋められる', () => {
+    const t = overTable([
+      {
+        name: 'empty',
+        summary: {
+          runs: 0,
+          overRate: NaN,
+          episodeCount: summarize([]),
+          firstOverSeconds: summarize([]),
+          episodeSeconds: summarize([]),
+          peakOverhang: summarize([]),
+          recoveredRate: NaN,
+          openAtEndRate: NaN,
+        },
+      },
+    ]);
+    expect(t.split('\n')).toHaveLength(3);
+    expect(t).toContain('empty');
+    expect(t).toContain('—');
+  });
+});
+
+describe('episodeTable', () => {
+  const ep = (over: Partial<OverEpisode>): OverEpisode => ({
+    startTick: 0,
+    endTick: 10,
+    seconds: 1,
+    peakOverhangPx: 1,
+    peakAngleRadians: 0,
+    peakTier: 0,
+    bodyCount: 1,
+    ...over,
+  });
+  const sum = (episodes: readonly OverEpisode[]): OverSummary => ({
+    ticks: 100,
+    episodes,
+    episodeCount: episodes.length,
+    overSeconds: episodes.length,
+    firstOverSeconds: null,
+    episodeSeconds: summarize(episodes.map((e) => e.seconds)),
+    peakOverhang: summarize(episodes.map((e) => e.peakOverhangPx)),
+    openAtEnd: false,
+  });
+
+  it('全回のエピソードを深い順に count 件。シード・秒・方角・状態を出す', () => {
+    const t = episodeTable(
+      'x',
+      [
+        { seed: 1, summary: sum([ep({ peakOverhangPx: 5, startTick: 120 })]) },
+        { seed: 2, summary: sum([ep({ peakOverhangPx: 80, startTick: 240, endTick: null, peakTier: 6, peakAngleRadians: 1, seconds: 3 })]) },
+        { seed: 3, summary: sum([]) },
+      ],
+      8,
+    );
+    const lines = t.split('\n');
+    expect(t).toContain('### x: はみ出しの深い順（2 件中 2 件）');
+    // 見出し・空行・ヘッダ・区切り・2 行 = 6 行
+    expect(lines).toHaveLength(6);
+    // 深い順: 80px（seed 2、1 rad = 57.3°）→ 5px（seed 1）
+    expect(lines[4]).toContain('| 2 | 2 | 3 | 80 | 6 | 57.3 | 1 | 越えたまま |');
+    expect(lines[5]).toContain('| 1 | 1 | 1 | 5 | 0 | 0 | 1 | 戻った |');
+  });
+
+  it('件数を超えた分は切る。0 件なら見出しと空の表だけ', () => {
+    const runs = [
+      { seed: 1, summary: sum([ep({ peakOverhangPx: 50 }), ep({ peakOverhangPx: 30 })]) },
+      { seed: 2, summary: sum([ep({ peakOverhangPx: 70 })]) },
+    ];
+    const t = episodeTable('x', runs, 1);
+    expect(t).toContain('3 件中 1 件');
+    expect(t.split('\n')).toHaveLength(5);
+    const empty = episodeTable('x', [{ seed: 1, summary: sum([]) }], 8);
+    expect(empty).toContain('0 件中 0 件');
+    expect(empty.split('\n')).toHaveLength(4);
   });
 });
 

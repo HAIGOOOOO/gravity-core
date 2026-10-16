@@ -9,9 +9,11 @@ import {
   type ShotOutcome,
   type ShotRecord,
 } from './accuracy';
+import { TICK_HZ } from '../game/constants';
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
 import type { BoardBatchSummary } from './board';
 import { diffRuns } from './compare';
+import type { OverBatchSummary, OverSummary } from './overlimit';
 import { summarizePace, type TierPace } from './pace';
 import type { Stats } from './stats';
 
@@ -270,6 +272,54 @@ export function boardTable(entries: readonly { name: string; summary: BoardBatch
       formatPercent(s.overLimitRate.median),
     ]),
   );
+}
+
+/**
+ * はみ出しエピソードの表（ボット別）。
+ * 「初はみ出し秒」が小さいほど序盤から危ない展開。「戻れた率」が高いほど、
+ * はみ出しても山が自力で戻る（猶予・押し戻し・合体での解消が効いている）。
+ * 「終了時はみ出し率」は、終わる瞬間に越えたままだった回の割合。
+ */
+export function overTable(entries: readonly { name: string; summary: OverBatchSummary }[]): string {
+  return markdownTable(
+    ['ボット', '回数', 'はみ出し率', '回数/回（中央）', '初はみ出し秒', '1回の長さ秒', '最深はみ出しpx', '戻れた率', '終了時はみ出し率'],
+    entries.map(({ name, summary: s }) => [
+      name,
+      String(s.runs),
+      formatPercent(s.overRate),
+      formatNumber(s.episodeCount.median),
+      formatRange(s.firstOverSeconds),
+      formatRange(s.episodeSeconds),
+      formatRange(s.peakOverhang),
+      formatPercent(s.recoveredRate),
+      formatPercent(s.openAtEndRate),
+    ]),
+  );
+}
+
+/**
+ * 全部の回を通じて一番深くはみ出したエピソードの個票（深い順、最大 count 件）。
+ * 「どの方角の山が一番危なかったか」が分かる。シードと開始秒に、記録した
+ * 入力ログを合わせれば、replayLaunches / boardBeforeShot でその時点の盤面を再現できる。
+ */
+export function episodeTable(name: string, runs: readonly { seed: number; summary: OverSummary }[], count: number): string {
+  const all = runs.flatMap((r) => r.summary.episodes.map((e) => ({ seed: r.seed, e })));
+  all.sort((a, b) => b.e.peakOverhangPx - a.e.peakOverhangPx);
+  const list = all.slice(0, Math.max(0, count));
+  const table = markdownTable(
+    ['シード', '開始秒', '長さ秒', '最深px', 'Tier', '方角°', '天体数', '状態'],
+    list.map(({ seed, e }) => [
+      String(seed),
+      formatNumber(e.startTick / TICK_HZ),
+      formatNumber(e.seconds),
+      formatNumber(e.peakOverhangPx),
+      String(e.peakTier),
+      formatNumber((e.peakAngleRadians * 180) / Math.PI),
+      String(e.bodyCount),
+      e.endTick === null ? '越えたまま' : '戻った',
+    ]),
+  );
+  return `### ${name}: はみ出しの深い順（${all.length} 件中 ${list.length} 件）\n\n${table}`;
 }
 
 /** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */
