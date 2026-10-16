@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { at } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
+import type { SimulationSetup } from '../game/simulation';
 import { playOnce, runBatch, summarizeRuns } from './batch';
 import { randomBot, type Bot } from './bots';
 
@@ -24,7 +25,23 @@ describe('playOnce', () => {
     expect(result.heat75Count).toBeGreaterThanOrEqual(1);
     // リングを越えた天体があったので、越えていた時間も記録される
     expect(result.overLimitSeconds).toBeGreaterThan(0);
+    // 熱量は 100 で打ち止めになって終わるので、山は 100
+    expect(result.peakHeat).toBe(100);
     // 打ち切りではなく終了で止まった
+    expect(result.timedOut).toBe(false);
+  });
+
+  it('開始時から 75 を越えていた場合も 1 回と数え、下がってまた越えれば +1', () => {
+    // 上のテストと同じ「積もるとはみ出す 3 体の山」+ 熱量 80 開始（開始時点で 1 回目）。
+    // 猶予時間（1.2 秒）は山が判定から外れるので熱量は下がって 75 を割り、
+    // その後また上がって 75 を越える → 「開始時の 1 回」+「再上がりの 1 回」= 2 回
+    const { result } = playOnce(randomBot(1), {
+      seed: 1,
+      maxTicks: 30 * TICK_HZ,
+      setup: { bodies: [at(7, 130, 0), at(6, 280, 0), at(5, 400, 0)], heat: 80, bestTier: 8 },
+    });
+    expect(result.heat75Count).toBe(2);
+    expect(result.peakHeat).toBe(100);
     expect(result.timedOut).toBe(false);
   });
 
@@ -81,6 +98,15 @@ describe('playOnce の抜けている場合', () => {
     expect(sim.getSnapshot().bestTierThisRun).toBe(8);
   });
 
+  it('このプレイに使った setup を result に残す（replayLaunches でそのまま再現できる）', () => {
+    const setup: SimulationSetup = { heat: 5, bestTier: 3 };
+    const { result } = playOnce(randomBot(1), { seed: 1, maxTicks: TICK_HZ, setup });
+    expect(result.setup).toEqual(setup);
+    // setup なしなら undefined（再現時は省略すればよい）
+    const { result: plain } = playOnce(randomBot(1), { seed: 1, maxTicks: TICK_HZ });
+    expect(plain.setup).toBeUndefined();
+  });
+
   it('合体効率は「合体数 ÷ 射出数」。撃てなければ 0、撃てば 0 以上', () => {
     // 撃てないボットは 0 射出 → 0 で割れないので 0
     const stubborn: Bot = { name: 'stubborn', decide: () => ({ originAngleRadians: 0, vx: 0, vy: 0 }) };
@@ -105,6 +131,8 @@ describe('summarizeRuns', () => {
     expect(s.bestTier.median).toBeGreaterThanOrEqual(0);
     expect(s.merges.mean).toBeGreaterThanOrEqual(0);
     expect(s.heat75Count.max).toBeGreaterThanOrEqual(0);
+    expect(s.peakHeat.min).toBeGreaterThanOrEqual(0);
+    expect(s.peakHeat.max).toBeLessThanOrEqual(100);
     expect(s.mergesPerLaunch.mean).toBeGreaterThanOrEqual(0);
   });
 

@@ -15,6 +15,7 @@ const base: PlayResult = {
   supernovas: 0,
   maxChain: 2,
   heat75Count: 1,
+  peakHeat: 80,
   overLimitSeconds: 5,
   timedOut: false,
 };
@@ -61,6 +62,7 @@ describe('balanceTable', () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toContain('ボット');
     expect(lines[0]).toContain('限界越え秒');
+    expect(lines[0]).toContain('熱量Max');
     expect(lines[0]).toContain('合体効率');
     expect(lines[2]).toContain('| a | 2 |');
     // 得点 2 件の中央値は 2000
@@ -81,21 +83,22 @@ describe('balanceTable', () => {
 });
 
 describe('statsTable', () => {
-  it('見出し + 指標 10 行の表になる', () => {
+  it('見出し + 指標 11 行の表になる', () => {
     const t = statsTable('a', [base]);
     expect(t).toContain('### a');
     expect(t).toContain('得点');
     expect(t).toContain('熱量75超');
+    expect(t).toContain('最高熱量');
     expect(t).toContain('限界越え秒');
     expect(t).toContain('合体効率');
-    // 「### a」・空行・ヘッダ・区切り・10 指標 = 14 行
-    expect(t.split('\n')).toHaveLength(14);
+    // 「### a」・空行・ヘッダ・区切り・11 指標 = 15 行
+    expect(t.split('\n')).toHaveLength(15);
   });
 
   it('0 件でも表を作れる（値はすべて「—」）', () => {
     const t = statsTable('empty', []);
     expect(t).toContain('### empty');
-    expect(t.split('\n')).toHaveLength(14);
+    expect(t.split('\n')).toHaveLength(15);
     expect(t).toContain('—');
   });
 });
