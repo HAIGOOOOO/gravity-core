@@ -152,7 +152,17 @@ describe('図鑑の発見', () => {
 
   it('進み具合を返す', () => {
     const codex = createCodexStore(memoryStorage());
-    expect(codex.progress()).toEqual({ found: 0, total: CODEX_ENTRIES.length });
+    const totalOf = (cat: 'body' | 'event' | 'feat') =>
+      CODEX_ENTRIES.filter(e => e.category === cat).length;
+    expect(codex.progress()).toEqual({
+      found: 0,
+      total: CODEX_ENTRIES.length,
+      categories: {
+        body: { found: 0, total: totalOf('body') },
+        event: { found: 0, total: totalOf('event') },
+        feat: { found: 0, total: totalOf('feat') },
+      },
+    });
     codex.feed([sampleEvent('launch')], snapshot(), META);
     expect(codex.progress().found).toBeGreaterThanOrEqual(1);
   });
@@ -526,5 +536,124 @@ describe('天体の項目', () => {
     expect(found.has('body-t2')).toBe(true);
     expect(found.has('body-t3')).toBe(true);
     expect(found.has('body-t4')).toBe(false);
+  });
+});
+
+// 一覧画面が「天体 3/9」のようにカテゴリごとに出せる形にする
+describe('カテゴリ別の進み具合', () => {
+  it('発見すると該当カテゴリだけが増え、合計は全体と一致する', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('merge')], snapshot(), META); // evt-merge が見つかる
+    const p = codex.progress();
+    expect(p.categories.event.found).toBeGreaterThanOrEqual(1);
+    const sum = p.categories.body.found + p.categories.event.found + p.categories.feat.found;
+    expect(sum).toBe(p.found);
+    const total =
+      p.categories.body.total + p.categories.event.total + p.categories.feat.total;
+    expect(total).toBe(p.total);
+  });
+
+  it('項目の無いカテゴリは 0/0 で返す（表示側が分岐しないで済む）', () => {
+    const only: CodexEntry = {
+      id: 'x-only',
+      category: 'feat',
+      name: 'n',
+      description: 'd',
+      hint: 'h',
+      found: () => null,
+    };
+    const codex = createCodexStore(memoryStorage(), [only]);
+    const p = codex.progress();
+    expect(p.categories.body).toEqual({ found: 0, total: 0 });
+    expect(p.categories.event).toEqual({ found: 0, total: 0 });
+    expect(p.categories.feat).toEqual({ found: 0, total: 1 });
+  });
+});
+
+// 「最近の発見」欄・NEW バッジ用に、新しい順で取り出せる
+describe('最近の発見（latest）', () => {
+  it('新しく見つけた順に返し、個数を絞れる', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('launch')], snapshot(), { runIndex: 1, nowMs: 100 });
+    codex.feed([sampleEvent('merge')], snapshot(), { runIndex: 2, nowMs: 200 });
+    const all = codex.latest(20);
+    expect(all.length).toBeGreaterThanOrEqual(2);
+    expect(all.every(v => v.found)).toBe(true);
+    const order = all.map(v => v.id);
+    // evt-merge（nowMs 200 の発見）が evt-launch（100）より先に来る
+    expect(order.indexOf('evt-merge')).toBeLessThan(order.indexOf('evt-launch'));
+    expect(codex.latest(1).map(v => v.id)).toEqual([order[0]]);
+  });
+
+  it('同じ時刻に見つかった項目は表の順を保つ', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('merge', 0, 0, 0, 5)], snapshot({ score: 200_000, heat: 95 }), META);
+    const ids = codex.latest(50).map(v => v.id);
+    const tableOrder = CODEX_ENTRIES.map(e => e.id);
+    expect(ids).toEqual([...ids].sort((a, b) => tableOrder.indexOf(a) - tableOrder.indexOf(b)));
+  });
+
+  it('個数の上限は 0 以上の整数に丸める', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('launch')], snapshot(), META);
+    expect(codex.latest(0)).toHaveLength(0);
+    expect(codex.latest(-3)).toHaveLength(0);
+    expect(codex.latest(0.9)).toHaveLength(0); // 小数は切り捨て
+    expect(codex.latest(Number.NaN)).toHaveLength(0);
+    expect(codex.latest(1.9)).toHaveLength(1);
+  });
+
+  it('保存をまたいでも発見時刻の順に並び、表に無い記録は出さない', () => {
+    const storage = memoryStorage();
+    createCodexStore(storage).feed([sampleEvent('launch')], snapshot(), {
+      runIndex: 1,
+      nowMs: 50,
+    });
+    const codex = createCodexStore(storage);
+    codex.feed([sampleEvent('merge')], snapshot(), { runIndex: 2, nowMs: 999 });
+    const ids = codex.latest(20).map(v => v.id);
+    expect(ids.indexOf('evt-merge')).toBeLessThan(ids.indexOf('evt-launch'));
+
+    const ghosted = memoryStorage({
+      [STORAGE_KEY]: JSON.stringify({
+        version: 1,
+        found: { 'ghost-entry': { foundAtMs: 1e15, runIndex: 1, tick: 0 } },
+      }),
+    });
+    const codex2 = createCodexStore(ghosted);
+    expect(codex2.latest(20).some(v => v.id === 'ghost-entry')).toBe(false);
+  });
+});
+
+// 着地の速さは impactSpeed（出来事にだけ残る）で判定する 2 項目
+describe('着地の速さで判定する項目', () => {
+  const land = (tick: number, impactSpeed: number): GameEvent => ({
+    ...sampleEvent('land'),
+    tick,
+    impactSpeed,
+  });
+
+  it('ゆっくり触れた着地で「そっと着地」が見つかり、その瞬間の tick を指す', () => {
+    expect(foundIds({}, [land(10, 120)])).toContain('feat-soft-land');
+    expect(foundIds({}, [land(10, 150)])).toContain('feat-soft-land'); // 境目は含む
+    expect(foundIds({}, [land(10, 151)])).not.toContain('feat-soft-land');
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([land(77, 100)], snapshot({ tick: 9000 }), META);
+    expect(codex.discovery('feat-soft-land')!.tick).toBe(77);
+  });
+
+  it('速いままぶつかった着地で「剛速球」が見つかる', () => {
+    expect(foundIds({}, [land(10, 600)])).toContain('feat-hard-land'); // 境目は含む
+    expect(foundIds({}, [land(10, 700)])).toContain('feat-hard-land');
+    expect(foundIds({}, [land(10, 599)])).not.toContain('feat-hard-land');
+  });
+
+  it('着地の速さは盤面に残らないので、出来事が無ければ見つからない', () => {
+    const ids = foundIds({
+      stats: { launches: 9, merges: 2, supernovas: 0, maxChain: 1 },
+      bodies: [body(1)],
+    });
+    expect(ids).not.toContain('feat-soft-land');
+    expect(ids).not.toContain('feat-hard-land');
   });
 });

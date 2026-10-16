@@ -75,6 +75,16 @@ export type CodexItemView = Readonly<{
   discovery: CodexDiscovery | null;
 }>;
 
+/** カテゴリごとの進み具合（一覧画面の「天体 3/9」の内訳に使う） */
+export type CodexCategoryProgress = Readonly<{ found: number; total: number }>;
+
+export type CodexProgress = Readonly<{
+  found: number;
+  total: number;
+  /** カテゴリ別の内訳。3 つのカテゴリは項目が 0 件でも必ず入る（表示側が分岐しないで済む） */
+  categories: Readonly<Record<CodexCategory, CodexCategoryProgress>>;
+}>;
+
 export interface CodexStore {
   /**
    * そのプレイの出来事の列と最新の盤面を流し込み、今回新しく見つかった項目を返す（永続化済み）。
@@ -90,7 +100,13 @@ export interface CodexStore {
   isFound(id: string): boolean;
   discovery(id: string): CodexDiscovery | null;
   list(): readonly CodexItemView[];
-  progress(): Readonly<{ found: number; total: number }>;
+  /**
+   * 最近見つけた項目を新しい順に返す（「最近の発見」欄・NEW バッジ用）。
+   * 発見時刻が同じ項目は表の順を保つ。limit は 0 以上の整数に丸める。
+   * 今の表に無い項目（別の版で記録された物）は返さない。
+   */
+  latest(limit?: number): readonly CodexItemView[];
+  progress(): CodexProgress;
 }
 
 /** 表をなめて、いま見つかっている項目を全部返す（純粋。記録も表示もしない）。 */
@@ -136,7 +152,7 @@ export function createCodexStore(
   const persist = (): void =>
     writeStoredJson(storage, STORAGE_KEY, { version: 1, found: Object.fromEntries(discoveries) });
 
-  return {
+  const api: CodexStore = {
     feed(events, snapshot, meta) {
       const ctx: CodexContext = { events, snapshot, nowMs: meta.nowMs };
       const found: CodexEntry[] = [];
@@ -172,9 +188,33 @@ export function createCodexStore(
         };
       });
     },
-    progress: () => ({
-      found: entries.filter(entry => discoveries.has(entry.id)).length,
-      total: entries.length,
-    }),
+    latest(limit = 5) {
+      const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
+      // list() は表の順の新しい配列を返すので、そのまま安定ソートすると
+      // 時刻順（同じ時刻なら表の順）になる
+      return api
+        .list()
+        .filter(v => v.found)
+        .sort((a, b) => (b.discovery?.foundAtMs ?? 0) - (a.discovery?.foundAtMs ?? 0))
+        .slice(0, cap);
+    },
+    progress() {
+      const categories: Record<CodexCategory, { found: number; total: number }> = {
+        body: { found: 0, total: 0 },
+        event: { found: 0, total: 0 },
+        feat: { found: 0, total: 0 },
+      };
+      let found = 0;
+      for (const entry of entries) {
+        const c = categories[entry.category];
+        if (c) c.total++;
+        if (discoveries.has(entry.id)) {
+          found++;
+          if (c) c.found++;
+        }
+      }
+      return { found, total: entries.length, categories };
+    },
   };
+  return api;
 }

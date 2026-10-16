@@ -20,11 +20,13 @@ export type {
 export { CODEX_ENTRIES, createCodexStore, evaluateCodex } from './codex';
 export type {
   CodexCategory,
+  CodexCategoryProgress,
   CodexContext,
   CodexDiscovery,
   CodexEntry,
   CodexFeedMeta,
   CodexItemView,
+  CodexProgress,
   CodexStore,
 } from './codex';
 export { evaluateUnlocks, newlyUnlocked, unlockContextFrom, UNLOCKS } from './unlocks';

@@ -35,6 +35,9 @@ const QUIET_TICKS = 60 * TICK_HZ; // 1 分
 const NIGHT_HOURS = [0, 5] as const;
 const CRITICAL_HEAT = HEAT_STATE_LIMITS[2]; // 臨界の境目 75
 const BRINK_HEAT = 90; // 終了（100）の寸前
+// 着地の速さ（impactSpeed）は出来事にだけ残る信号。境目は meta 側の設計値
+const SOFT_LAND_SPEED = 150; // ゆっくり触れて止まる速さ（px/秒）
+const HARD_LAND_SPEED = 600; // 強くぶつかる速さ（px/秒）
 
 // ── 判定の部品 ──
 
@@ -292,6 +295,13 @@ const FEAT_ENTRIES: CodexEntry[] = [
     found: firstEventTick(e => e.kind === 'supernova' && (e.chain ?? 0) >= NOVA_CHAIN) },
   { id: 'feat-triple-nova', category: 'feat', name: '超新星三昧', description: `1 プレイで ${NOVAS_IN_RUN} 度の超新星を起こした`,
     hint: `1 プレイで超新星を ${NOVAS_IN_RUN} 回起こす`, found: snapshotWhen(s => s.stats.supernovas >= NOVAS_IN_RUN) },
+  // 着地の速さは盤面・統計に残らないので、着地の出来事だけが証拠になる（保守側）
+  { id: 'feat-soft-land', category: 'feat', name: 'そっと着地', description: `撃った天体が、秒速 ${SOFT_LAND_SPEED} よりゆっくり触れて止まった`,
+    hint: '力を抜いて投げ、ゆっくり触れさせる',
+    found: firstEventTick(e => e.kind === 'land' && (e.impactSpeed ?? Infinity) <= SOFT_LAND_SPEED) },
+  { id: 'feat-hard-land', category: 'feat', name: '剛速球', description: `撃った天体が、秒速 ${HARD_LAND_SPEED} 以上の速さのままぶつかった`,
+    hint: '思い切り引っぱって投げ、速いまま何かにぶつける',
+    found: firstEventTick(e => e.kind === 'land' && (e.impactSpeed ?? 0) >= HARD_LAND_SPEED) },
 ];
 
 export const CODEX_ENTRIES: readonly CodexEntry[] = [

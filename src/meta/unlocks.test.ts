@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameEvent } from '../contracts/game';
 import { createAutoPlay } from '../fixtures';
-import { createCodexStore } from './codex';
+import { CODEX_ENTRIES, createCodexStore } from './codex';
 import { createDailyChallenge } from './daily';
 import type { MetaStorage } from './storage';
 import {
@@ -135,6 +135,14 @@ describe('解放の表', () => {
   it('条件文は全部ちがう（未解放の項目どうしを見分けられる）', () => {
     const requirements = UNLOCKS.map(e => e.requirement);
     expect(new Set(requirements).size).toBe(requirements.length);
+  });
+
+  it('図鑑の数で開く項目は、図鑑の総項目数を条件の上限にする（届かない物を置かない）', () => {
+    // 図鑑を全部集めきった状態でも閉じたままの項目が無いか確かめる
+    const maxed = evaluateUnlocks({ ...C0, codexFound: CODEX_ENTRIES.length });
+    for (const id of ['codex', 'codex-hints', 'observatory', 'stargazer']) {
+      expect(ids(maxed.unlocked)).toContain(id);
+    }
   });
 });
 
