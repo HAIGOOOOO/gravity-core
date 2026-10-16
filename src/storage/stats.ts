@@ -3,7 +3,7 @@
 // 別のキーに版つきで蓄える。このファイルは出来事の数え上げだけ（保存は history.ts、
 // 検査と移し替えは archive.ts、推移は trend.ts）。
 
-import type { GameEvent, GameSnapshot, RunStats, Tick } from '../contracts/game';
+import type { GameEvent, GameSnapshot, RunStats, Tick, Tier } from '../contracts/game';
 import { TICK_HZ, TIER_COUNT } from '../game/constants';
 
 /** 統計アーカイブの版。形を変えるときは 1 つ上げ、archive.ts の移し替えに足す。 */
@@ -76,6 +76,10 @@ export type EventFold = {
   overLimitEntries: number;
   /** 越え始めた tick。終わっていなければその時刻、越えていなければ null */
   overLimitSince: Tick | null;
+  /** 合体・超新星が覚えている得点の合計。盤面の得点が欠けた時の下限の証拠（得点は減らない） */
+  scoreSum: number;
+  /** 読めた出来事の一番遅い tick。盤面の tick が欠けた・古い時の証拠 */
+  lastTick: number;
   maxSingleScore: number;
   maxImpactSpeed: number;
   mergesByTier: number[];
@@ -92,6 +96,8 @@ export function createEventFold(): EventFold {
     overLimitIntervals: [],
     overLimitEntries: 0,
     overLimitSince: null,
+    scoreSum: 0,
+    lastTick: 0,
     maxSingleScore: 0,
     maxImpactSpeed: 0,
     mergesByTier: new Array<number>(TIER_COUNT).fill(0),
@@ -105,6 +111,10 @@ const countInt = (value: number | undefined): number | null =>
 /** 限界区間の計算に使う tick。NaN・無限は区間を作れないので捨て、負は 0 に丸める。 */
 const saneTick = (tick: Tick): Tick | null => (Number.isFinite(tick) ? Math.max(0, tick) : null);
 
+/** 有効な Tier の値か（0〜TIER_COUNT-1 の整数）。範囲外の値は証拠にしない。 */
+const isTier = (value: unknown): value is Tier =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < TIER_COUNT;
+
 /** 実行時に null・プリミティブなどの物体でない要素を落とす（kind が読めない物も同様）。 */
 const isEventLike = (value: unknown): boolean =>
   value !== null && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string';
@@ -113,6 +123,10 @@ const isEventLike = (value: unknown): boolean =>
 export function foldEvent(fold: EventFold, event: GameEvent): void {
   // 列に壊れた要素が混ざっていても 1 件で止まらない（未知の種類は switch を素通りして無視される）
   if (!isEventLike(event)) return;
+  // 時刻の読める出来事は「その時刻までプレイが進んでいた」証拠。kind を問わず取る
+  // （未知の種類も含む）。盤面の tick が欠けた・古い時の下限として仕上げで使う
+  const eventTick = saneTick(event.tick);
+  if (eventTick !== null && eventTick > fold.lastTick) fold.lastTick = eventTick;
   switch (event.kind) {
     case 'launch':
       fold.launches++;
@@ -127,8 +141,7 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
     case 'merge':
       fold.merges++;
       // sourceTier が範囲外だと配列の外に NaN を書き込んでしまうので、検査してから数える
-      if (event.sourceTier !== undefined && Number.isInteger(event.sourceTier)
-        && event.sourceTier >= 0 && event.sourceTier < TIER_COUNT) {
+      if (isTier(event.sourceTier)) {
         fold.mergesByTier[event.sourceTier]++;
         // 合体した時点で「その Tier に届いた」「1 つ上の Tier が生まれた」実績になる。
         // resultTier の無い出来事でも、sourceTier + 1 が生まれるのはルールで決まっている
@@ -136,8 +149,7 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
         if (produced > fold.tierMax) fold.tierMax = produced;
       }
       // resultTier があればそれも到達の実績（盤面の集計が欠けても到達 Tier を補える）
-      if (event.resultTier !== undefined && Number.isInteger(event.resultTier)
-        && event.resultTier >= 0 && event.resultTier < TIER_COUNT && event.resultTier > fold.tierMax) {
+      if (isTier(event.resultTier) && event.resultTier > fold.tierMax) {
         fold.tierMax = event.resultTier;
       }
       break;
@@ -147,19 +159,17 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
       fold.tierMax = TIER_COUNT - 1;
       break;
     case 'overLimitStart': {
-      const tick = saneTick(event.tick);
       // 「越え始めた回数」は越えていない状態から越えた時だけ数える（重複した start は無視）
-      if (tick !== null && fold.overLimitSince === null) {
-        fold.overLimitSince = tick;
+      if (eventTick !== null && fold.overLimitSince === null) {
+        fold.overLimitSince = eventTick;
         fold.overLimitEntries++;
       }
       break;
     }
     case 'overLimitEnd': {
-      const tick = saneTick(event.tick);
       // 読めない時刻の end は「来なかった」のと同じ扱い: 区間は開いたまま、仕上げで閉じる
-      if (tick !== null && fold.overLimitSince !== null) {
-        fold.overLimitIntervals.push({ from: fold.overLimitSince, to: tick });
+      if (eventTick !== null && fold.overLimitSince !== null) {
+        fold.overLimitIntervals.push({ from: fold.overLimitSince, to: eventTick });
         fold.overLimitSince = null;
       }
       break;
@@ -171,7 +181,12 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
     const chain = countInt(event.chain);
     if (chain !== null && chain > fold.chainMax) fold.chainMax = chain;
     const delta = countInt(event.scoreDelta);
-    if (delta !== null && delta > fold.maxSingleScore) fold.maxSingleScore = delta;
+    if (delta !== null) {
+      if (delta > fold.maxSingleScore) fold.maxSingleScore = delta;
+      // 得点は合体・超新星でしか増えない。記録の合計は「少なくともこれだけ取った」
+      // 下限の証拠で、盤面の得点が欠けた・古い時に使う。負の値は得点を下げる根拠にしない
+      if (delta > 0) fold.scoreSum += delta;
+    }
   }
 }
 
@@ -191,8 +206,9 @@ const counted = (fromEvents: number, reported: number | undefined): number =>
 /**
  * 限界を越えていた合計 tick を出す。区間はプレイ時間 [0, tick] の内側に切ってから
  * 和集合を取る（出来事の時刻が前後して区間が重なっても、実際に越えていた時間より
- * 多く数えない）。開いたままの区間は最後の盤面の tick まで越えていた扱いにする
- * （gameOver 時は end が来ないため。0 に倒すと区間全体が消えて過小になる）。
+ * 多く数えない）。開いたままの区間はプレイの終わり（盤面と出来事の大きい方）まで
+ * 越えていた扱いにする（gameOver 時は end が来ないため。0 に倒すと区間全体が
+ * 消えて過小になる）。
  */
 function overLimitTotalTicks(fold: EventFold, tick: number): number {
   const raw = fold.overLimitSince !== null
@@ -217,9 +233,12 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
   // 盤面・識別情報がまるごと欠けた呼び出しでも落ちないよう、ある分だけ読む
   const snap: Partial<GameSnapshot> = snapshot ?? {};
   const info: Partial<RunDetailMeta> = meta ?? {};
-  const tick = nonNegative(snap.tick);
+  // 累積する量はすべて「出来事の証拠と盤面の集計の大きい方」。時刻も同じで、
+  // 出来事の最遅時刻が残る以上、プレイはそこまで進んでいた（盤面が古い・欠けた形を補う）
+  const tick = Math.max(nonNegative(snap.tick), fold.lastTick);
   const overLimitTicks = overLimitTotalTicks(fold, tick);
-  const score = nonNegativeInt(snap.score);
+  // 得点も同じ: 合体・超新星の記録が証明する合計を下回らない（計数と同じ counted() の考え方）
+  const score = counted(fold.scoreSum, snap.score);
   const simStats: Partial<RunStats> = snap.stats ?? {};
   // 出来事と盤面の集計は本来一致する。取りこぼしがあっても大きい方が残る（maxChain と同じ考え方）。
   // 着地は撃った天体にだけ出る出来事（1 投に 1 回まで）なので、残った着地の数は
@@ -267,8 +286,10 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
 
 /**
  * 出来事の列（プレイ中に起きた全イベント）と最後の盤面から、1 回分の統計を作る。
- * 数は出来事から数え、盤面の集計を下回らない（取りこぼしは集計で補う）。盤面からは
- * 得点・到達 Tier・経過 tick・seed を取る。
+ * 累積する量（回数・得点・経過 tick・到達 Tier）はすべて、出来事が証明する値と
+ * 盤面の集計の大きい方を採る。どちらも同じプレイの数字なので、片方が欠けても
+ * 残る側が実際に近い。盤面に対応する集計の無い項目（着地・限界区間・単発得点・
+ * 衝突の速さ・Tier 内訳）は出来事側の記録をそのまま使う。
  */
 export function buildRunDetail(
   events: readonly GameEvent[],

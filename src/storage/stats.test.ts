@@ -44,14 +44,15 @@ describe('プレイ統計の作成', () => {
       event('overLimitStart', 300),
       event('gameOver', 400),
     ];
+    // 盤面の得点は出来事の記録の合計（100 + 330 + 99999 = 100429）を上回る → 盤面側を採る
     const snap = snapshot({
-      tick: 400, phase: 'over', score: 1234, bestTierThisRun: 5, seed: 42,
+      tick: 400, phase: 'over', score: 200000, bestTierThisRun: 5, seed: 42,
       stats: { launches: 2, merges: 2, supernovas: 1, maxChain: 5 },
     });
     const d = buildRunDetail(events, snap, META);
     expect(d.id).toBe('run-1');
     expect(d.seed).toBe(42);
-    expect(d.score).toBe(1234);
+    expect(d.score).toBe(200000);
     expect(d.seconds).toBeCloseTo(400 / TICK_HZ, 10);
     expect(d.launches).toBe(2);
     expect(d.lands).toBe(2);
@@ -64,7 +65,7 @@ describe('プレイ統計の作成', () => {
     // 越えていたのは tick 100〜220 と 300〜400（終了まで開きっぱなし）
     expect(d.overLimitSeconds).toBeCloseTo(220 / TICK_HZ, 10);
     expect(d.overLimitEntries).toBe(2);
-    expect(d.scorePerLaunch).toBeCloseTo(617, 10);
+    expect(d.scorePerLaunch).toBeCloseTo(100000, 10);
     expect(d.maxSingleScore).toBe(99999);
     expect(d.maxImpactSpeed).toBe(700);
     expect(d.mergesByTier).toHaveLength(TIER_COUNT);
@@ -165,6 +166,8 @@ describe('壊れた入力を通さない', () => {
       { id: 'meta', playedAt: 'not-a-date', gameVersion: '0.1.0' },
     );
     expect(d.maxChain).toBe(4); // 出来事側の連鎖は残る
+    expect(d.score).toBe(50); // 得点の下限は記録の合計
+    expect(d.seconds).toBeCloseTo(5 / TICK_HZ, 10); // 出来事の時刻がプレイ時間の下限になる
     expect(d.playedAt).toBe('1970-01-01T00:00:00.000Z');
     expect(readRunDetail(d)).not.toBeNull();
   });
@@ -185,18 +188,20 @@ describe('壊れた入力を通さない', () => {
     expect(d.mergesByTier[0]).toBe(1);
     expect(readRunDetail(d)).not.toBeNull();
   });
-  it('終了時刻より後に閉じる区間は、プレイ時間までに切り詰める', () => {
+  it('出来事の最遅時刻が盤面を越えるときは、盤面が古い証拠として出来事側の時刻まで数える', () => {
+    // 終了 tick 1000 の出来事が残る以上、プレイは少なくとも 1000 tick 続いた。
+    // 「盤面の終了時刻」より後に閉じる区間も、実際にはプレイ時間内に収まる
     const events = [event('overLimitStart', 10), event('overLimitEnd', 1000)];
     const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
-    expect(d.seconds).toBeCloseTo(300 / TICK_HZ, 10);
-    // 区間 [10, 1000] を [0, 300] に切る → 290 tick
-    expect(d.overLimitSeconds).toBeCloseTo(290 / TICK_HZ, 10);
+    expect(d.seconds).toBeCloseTo(1000 / TICK_HZ, 10);
+    expect(d.overLimitSeconds).toBeCloseTo(990 / TICK_HZ, 10);
     expect(d.overLimitSeconds).toBeLessThanOrEqual(d.seconds);
   });
-  it('終了後に始まる区間は 0 tick とする（越え始めた回数自体は残す）', () => {
+  it('区間がすべて盤面の時刻より後でも、その時刻まで続いた扱いで丸ごと数える', () => {
     const events = [event('overLimitStart', 500), event('overLimitEnd', 600)];
     const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
-    expect(d.overLimitSeconds).toBe(0);
+    expect(d.seconds).toBeCloseTo(600 / TICK_HZ, 10);
+    expect(d.overLimitSeconds).toBeCloseTo(100 / TICK_HZ, 10);
     expect(d.overLimitEntries).toBe(1);
   });
   it('出来事の時刻が前後して区間が重なっても、実際に越えていた時間を越えて数えない', () => {
@@ -253,6 +258,7 @@ describe('盤面の集計との照合', () => {
     expect(d.merges).toBe(3);
     expect(d.supernovas).toBe(1);
     expect(d.maxChain).toBe(4);
+    expect(d.score).toBe(900); // 出来事の合計（100）より盤面が大きいので盤面側
     // lands に対応する集計は盤面に無いので、出来事側の数のまま
     expect(d.lands).toBe(0);
     // 1 投あたりの得点も、補った後の投数で割る
@@ -268,6 +274,40 @@ describe('盤面の集計との照合', () => {
     expect(d.launches).toBe(2);
     expect(d.merges).toBe(1);
     expect(d.maxChain).toBe(2);
+  });
+  it('盤面の得点・時刻が欠けていても、出来事が証明する分だけ残る', () => {
+    const d = buildRunDetail(
+      [
+        event('merge', 300, { sourceTier: 0, resultTier: 1, chain: 1, scoreDelta: 330 }),
+        event('supernova', 600, { sourceTier: 8, chain: 2, scoreDelta: 45000 }),
+      ],
+      snapshot({}), // tick・得点・集計が全部欠けた盤面
+      META,
+    );
+    // 得点は合体・超新星でしか増えないので、記録の合計は「少なくともこれだけ取った」証拠
+    expect(d.score).toBe(45330);
+    // 出来事の最遅時刻までプレイは進んでいた
+    expect(d.seconds).toBeCloseTo(600 / TICK_HZ, 10);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('負の scoreDelta は得点の証拠にしない（減ることのない得点を下げない）', () => {
+    const d = buildRunDetail(
+      [event('merge', 10, { sourceTier: 0, scoreDelta: -50 })],
+      snapshot({ score: 100 }),
+      META,
+    );
+    expect(d.score).toBe(100);
+    expect(d.maxSingleScore).toBe(0); // 負は最大の単発得点にもならない
+  });
+  it('盤面の tick が無くても、開いた限界区間は出来事の最遅時刻まで数える', () => {
+    const d = buildRunDetail(
+      [event('overLimitStart', 10), event('land', 100, { impactSpeed: 300 })],
+      snapshot({}), // tick が欠けた盤面
+      META,
+    );
+    expect(d.seconds).toBeCloseTo(100 / TICK_HZ, 10);
+    expect(d.overLimitSeconds).toBeCloseTo(90 / TICK_HZ, 10);
+    expect(d.maxImpactSpeed).toBe(300);
   });
   it('終了の盤面が限界超過中なのに開いた区間が無い時は、越えた回数だけ立てる', () => {
     // 最後の overLimitStart だけ取りこぼした形。時刻は分からないので秒数は足さない
@@ -292,12 +332,14 @@ describe('盤面の集計との照合', () => {
     // 区間の対づけは実装と同じ規則（越えていない→越えたで開く、越えている→越えてないで閉じる）
     let s = 20261016;
     const rand = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
-    const endTick = 500;
+    const snapTick = 500;
     const events: GameEvent[] = [];
     const intervals: { from: number; to: number }[] = [];
     let open: number | null = null;
+    let lastTick = 0;
     for (let i = 0; i < 400; i++) {
-      const t = Math.floor(rand() * (endTick + 200)); // 終了を越える時刻も混ぜる
+      const t = Math.floor(rand() * (snapTick + 200)); // 盤面の終了を越える時刻も混ぜる
+      if (t > lastTick) lastTick = t;
       if (rand() < 0.5) {
         events.push(event('overLimitStart', t));
         if (open === null) open = t;
@@ -309,12 +351,15 @@ describe('盤面の集計との照合', () => {
         }
       }
     }
+    // 出来事の最遅時刻が盤面を越えたときは、プレイ時間もそこまで延びる
+    const endTick = Math.max(snapTick, lastTick);
     if (open !== null) intervals.push({ from: open, to: endTick });
     let coveredTicks = 0;
     for (let t = 0; t < endTick; t++) {
       if (intervals.some((iv) => iv.from <= t && t < iv.to)) coveredTicks++;
     }
-    const d = buildRunDetail(events, snapshot({ tick: endTick }), META);
+    const d = buildRunDetail(events, snapshot({ tick: snapTick }), META);
+    expect(d.seconds).toBeCloseTo(endTick / TICK_HZ, 10);
     expect(d.overLimitSeconds).toBeCloseTo(coveredTicks / TICK_HZ, 10);
     expect(d.overLimitSeconds).toBeLessThanOrEqual(d.seconds);
     expect(readRunDetail(d)).not.toBeNull();
