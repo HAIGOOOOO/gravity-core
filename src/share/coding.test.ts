@@ -43,6 +43,16 @@ describe('writeVarint / readVarint', () => {
     expect(readVarint(Uint8Array.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f]), { i: 0 })).toBe(null);
   });
 
+  it('最短でない形（終端が 0 の 2 バイト以上の列）は弾く', () => {
+    // [0x80,0x00] は値 0 を冗長に書いた形。正規の encoder は出さない
+    expect(readVarint(Uint8Array.from([0x80, 0x00]), { i: 0 })).toBe(null);
+    expect(readVarint(Uint8Array.from([0x81, 0x80, 0x00]), { i: 0 })).toBe(null);
+    // 途中の 0x80（値の一部として 0 の桁）があっても、終端が 0 でなければ最短形として読める
+    expect(readVarint(Uint8Array.from([0x00]), { i: 0 })).toBe(0);
+    expect(readVarint(Uint8Array.from([0x80, 0x01]), { i: 0 })).toBe(128);
+    expect(readVarint(Uint8Array.from([0x80, 0x80, 0x01]), { i: 0 })).toBe(16384);
+  });
+
   it('失敗時も pos は読んだ分だけ進んでいる（呼び側は続きを読まない前提）', () => {
     const pos = { i: 0 };
     expect(readVarint(Uint8Array.from([5, 0x80]), pos)).toBe(5);

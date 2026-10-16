@@ -1,5 +1,9 @@
 // 共有文字列を受け取り、シミュレーションで最初から再生して結果を計算し直す。
 // 文字列に得点は入っていない（入っていても信じない）。返す数は全部ここで再生した値。
+//
+// 再生の計算量はプレイの長さ（endTick）に比例し、正当な文字列でも最大 4 時間ぶんある。
+// 入力なし・endTick 最大に細工された文字列をそのまま再生すると長時間かかるので、
+// 止まってはいけない所（UI など）から呼ぶときは options.maxTicks で打ち切る。
 
 import type { RunStats, Tier } from '../contracts/game';
 import { createSimulation } from '../game/simulation';
@@ -10,7 +14,18 @@ import {
   type SharePlay,
 } from './codec';
 
-export type VerifyFailReason = DecodeFailReason | 'rulesMismatch';
+export type VerifyFailReason = DecodeFailReason | 'rulesMismatch' | 'tooLongToVerify';
+
+export type VerifyOptions = Readonly<{
+  /**
+   * 再生してよい tick 数の上限（再生は tick 0 から始まるので、進めた tick 数と同じ）。
+   * 上限まで進めても active のまま endTick に届かない場合、得点を確かめ切れないので
+   * 'tooLongToVerify' で失敗にする。途中でゲームオーバーになる文字列はそこで止まるため、
+   * endTick が上限を越えていても成功しうる。
+   * 省略・有限でない数・数以外の値は「上限なし」。負の数は 0 と同じ（1 tick も進めない）。
+   */
+  maxTicks?: number;
+}>;
 
 export type VerifiedPlay = Readonly<{
   /** 再生し直した最後の得点 */
@@ -30,34 +45,55 @@ export type VerifyPlayResult =
   | { ok: true; play: SharePlay; result: VerifiedPlay }
   | { ok: false; reason: VerifyFailReason };
 
+/** maxTicks の引数を整える。有限の数だけ受け、それ以外（省略・NaN・文字列など）は上限なしにする。 */
+function toMaxTicks(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : Infinity;
+}
+
 /**
  * 文字列を読み、いまのルールで再生する。例外は投げない。
  * ルールの版が違う文字列は 'rulesMismatch' で弾く（別ルールで再生すると得点が合わないため）。
  * 途中でゲームオーバーになった場合はそこで止め、終わった時点の結果を返す。
  */
-export function verifyPlay(text: string): VerifyPlayResult {
+export function verifyPlay(text: string, options?: VerifyOptions): VerifyPlayResult {
   const decoded = decodePlay(text);
   if (!decoded.ok) return decoded;
   const { play } = decoded;
   if (play.rulesVersion !== SHARE_RULES_VERSION) return { ok: false, reason: 'rulesMismatch' };
 
   try {
+    const maxTicks = toMaxTicks(options?.maxTicks);
     const sim = createSimulation(play.seed);
     let applied = 0;
     let snap = sim.getSnapshot();
+    // stepFixed は tick を 1 ずつ進めるので、ループは snap.tick === 目標 tick で必ず止まる
+    const canStep = (): boolean => snap.phase === 'active' && snap.tick < maxTicks;
     for (const input of play.inputs) {
-      while (snap.tick < input.tick && snap.phase === 'active') {
+      while (snap.tick < input.tick && canStep()) {
         sim.stepFixed();
         snap = sim.getSnapshot();
       }
-      // ゲームオーバー後の入力や、進み切れなかった入力は捨てる（入力の tick は endTick 以下に絞ってある）
-      if (snap.tick !== input.tick || snap.phase !== 'active') break;
+      if (snap.tick !== input.tick || snap.phase !== 'active') {
+        // まだ active なのに入力の tick へ届かない = 上限で止まった。
+        // 作りかけの得点を正解として返せないので失敗にする。
+        // ゲームが先に終わっていた場合は、残りの入力を捨てて終了時点の結果を返す。
+        if (snap.phase === 'active') return { ok: false, reason: 'tooLongToVerify' };
+        break;
+      }
       const r = sim.submitLaunch({ originAngleRadians: input.originAngleRadians, vx: input.vx, vy: input.vy });
       if (r.accepted) applied++;
+      // 射出のあとも最新を取り直す。いまのルールでは射出は phase を変えないが、変わりうる将来に備える
+      // （古い snap の 'active' を信じて進め続けると、終了済みの sim に stepFixed を呼ぶ無限ループになりうる）
+      snap = sim.getSnapshot();
     }
-    while (snap.tick < play.endTick && snap.phase === 'active') {
+    while (snap.tick < play.endTick && canStep()) {
       sim.stepFixed();
       snap = sim.getSnapshot();
+    }
+    if (snap.tick < play.endTick && snap.phase === 'active') {
+      return { ok: false, reason: 'tooLongToVerify' };
     }
 
     return {

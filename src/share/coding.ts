@@ -89,7 +89,11 @@ export function writeVarint(out: number[], value: number): void {
   out.push(v);
 }
 
-/** 読めたら値、だめなら null。pos は読んだ分だけ進む。10 バイトで打ち切る（2^53 を越える物は読まない）。 */
+/**
+ * 読めたら値、だめなら null。pos は読んだ分だけ進む。10 バイトで打ち切る（2^53 を越える物は読まない）。
+ * 終端バイトが 0 の 2 バイト以上の列（[0x80,0x00] など）は最短でない形なので弾く。
+ * 正規の encoder は最短形しか出さない。正規形だけを受理すると、別の文字列が同じ値に化けるのを防げる。
+ */
 export function readVarint(bytes: Uint8Array, pos: { i: number }): number | null {
   let v = 0;
   let mul = 1;
@@ -98,7 +102,7 @@ export function readVarint(bytes: Uint8Array, pos: { i: number }): number | null
     const b = bytes[pos.i++]!;
     v += (b & 0x7f) * mul;
     if (v > Number.MAX_SAFE_INTEGER) return null;
-    if ((b & 0x80) === 0) return v;
+    if ((b & 0x80) === 0) return n > 0 && b === 0 ? null : v;
     mul *= 0x80;
   }
   return null;

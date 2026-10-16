@@ -68,6 +68,27 @@ describe('encodePlay / decodePlay', () => {
     expectSameInputs(d.play.inputs, inputs);
   });
 
+  it('角度 -0 の入力は格子の 0 番に潰さず、ビット一致で往復する', () => {
+    // -0 を格子番号 0 で持つと +0 として読み戻され、vy の 0 の符号（+0/-0）が元と変わる。
+    // -0 の角度は f64 の「角度だけ」形に回す（それが -0 の正準形）。
+    const inputs: LaunchInput[] = [
+      drop(0, -0), // vx=-DROP_SPEED, vy=+0
+      drop(10, 0), // vx=-DROP_SPEED, vy=-0（-0 の角度とは別のビット列）
+      { tick: 20, originAngleRadians: -0, vx: 123.5, vy: -456.5 }, // 投げる（f64 がそのまま入る）
+      // 式が出す 0 の符号と逆の速度を持つ「まっすぐ落としもどき」は生の値として往復する
+      { tick: 30, originAngleRadians: -0, vx: -DROP_SPEED, vy: -0 },
+      { tick: 40, originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 },
+    ];
+    const text = encodePlay({ rulesVersion: 1, seed: 9, endTick: 100, inputs });
+    expect(text).not.toBe('');
+    const d = decodePlay(text);
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expectSameInputs(d.play.inputs, inputs); // Object.is なので +0/-0 の差も見る
+    // 読み戻した物を再び文字列にしても同じ文字列になる（正準形どうしの一致）
+    expect(encodePlay({ ...d.play })).toBe(text);
+  });
+
   it('境界の値を往復する（seed 最大・rulesVersion 両端・endTick 上限）', () => {
     const atMax = MAX_TICKS;
     const text = encodePlay({
@@ -151,6 +172,57 @@ describe('encodePlay / decodePlay', () => {
     if (d.ok) expect(d.play.endTick).toBe(300);
   });
 
+  it('入力が無くて endTick を省略した場合は 0 として書く', () => {
+    const text = encodePlay({ rulesVersion: 1, seed: 7, inputs: [] });
+    expect(text).not.toBe('');
+    const d = decodePlay(text);
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expect(d.play.endTick).toBe(0);
+    expect(d.play.inputs).toHaveLength(0);
+    expect(encodePlay({ ...d.play })).toBe(text); // 読み戻しの正準形と一致
+  });
+
+  it('極端な値を含む「投げる」入力もビット一致で往復し、正準形が安定する', () => {
+    // 生の値の経路は f64 のビットをそのまま持つので、非正規数・-0・最大値も往復するはず
+    const rng = createRng(777);
+    const extremes = [0, -0, 5e-324, -5e-324, Number.MAX_VALUE, -Number.MAX_VALUE, Math.PI * 2, -Math.PI, 1e-300];
+    for (let i = 0; i < 120; i++) {
+      const inputs: LaunchInput[] = [];
+      let tick = 0;
+      const n = Math.floor(rng() * 8);
+      for (let j = 0; j < n; j++) {
+        tick += Math.floor(rng() * 300); // 0 を足すこともある（同じ tick の連続）
+        const pick = rng();
+        if (pick < 0.4) {
+          // 生の値。有限 × [-1,1) なので必ず有限（Infinity や NaN にはならない）
+          inputs.push({
+            tick,
+            originAngleRadians: extremes[Math.floor(rng() * extremes.length)]!,
+            vx: extremes[Math.floor(rng() * extremes.length)]! * (rng() * 2 - 1),
+            vy: extremes[Math.floor(rng() * extremes.length)]! * (rng() * 2 - 1),
+          });
+        } else if (pick < 0.7) {
+          inputs.push(drop(tick, gridAngle(Math.floor(rng() * GRID_DENOM))));
+        } else {
+          inputs.push(drop(tick, rng() * 20 - 10)); // 格子の外・負の角度も混ぜる
+        }
+      }
+      const text = encodePlay({
+        rulesVersion: 1,
+        seed: Math.floor(rng() * 0x100000000),
+        endTick: tick + Math.floor(rng() * 500),
+        inputs,
+      });
+      expect(text).not.toBe('');
+      const d = decodePlay(text);
+      expect(d.ok).toBe(true);
+      if (!d.ok) continue;
+      expectSameInputs(d.play.inputs, inputs);
+      expect(encodePlay({ ...d.play })).toBe(text);
+    }
+  });
+
   it('おかしい入力は空文字列を返す（例外なし）', () => {
     const ok = { rulesVersion: 1, seed: 1 };
     expect(encodePlay({ ...ok, inputs: [{ ...drop(0, 0), tick: -1 }] })).toBe('');
@@ -161,6 +233,8 @@ describe('encodePlay / decodePlay', () => {
     expect(encodePlay({ ...ok, inputs: [drop(10, 0)], endTick: 5 })).toBe(''); // 入力が終了を越える
     expect(encodePlay({ rulesVersion: 300, seed: 1, inputs: [] })).toBe('');
     expect(encodePlay({ rulesVersion: -1, seed: 1, inputs: [] })).toBe('');
+    expect(encodePlay({ rulesVersion: 1.5, seed: 1, inputs: [] })).toBe('');
+    expect(encodePlay({ rulesVersion: 1, seed: 1.5, inputs: [] })).toBe('');
     expect(encodePlay({ rulesVersion: 1, seed: 0x100000000, inputs: [] })).toBe('');
     expect(encodePlay({ rulesVersion: 1, seed: 1, inputs: [], endTick: -1 })).toBe('');
     expect(encodePlay({ rulesVersion: 1, seed: 1, inputs: [], endTick: MAX_TICKS + 1 })).toBe('');
@@ -175,6 +249,22 @@ describe('encodePlay / decodePlay', () => {
     expect(encodePlay({ ...ok, inputs: null as unknown as LaunchInput[] })).toBe('');
     expect(encodePlay({ ...ok, inputs: 42 as unknown as LaunchInput[] })).toBe('');
     expect(encodePlay(null as unknown as EncodePlayArgs)).toBe('');
+    // 要素の getter が投げる配列・getter が投げる引数でも落ちない（全体を try/catch している）
+    const evilInputs = [drop(0, 0.5)];
+    Object.defineProperty(evilInputs, '0', {
+      get: () => {
+        throw new Error('trap');
+      },
+    });
+    expect(encodePlay({ ...ok, inputs: evilInputs })).toBe('');
+    const evilArgs = {
+      get rulesVersion(): number {
+        throw new Error('trap');
+      },
+      seed: 1,
+      inputs: [] as LaunchInput[],
+    };
+    expect(encodePlay(evilArgs)).toBe('');
   });
 
   it('上限を越える物は空文字列を返す', () => {

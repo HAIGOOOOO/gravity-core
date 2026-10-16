@@ -87,6 +87,28 @@ describe('decodePlay: 検査値を付け直した細工', () => {
     if (!d.ok) expect(d.reason).toBe('badData');
   });
 
+  it('最短でない varint を使った形は弾く（値が同じでも正規形でなければ駄目）', () => {
+    // 個数 1 を冗長な [0x81,0x00] に書き換える → readVarint が弾く
+    const d = decodePlay(forge(SAMPLE, (b) => { b.splice(4, 1, 0x81, 0x00); }));
+    expect(d.ok).toBe(false);
+    if (!d.ok) expect(d.reason).toBe('badData');
+    // 入力の頭（SAMPLE は tick 差 0・タグ 0 の [0]）を冗長な [0x80,0x00] に差し替える
+    const head = decodePlay(forge(SAMPLE, (b) => { b.splice(5, 1, 0x80, 0x00); }));
+    expect(head.ok).toBe(false);
+    if (!head.ok) expect(head.reason).toBe('truncated');
+  });
+
+  it('ヘッダの上限を越える値は弾く（endTick 上限超過・seed が 2^32）', () => {
+    // endTick 100 → 1,728,001（= 4 時間 + 1 tick）に差し替える: 1+60*128+105*16384
+    const overEnd = decodePlay(forge(SAMPLE, (b) => { b.splice(3, 1, 0x81, 0xbc, 0x69); }));
+    expect(overEnd.ok).toBe(false);
+    if (!overEnd.ok) expect(overEnd.reason).toBe('badData');
+    // seed 0 → 2^32 に差し替える: 16*128^4
+    const bigSeed = decodePlay(forge(SAMPLE, (b) => { b.splice(2, 1, 0x80, 0x80, 0x80, 0x80, 0x10); }));
+    expect(bigSeed.ok).toBe(false);
+    if (!bigSeed.ok) expect(bigSeed.reason).toBe('badData');
+  });
+
   it('大きい経路で入れた格子の入力は、読み戻すと小さい正規形に直る', () => {
     // 格子上の角度をあえて「角度だけ」形（8 バイト）で手組みする
     const body: number[] = [SHARE_FORMAT_VERSION, 1];

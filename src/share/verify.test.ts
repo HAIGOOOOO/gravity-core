@@ -5,7 +5,7 @@ import { DROP_SPEED, TICK_HZ } from '../game/constants';
 import { createRng } from '../game/rng';
 import { createSimulation } from '../game/simulation';
 import { decodePlay, encodePlay, SHARE_RULES_VERSION } from './codec';
-import { verifyPlay } from './verify';
+import { verifyPlay, type VerifyOptions } from './verify';
 
 describe('verifyPlay', () => {
   it('自動プレイ 20 回を文字列にして戻すと、最後の得点が元と一致する', () => {
@@ -109,7 +109,13 @@ describe('verifyPlay', () => {
     expect(v.result.score).toBe(expected.score);
     expect(v.result.gameOver).toBe(expected.phase === 'over');
     // 終わっていたなら ticks は endTick より小さい
-    if (expected.phase === 'over') expect(v.result.ticks).toBeLessThan(extraEnd);
+    if (expected.phase === 'over') {
+      expect(v.result.ticks).toBeLessThan(extraEnd);
+      // 終了時刻が上限内なら、endTick が上限を越えていても再生し切れる（終わりまでしか進まないため）
+      const cappedOver = verifyPlay(text, { maxTicks: expected.tick });
+      expect(cappedOver.ok).toBe(true);
+      if (cappedOver.ok) expect(cappedOver.result.ticks).toBe(expected.tick);
+    }
   }, 120_000);
 
   it('同じ tick に複数の入力がある文字列は、受理された分だけ正直に数える', () => {
@@ -173,6 +179,36 @@ describe('verifyPlay', () => {
     if (a.ok && b.ok) expect(a.result).toEqual(b.result);
   }, 120_000);
 
+  it('最後の入力がちょうど endTick の位置にあるプレイも再生できる', () => {
+    const inputs: LaunchInput[] = [{ tick: 240, ...dropAt(0.9) }];
+    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 5, inputs, endTick: 240 });
+    expect(text).not.toBe('');
+    const v = verifyPlay(text);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.result.ticks).toBe(240);
+    expect(v.result.inputsApplied).toBe(1); // クールダウン無しで受理される
+    expect(v.result.inputsTotal).toBe(1);
+  }, 120_000);
+
+  it('入力なし・endTick 0 のプレイは得点 0 で再生できる（endTick 省略でも同じ文字列）', () => {
+    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [], endTick: 0 });
+    expect(encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [] })).toBe(text);
+    const v = verifyPlay(text);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.result.score).toBe(0);
+    expect(v.result.ticks).toBe(0);
+    expect(v.result.gameOver).toBe(false);
+    expect(v.result.inputsTotal).toBe(0);
+  });
+
+  it('decode の失敗理由が verify の失敗理由にそのまま出る', () => {
+    expect(verifyPlay('')).toEqual({ ok: false, reason: 'empty' });
+    expect(verifyPlay('!!')).toEqual({ ok: false, reason: 'badCharacter' });
+    expect(verifyPlay('AQ')).toEqual({ ok: false, reason: 'truncated' }); // 1 バイトだけ読めても本体が足りない
+  });
+
   it('ルールの版が違う文字列は rulesMismatch で弾く', () => {
     const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION + 1, seed: 1, inputs: [], endTick: 0 });
     expect(decodePlay(text).ok).toBe(true); // 文字列としては正しい
@@ -212,4 +248,89 @@ describe('verifyPlay', () => {
       expect(verifyPlay(s).ok).toBe(false);
     }
   });
+});
+
+describe('verifyPlay の再生上限（maxTicks）', () => {
+  /** codec.ts のプレイ長の上限と同じ（= 4 時間）。細工された巨大 endTick の文字列用。 */
+  const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
+
+  it('上限を付けると、巨大な endTick の文字列を速く打ち切る', () => {
+    // 正当だが入力なし・endTick 最大の文字列。上限なしだと 4 時間ぶん（約 172 万 tick）再生する
+    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [], endTick: MAX_TICKS });
+    expect(text).not.toBe('');
+    const t0 = performance.now();
+    const v = verifyPlay(text, { maxTicks: 3600 });
+    const ms = performance.now() - t0;
+    console.info(`[share] maxTicks=3600 で打ち切り: ${ms.toFixed(1)}ms`);
+    expect(v).toEqual({ ok: false, reason: 'tooLongToVerify' });
+    // 実際は数十 ms 以下で返るはず。極端に遅い検査環境でも落ちないよう緩い足切り
+    expect(ms).toBeLessThan(30_000);
+  });
+
+  it('上限が足りれば上限なしと同じ結果を返し、足りなければ弾く', () => {
+    const seed = 8888;
+    const auto = createAutoPlay(seed);
+    for (let i = 0; i < 1200; i++) auto.step(); // 10 秒ぶん
+    const snap = auto.sim.getSnapshot();
+    expect(snap.phase).toBe('active'); // 10 秒で終わることはあり得ない
+    const inputs = auto.sim.getInputLog();
+    const lastInputTick = inputs[inputs.length - 1]!.tick;
+    const text = encodePlay({
+      rulesVersion: SHARE_RULES_VERSION,
+      seed,
+      inputs,
+      endTick: snap.tick,
+    });
+
+    const full = verifyPlay(text);
+    const capped = verifyPlay(text, { maxTicks: snap.tick });
+    expect(full.ok && capped.ok).toBe(true);
+    if (full.ok && capped.ok) expect(capped.result).toEqual(full.result);
+
+    // endTick より 1 つ小さい上限 → 再生の末尾で届かず弾く
+    expect(verifyPlay(text, { maxTicks: snap.tick - 1 })).toEqual({
+      ok: false,
+      reason: 'tooLongToVerify',
+    });
+    // 最後の入力の tick に届かない上限 → 入力のループ側で弾く
+    expect(verifyPlay(text, { maxTicks: lastInputTick - 1 })).toEqual({
+      ok: false,
+      reason: 'tooLongToVerify',
+    });
+    // 上限 0 や負の数は 1 tick も進めない
+    expect(verifyPlay(text, { maxTicks: 0 })).toEqual({ ok: false, reason: 'tooLongToVerify' });
+    expect(verifyPlay(text, { maxTicks: -10 })).toEqual({ ok: false, reason: 'tooLongToVerify' });
+    // 進める必要が無いプレイ（endTick 0）なら上限 0 でも通る
+    const zero = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [], endTick: 0 });
+    const vz = verifyPlay(zero, { maxTicks: 0 });
+    expect(vz.ok).toBe(true);
+    if (vz.ok) expect(vz.result.ticks).toBe(0);
+  }, 120_000);
+
+  it('おかしい上限の値は「上限なし」として扱い、例外も出ない', () => {
+    const auto = createAutoPlay(9);
+    for (let i = 0; i < 240; i++) auto.step();
+    const snap = auto.sim.getSnapshot();
+    const text = encodePlay({
+      rulesVersion: SHARE_RULES_VERSION,
+      seed: 9,
+      inputs: auto.sim.getInputLog(),
+      endTick: snap.tick,
+    });
+    const full = verifyPlay(text);
+    expect(full.ok).toBe(true);
+    for (const opt of [
+      undefined,
+      {},
+      { maxTicks: Number.NaN },
+      { maxTicks: Infinity },
+      { maxTicks: 'x' as unknown as number },
+      null as unknown as VerifyOptions,
+      42 as unknown as VerifyOptions,
+    ]) {
+      const v = verifyPlay(text, opt);
+      expect(v.ok).toBe(true);
+      if (v.ok && full.ok) expect(v.result).toEqual(full.result);
+    }
+  }, 120_000);
 });

@@ -89,6 +89,9 @@ function gridAngle(k: number): number {
 /** 角度が 2π/2^32 の格子に乗っていればその番号、乗っていなければ null。往復で一致する物だけ認める。 */
 function gridIndex(angle: number): number | null {
   if (!Number.isFinite(angle)) return null;
+  // -0 は格子番号に潰せない: writeU32 では -0 が 0 として書かれ、読み戻しでは +0 になる。
+  // 角度が -0→+0 に変わると vy の 0 の符号（+0/-0）が元とずれるので、f64 の経路へ回す
+  if (Object.is(angle, -0)) return null;
   const k = Math.round((angle / (Math.PI * 2)) * GRID_DENOM);
   if (k < 0 || k >= GRID_DENOM) return null;
   return gridAngle(k) === angle ? k : null;
@@ -97,7 +100,12 @@ function gridIndex(angle: number): number | null {
 /** 「押して離す」で出る速度（核へまっすぐ、速さ DROP_SPEED）とビット一致するか。値で見るので出自を問わない。 */
 function isStraightDrop(input: LaunchInput): boolean {
   const a = input.originAngleRadians;
-  return input.vx === -Math.cos(a) * DROP_SPEED && input.vy === -Math.sin(a) * DROP_SPEED;
+  // Object.is で比べる: === は +0 と -0 を区別しないため、式が出す 0 の符号と逆の速度を持つ入力を
+  // 「まっすぐ落とし」と誤認し、読み戻しで vy の 0 の符号がずれてしまう（角度 ±0 のときだけ起きる）
+  return (
+    Object.is(input.vx, -Math.cos(a) * DROP_SPEED) &&
+    Object.is(input.vy, -Math.sin(a) * DROP_SPEED)
+  );
 }
 
 // ───────── 公開関数 ─────────
@@ -115,12 +123,23 @@ export type EncodePlayArgs = {
  * 空文字列を返す（例外は投げない）。
  */
 export function encodePlay(args: EncodePlayArgs): string {
+  try {
+    return encodeInner(args);
+  } catch {
+    // 要素や引数の getter が投げる・Proxy など、型を越えた物が来ても外へ例外は出さない
+    return '';
+  }
+}
+
+/** encodePlay の本体。中では何が投げられてもよい（呼び出し側で受ける）。 */
+function encodeInner(args: EncodePlayArgs): string {
   if (typeof args !== 'object' || args === null) return '';
   const { rulesVersion, seed, inputs } = args;
   if (!Array.isArray(inputs) || inputs.length > MAX_INPUTS) return '';
-  // endTick の省略時は最後の入力の tick を使う。要素が型を越えた物なら NaN になり、後の整数チェックで弾く
+  // endTick の省略時は最後の入力の tick を使う（入力が無ければ doc どおり 0）。
+  // 最後の要素が型を越えた物（null・数など）なら NaN になり、後の整数チェックで弾く
   const last = inputs.length ? (inputs[inputs.length - 1] as LaunchInput | null | undefined) : undefined;
-  const lastTick = typeof last === 'object' && last !== null ? last.tick : Number.NaN;
+  const lastTick = inputs.length === 0 ? 0 : typeof last === 'object' && last !== null ? last.tick : Number.NaN;
   const endTick = args.endTick ?? lastTick;
   if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) return '';
