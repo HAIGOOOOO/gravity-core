@@ -334,6 +334,48 @@ describe('壊れた保存', () => {
   });
 });
 
+// 「静かな 1 分」は終盤にまとめて feed されても、出来事の列から遡って見つかる
+describe('静かな 1 分の検出', () => {
+  const merged = (tick: number): GameEvent => ({ ...sampleEvent('merge'), tick });
+  const stats = { launches: 10, merges: 1, supernovas: 0, maxChain: 1 };
+
+  it('静かな 1 分のあとに合体しても、最初の合体の時刻から達成と分かる', () => {
+    expect(foundIds({ tick: 20_000, stats }, [merged(60 * 120 + 300)])).toContain('feat-quiet');
+    // ちょうど 1 分の瞬間の合体も「その 1 分は静かだった」とみなす
+    expect(foundIds({ tick: 20_000, stats }, [merged(60 * 120)])).toContain('feat-quiet');
+  });
+
+  it('1 分より前の合体なら静かではない', () => {
+    expect(foundIds({ tick: 20_000, stats }, [merged(60 * 120 - 1)])).not.toContain('feat-quiet');
+  });
+
+  it('合体の出来事が無いのに統計だけ増えている場合は、証拠不足で見つからない', () => {
+    const onlyStats = { launches: 10, merges: 2, supernovas: 0, maxChain: 1 };
+    expect(foundIds({ tick: 20_000, stats: onlyStats })).not.toContain('feat-quiet');
+  });
+
+  it('発見 tick は条件を満たした瞬間そのものを指す', () => {
+    const codex = createCodexStore(memoryStorage());
+    // 合体なしで 3 分強が経った盤面をまとめて feed する
+    codex.feed([], snapshot({ tick: 3 * 60 * 120 + 999 }), META);
+    // 静かな 1 分は 1 分の瞬間、生存は 3 分の瞬間へ飛べる（feed した時点ではない）
+    expect(codex.discovery('feat-quiet')!.tick).toBe(60 * 120);
+    expect(codex.discovery('feat-survive')!.tick).toBe(3 * 60 * 120);
+  });
+});
+
+describe('feed の返り値', () => {
+  it('一度に複数見つかるとき、表の順で返す', () => {
+    const codex = createCodexStore(memoryStorage());
+    const found = codex
+      .feed([sampleEvent('merge', 0, 0, 0, 5)], snapshot({ score: 200_000, heat: 95 }), META)
+      .map(e => e.id);
+    expect(found.length).toBeGreaterThanOrEqual(3);
+    const order = CODEX_ENTRIES.map(e => e.id);
+    expect(found).toEqual([...found].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
+  });
+});
+
 // Tier の網羅性: 9 種の天体項目があり、どれも正しい Tier で見つかる
 describe('天体の項目', () => {
   it.each([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)('Tier %i が盤面に出ると見つかる', tier => {

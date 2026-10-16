@@ -93,6 +93,24 @@ describe('解放の表', () => {
     }
     expect(new Set(ids(UNLOCKS)).size).toBe(UNLOCKS.length);
   });
+
+  it('どの項目も「開いた」は「進み具合が 1」のときだけ（ずれがあれば表示と矛盾する）', () => {
+    const contexts: UnlockContext[] = [];
+    for (const runs of [0, 1, 2, 3, 5, 10, 100]) {
+      for (const codexFound of [0, 1, 5, 15, 25, 40]) {
+        for (const bestScore of [0, 9_999, 10_000, 500_000]) {
+          for (const officialDays of [0, 1, 2, 7, 30]) {
+            contexts.push({ runs, bestScore, codexFound, officialDays });
+          }
+        }
+      }
+    }
+    for (const ctx of contexts) {
+      for (const entry of UNLOCKS) {
+        expect(entry.unlocked(ctx)).toBe(entry.progress(ctx) === 1);
+      }
+    }
+  });
 });
 
 describe('部品から文脈を組み立てる', () => {
@@ -131,6 +149,17 @@ describe('部品から文脈を組み立てる', () => {
     expect(ctx.codexFound).toBe(0);
     expect(ctx.officialDays).toBe(0);
   });
+
+  it('図鑑・日替わり側が変な数を返しても 0 に丸める', () => {
+    const ctx = unlockContextFrom({
+      runs: 1,
+      bestScore: 1,
+      codex: { progress: () => ({ found: Number.NaN }) },
+      daily: { history: () => ({ length: -3 }) as unknown as readonly unknown[] },
+    });
+    expect(ctx.codexFound).toBe(0);
+    expect(ctx.officialDays).toBe(0);
+  });
 });
 
 describe('新しく開いた項目', () => {
@@ -143,6 +172,11 @@ describe('新しく開いた項目', () => {
     expect(many).toEqual(
       expect.arrayContaining(['records', 'codex', 'replay', 'daily', 'stats', 'share']),
     );
+  });
+
+  it('一度に複数開くとき、表の順で返す', () => {
+    const all = { runs: 100, bestScore: 1_000_000, codexFound: 40, officialDays: 30 };
+    expect(ids(newlyUnlocked(C0, all))).toEqual(ids(UNLOCKS));
   });
 });
 

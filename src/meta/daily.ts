@@ -160,22 +160,31 @@ function streakOf(doneDays: ReadonlySet<number>, todayNum: number): number {
 export function createDailyChallenge(storage: MetaStorage | null = null): DailyChallenge {
   const memory = restoreSave(readStoredJson(storage, STORAGE_KEY));
   let practiceCount = 0;
+  // 「済ませた日」の集合は、履歴が増えても info() のたびに全件の日付検証を
+  // 繰り返さないよう遅延で作り、記録が変わる completeOfficial でだけ捨てる
+  let doneDaysCache: ReadonlySet<number> | null = null;
+  const doneDays = (): ReadonlySet<number> => {
+    if (doneDaysCache === null) {
+      const days = new Set<number>();
+      for (const key of Object.keys(memory.official)) {
+        const n = dayNumberOf(key);
+        if (n !== null) days.add(n);
+      }
+      doneDaysCache = days;
+    }
+    return doneDaysCache;
+  };
 
   const persist = (): void => writeStoredJson(storage, STORAGE_KEY, memory);
 
   const api: DailyChallenge = {
     info(nowMs) {
       const dateKey = jstDateKey(nowMs);
-      const doneDays = new Set<number>();
-      for (const key of Object.keys(memory.official)) {
-        const n = dayNumberOf(key);
-        if (n !== null) doneDays.add(n);
-      }
       return {
         dateKey,
         seed: dailySeed(dateKey),
         officialDone: Object.hasOwn(memory.official, dateKey),
-        streak: streakOf(doneDays, dayNumberOf(dateKey) ?? 0),
+        streak: streakOf(doneDays(), dayNumberOf(dateKey) ?? 0),
       };
     },
     beginOfficial(nowMs) {
@@ -199,6 +208,7 @@ export function createDailyChallenge(storage: MetaStorage | null = null): DailyC
         playedAtMs: Number.isFinite(result.endedAtMs) ? result.endedAtMs : 0,
       };
       trimHistory(memory.official);
+      doneDaysCache = null;
       persist();
       return true;
     },

@@ -298,6 +298,37 @@ describe('本番と練習の区別', () => {
   });
 });
 
+describe('info() の再評価と速さ', () => {
+  const t = jstMidnight(2026, 10, 16) + 3_600_000;
+
+  it('記録のたびに新しい履歴を見る（連続日数が育つ）', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    daily.completeOfficial(daily.beginOfficial(t)!, { score: 1, endedAtMs: t });
+    const t2 = t + DAY_MS;
+    expect(daily.info(t2).streak).toBe(1);
+    daily.completeOfficial(daily.beginOfficial(t2)!, { score: 1, endedAtMs: t2 });
+    expect(daily.info(t2 + DAY_MS).streak).toBe(2);
+  });
+
+  it('履歴がいっぱいでも info() は毎コマ呼べる', () => {
+    const official: Record<string, { score: number; playedAtMs: number }> = {};
+    for (let i = 0; i < 1100; i++) {
+      const key = new Date(Date.UTC(2020, 0, 1 + i)).toISOString().slice(0, 10);
+      official[key] = { score: i, playedAtMs: i };
+    }
+    const daily = createDailyChallenge(
+      memoryStorage({ [STORAGE_KEY]: JSON.stringify({ version: 1, official }) }),
+    );
+    const t0 = performance.now();
+    for (let i = 0; i < 300; i++) {
+      daily.info(t + i * 3_600_000);
+    }
+    const elapsed = performance.now() - t0;
+    // 表示の更新ごとに呼んでも余る速さ（済ませた日の集合を使い回すので実測は 1ms 未満）
+    expect(elapsed).toBeLessThan(50);
+  });
+});
+
 describe('壊れた保存・保存できない端末', () => {
   const t = jstMidnight(2026, 10, 16) + 12 * 3_600_000;
 

@@ -126,8 +126,8 @@ export function unlockContextFrom(sources: {
   return {
     runs: nonNegativeInt(sources.runs),
     bestScore: nonNegative(sources.bestScore),
-    codexFound: sources.codex.progress().found,
-    officialDays: sources.daily.history().length,
+    codexFound: nonNegativeInt(sources.codex.progress().found),
+    officialDays: nonNegativeInt(sources.daily.history().length),
   };
 }
 
