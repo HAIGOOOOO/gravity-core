@@ -8,7 +8,8 @@
 //       つまり「tick T の盤面」には tick T の入力は出ず、tick < T の入力だけが出る）
 //   - 最初（tick 0）と最後（endTick）の盤面を記録の指紋と照合する。
 //     記録に含まれない入力が受理された・盤面が記録と違う、のときは
-//     「記録と合わない」として失敗を返す（黙って違う絵を出さない）
+//     「記録と合わない」として失敗を返す（黙って違う絵を出さない）。
+//     失敗の detail には、どこがどう違ったかを追えるだけの情報を入れる。
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { createSimulation } from '../game/simulation';
@@ -27,6 +28,7 @@ export type ReplayRun = Readonly<{
   events: readonly IndexedEvent[];
   /** tick 0 と checkpointEvery ごとの盤面（GameSnapshot は不変なので、そのまま持ってよい） */
   checkpoints: readonly GameSnapshot[];
+  /** checkpoints を取った間隔。0 = 中間の盤面は取っていない */
   checkpointEvery: Tick;
   final: GameSnapshot;
 }>;
@@ -35,7 +37,11 @@ export type ReplayRun = Readonly<{
 export const CHECKPOINT_EVERY = 60;
 
 export type RunOptions = {
-  /** checkpoints を取る間隔（既定 60） */
+  /**
+   * checkpoints を取る間隔（既定 60）。0 で中間の盤面を取らない。
+   * 出来事と visit だけ要る用途（見どころ・負けた理由）では 0 を渡し、
+   * 長い記録で盤面を溜め込まないようにする。
+   */
   checkpointEvery?: Tick;
   /** 各ステップの直後に呼ばれる（per-tick の熱量などが要る題目用）。盤面は変えないこと。 */
   visit?: (snapshot: GameSnapshot, surfaced: readonly GameEvent[]) => void;
@@ -51,13 +57,18 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
     return { ok: false, reason: 'rulesMismatch', expected, actual: record.rulesVersion };
   }
 
-  const every = Math.max(1, options.checkpointEvery ?? CHECKPOINT_EVERY);
+  const every = options.checkpointEvery ?? CHECKPOINT_EVERY;
   const sim = createSimulation(record.seed, record.setup);
   // 開始の盤面（入力を反映する前の tick 0）が記録と違う = seed / setup / 初期キューが
   // 書き換えられた。熱量のように終わる頃には同じ状態へ収束して最終照合を
   // すり抜ける細工も、ここで「合わない」と分かる。
-  if (snapshotHash(sim.getSnapshot()) !== record.initialHash) {
-    return { ok: false, reason: 'diverged', detail: 'initial snapshot differs from record' };
+  const initHash = snapshotHash(sim.getSnapshot());
+  if (initHash !== record.initialHash) {
+    return {
+      ok: false,
+      reason: 'diverged',
+      detail: `initial snapshot differs (hash ${initHash} vs record ${record.initialHash}); seed/setup/queue do not reproduce the recorded start`,
+    };
   }
   const inputs = record.inputs;
   let nextInput = 0;
@@ -65,14 +76,19 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   const checkpoints: GameSnapshot[] = [];
 
   // いまの tick に届いている入力を順に投入する。
-  // 受理されない入力・順序のおかしい入力があれば記録が壊れているので失敗にする。
-  const applyInputs = (tick: Tick): boolean => {
+  // 受理されない入力・順序のおかしい入力があれば記録が壊れているので、
+  // 原因を追える文を返す（問題なければ null）。
+  const applyInputs = (tick: Tick): string | null => {
     while (nextInput < inputs.length && inputs[nextInput]!.tick === tick) {
       const input = inputs[nextInput]!;
       nextInput++;
-      if (!sim.submitLaunch(input).accepted) return false;
+      const res = sim.submitLaunch(input);
+      if (!res.accepted) return `input rejected (${res.reason}) at tick ${tick}`;
     }
-    return nextInput >= inputs.length || inputs[nextInput]!.tick >= tick;
+    if (nextInput < inputs.length && inputs[nextInput]!.tick < tick) {
+      return `input order broken: tick ${inputs[nextInput]!.tick} came after tick ${tick}`;
+    }
+    return null;
   };
 
   // 最初の盤面は入力を反映する前に取る。
@@ -84,19 +100,19 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   while (sim.getSnapshot().tick < record.endTick) {
     const before = sim.getSnapshot();
     if (before.phase === 'over') break; // 記録より先に終わる = 結果が違う
-    if (!applyInputs(before.tick)) return { ok: false, reason: 'diverged', detail: `input rejected at tick ${before.tick}` };
+    const bad = applyInputs(before.tick);
+    if (bad) return { ok: false, reason: 'diverged', detail: bad };
     const surfaced = sim.stepFixed();
     const after = sim.getSnapshot();
     for (const event of surfaced) events.push({ at: after.tick, event });
-    if (after.tick % every === 0) checkpoints.push(after);
+    if (every > 0 && after.tick % every === 0) checkpoints.push(after);
     options.visit?.(after, surfaced);
   }
 
   // 記録された tick ちょうどに撃たれた入力は、ステップを進めずに反映する
   // （記録の直前に撃って終わった分。盤面には出るがイベントはまだ返っていない）。
-  if (!applyInputs(sim.getSnapshot().tick)) {
-    return { ok: false, reason: 'diverged', detail: 'input rejected at endTick' };
-  }
+  const badEnd = applyInputs(sim.getSnapshot().tick);
+  if (badEnd) return { ok: false, reason: 'diverged', detail: badEnd };
 
   const final = sim.getSnapshot();
   const diverged = (detail: string): ReplayFailure => ({ ok: false, reason: 'diverged', detail });
@@ -107,14 +123,23 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   if (final.bodies.length !== record.finalBodyCount) {
     return diverged(`bodies ${final.bodies.length}, expected ${record.finalBodyCount}`);
   }
-  const { stats: s } = final;
-  const { stats: r } = record;
-  if (s.launches !== r.launches || s.merges !== r.merges || s.supernovas !== r.supernovas || s.maxChain !== r.maxChain) {
-    return diverged('run stats differ');
-  }
+  // 統計は「どの項目がいくつ違うか」を全部挙げる（1 項目ずつだと、
+  // 直したら次が出る、を繰り返すことになる）。
+  const statKeys = ['launches', 'merges', 'supernovas', 'maxChain'] as const;
+  const statDiff = statKeys
+    .filter((k) => final.stats[k] !== record.stats[k])
+    .map((k) => `${k}=${final.stats[k]} vs record ${record.stats[k]}`)
+    .join(', ');
+  if (statDiff) return diverged(`run stats differ: ${statDiff}`);
   // 最後の全体照合。上の項目をすり抜ける差（熱量・位置・キュー・
   // endTick だけを延ばした改ざんなど）を盤面の指紋で拾う。
-  if (snapshotHash(final) !== record.finalHash) return diverged('final snapshot differs from record');
+  const finalHash = snapshotHash(final);
+  if (finalHash !== record.finalHash) {
+    return diverged(
+      `final snapshot differs (hash ${finalHash} vs record ${record.finalHash}); ` +
+        'score/tick/phase/stats match, so the difference is in heat, bodies, queue, or cooldown',
+    );
+  }
 
   return { ok: true, events, checkpoints, checkpointEvery: every, final };
 }

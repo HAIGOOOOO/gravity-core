@@ -7,6 +7,7 @@
 //   そこで速さを 3 段に分ける。
 //     1. キーフレーム: 計算し直した盤面を一定 tick ごとに覚えておく。
 //        その tick への seek と peek（つまみの表示）は一瞬で返る。
+//        記録が長いほど取る間隔を広げて、面数が KEYFRAME_CAP を越えないようにする。
 //     2. 行った所: seek した先の盤面も覚える（上限つきで古い物から捨てる）。
 //        同じ所への再 seek は一瞬。
 //     3. カーソル: 前にしか進めないシミュレーションを数本持ち、
@@ -15,6 +16,7 @@
 //   最悪の場合（後ろへ大きく飛んで、使えるカーソルがない）は
 //   tick 0 からの計算し直しになる。これは仕組み上避けられないので、
 //   ツマミの途中表示は peek（近いキーフレームを即返す）を使う想定。
+//   覚えている物の量は player.memory で計れる。
 
 import type { GameEvent, GameSnapshot, SimulationPort, Tick } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
@@ -25,18 +27,20 @@ import type { ReplayRecord } from './record';
 /** キーフレーム・キャッシュを取る間隔（60 tick = 0.5 秒）。 */
 const KEYFRAME_EVERY = 60;
 /**
- * キーフレームの最大数。記録が長いほど間隔を広げて、覚える盤面の数を抑える。
+ * キーフレームの最大数。記録が長いほど取る間隔を広げて、覚える盤面の数を抑える。
  * 間隔を広げないと、2 時間の記録（864,000 tick）で 1 万面を越えてメモリを食う。
- * 広げても、手前のキーフレームからの計算し直しは間隔ぶんで済むので seek は速いまま。
+ * （盤面からシミュレーションを復元はできないので、広げても seek の計算量は
+ *   変わらない。細かく影響するのは peek の粒度だけ）
  */
 const KEYFRAME_CAP = 720;
 
 /**
  * キーフレームを取る間隔。短い記録（6 分まで）は KEYFRAME_EVERY。
- * 長い記録は、間隔を広げて盤面の数が KEYFRAME_CAP を越えないようにする。
+ * 長い記録は、間隔を広げて盤面の数が cap を越えないようにする。
+ * cap は小さく渡せる（テストが短い記録のまま「長い記録の振る舞い」を再現するため）。
  */
-export function keyframeInterval(endTick: Tick): Tick {
-  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / KEYFRAME_CAP));
+export function keyframeInterval(endTick: Tick, cap: number = KEYFRAME_CAP): Tick {
+  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / cap));
 }
 
 /** 同時に持つシミュレーションの本数。増やすと戻り seek が速くなる代わりにメモリを使う */
@@ -72,6 +76,18 @@ export type ReplayPlayer = {
    * つまみを動かしている途中の表示用。正確な盤面が要るなら seek を使う。
    */
   peek(tick: Tick): GameSnapshot;
+  /**
+   * 覚えている物の量とおおよその大きさ（計測用）。
+   * approxBytes は保持している盤面・出来事・入力を JSON 化したバイト数の合計。
+   */
+  readonly memory: {
+    readonly keyframes: number;
+    readonly visited: number;
+    /** 動かしているシミュレーションの本数 */
+    readonly cursors: number;
+    readonly events: number;
+    readonly approxBytes: number;
+  };
 };
 
 export type ReplayStart = Readonly<{ ok: true; player: ReplayPlayer }> | ReplayFailure;
@@ -82,12 +98,18 @@ type Cursor = {
   nextInput: number;
 };
 
-export function createReplayPlayer(record: ReplayRecord): ReplayStart {
+export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?: number } = {}): ReplayStart {
   // まず全部計算し直して、記録と合うか確かめる。合わなければここで止める。
-  const run = runReplay(record, { checkpointEvery: KEYFRAME_EVERY });
+  // 検証で取る盤面の間隔はそのままキーフレーム間隔にする（長い記録では広がる）。
+  const every = keyframeInterval(record.endTick, options.keyframeCap ?? KEYFRAME_CAP);
+  const run = runReplay(record, { checkpointEvery: every });
   if (!run.ok) return run;
   const { endTick } = record;
   const inputs = record.inputs;
+  // run の中身は必要な物だけ取り出し、配列ごとの参照をクロージャに残さない
+  // （checkpoints の配列自体はキーフレームへ移したあと手放す）。
+  const runEvents = run.events;
+  const firstSnap = run.checkpoints[0]!;
 
   // 盤面の記憶は 2 つに分ける。
   //   キーフレーム: 一定間隔の基準面。捨てない（数は endTick / 間隔で決まる）。
@@ -142,8 +164,12 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
       applyDue(c);
       c.sim.stepFixed();
       snap = c.sim.getSnapshot();
-      if (snap.tick % KEYFRAME_EVERY === 0) keyframes.set(snap.tick, snap);
+      if (snap.tick % every === 0) keyframes.set(snap.tick, snap);
     }
+    // 終端に止まった時は、終端ちょうどの入力（記録の直前に撃たれた分）も反映する。
+    // runReplay が最終盤面で同じ事をするので、ここで揃えないと
+    // 同じ endTick の盤面が経路によって違う物になってしまう。
+    if (snap.tick === endTick) applyDue(c);
   };
 
   /** target 以下で一番近い所にいるカーソル。無ければ足すか、一番手前のものを作り直す。 */
@@ -175,11 +201,22 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
     if (a === b) return [];
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
-    return run.events.filter((ie) => ie.at > lo && ie.at <= hi).map((ie) => ie.event);
+    // runEvents は at 昇順。長い記録では数万件になるので、
+    // 毎回の全走査を避けて二分探索で区間の頭を探す。
+    let first = 0;
+    let last = runEvents.length;
+    while (first < last) {
+      const mid = (first + last) >> 1;
+      if (runEvents[mid]!.at <= lo) first = mid + 1;
+      else last = mid;
+    }
+    const out: GameEvent[] = [];
+    for (let i = first; i < runEvents.length && runEvents[i]!.at <= hi; i++) out.push(runEvents[i]!.event);
+    return out;
   };
 
   let currentTick: Tick = 0;
-  let currentSnap: GameSnapshot = run.checkpoints[0]!;
+  let currentSnap: GameSnapshot = firstSnap;
   let currentEvents: readonly GameEvent[] = [];
 
   // 範囲外は端に、小数は切り捨てに収める。
@@ -204,7 +241,7 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
       snap = c.sim.getSnapshot();
       // 検証済みの記録では必ず snap.tick === t に辿り着く。進めなかった異例では
       // 実際に辿り着いた tick をキーにして覚え、表示位置もそこに合わせる。
-      if (snap.tick % KEYFRAME_EVERY === 0) keyframes.set(snap.tick, snap);
+      if (snap.tick % every === 0) keyframes.set(snap.tick, snap);
       else putVisited(snap.tick, snap);
     }
     currentTick = snap.tick;
@@ -215,8 +252,13 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
 
   const peek = (target: Tick): GameSnapshot => {
     const t = clampTick(target, currentTick);
-    const key = Math.floor(t / KEYFRAME_EVERY) * KEYFRAME_EVERY;
-    return keyframes.get(key) ?? run.checkpoints[0]!;
+    // t 以下で一番近いキーフレームを探す。取りこぼしがあればさらに手前へ辿る
+    // （通常は最初の 1 発で当たる。検証で全ての倍数の面が入っているため）。
+    for (let key = Math.floor(t / every) * every; key >= 0; key -= every) {
+      const snap = keyframes.get(key);
+      if (snap) return snap;
+    }
+    return firstSnap;
   };
 
   return {
@@ -230,6 +272,21 @@ export function createReplayPlayer(record: ReplayRecord): ReplayStart {
       },
       get events() {
         return currentEvents;
+      },
+      get memory() {
+        // JSON 化した長さを素直に足す。呼ぶたびに畳み直す計測専用の窓口なので、
+        // 盤面表示の速さには影響しない。
+        let approxBytes = JSON.stringify(inputs).length + JSON.stringify(runEvents).length;
+        for (const s of keyframes.values()) approxBytes += JSON.stringify(s).length;
+        for (const s of visited.values()) approxBytes += JSON.stringify(s).length;
+        for (const c of cursors) approxBytes += JSON.stringify(c.sim.getSnapshot()).length;
+        return {
+          keyframes: keyframes.size,
+          visited: visited.size,
+          cursors: cursors.length,
+          events: runEvents.length,
+          approxBytes,
+        };
       },
       seek,
       step: (ticks: number) => seek(currentTick + Math.floor(ticks)),
