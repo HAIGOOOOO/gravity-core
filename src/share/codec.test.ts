@@ -282,6 +282,14 @@ describe('encodePlay / decodePlay', () => {
       inputs: [] as LaunchInput[],
     };
     expect(encodePlay(evilArgs)).toBe('');
+    // 穴のある配列（for..of が undefined を生む）・プロパティを読むと投げる Proxy でも落ちない
+    expect(encodePlay({ ...ok, inputs: new Array<LaunchInput>(3) })).toBe('');
+    const proxyInputs = new Proxy<LaunchInput[]>([drop(0, 0.5)], {
+      get: () => {
+        throw new Error('trap');
+      },
+    });
+    expect(encodePlay({ ...ok, inputs: proxyInputs })).toBe('');
   });
 
   it('上限を越える物は空文字列を返す', () => {
