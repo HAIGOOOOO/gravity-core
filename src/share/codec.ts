@@ -46,10 +46,11 @@ export const SHARE_RULES_VERSION = 1;
  * 貼り付け口（extractShareText）も同じ上限で候補を絞るので、export してある。
  */
 export const MAX_TEXT_LENGTH = 262_144;
-/** 入力の数の上限。文字列の上限より先に効くことはほぼないが、読む側の安全として置く。 */
-const MAX_INPUTS = 100_000;
-/** プレイの長さの上限 = 4 時間（tick）。これを越える記録は壊れた物とみなす。 */
-const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
+/** 入力の数の上限。文字列の上限より先に効くことはほぼないが、読む側の安全として置く。
+ *  テストが上限値と連動して境目を確かめられるよう export（./index の公開面には出さない）。 */
+export const MAX_INPUTS = 100_000;
+/** プレイの長さの上限 = 4 時間（tick）。これを越える記録は壊れた物とみなす。同上の理由で export。 */
+export const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
 
 const TAG_DROP_GRID = 0;
 const TAG_DROP = 1;

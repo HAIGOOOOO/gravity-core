@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { LaunchInput } from '../contracts/game';
-import { DROP_SPEED, TICK_HZ } from '../game/constants';
+import { DROP_SPEED } from '../game/constants';
 import { createRng } from '../game/rng';
-import { decodePlay, encodePlay, SHARE_RULES_VERSION, type EncodePlayArgs } from './codec';
-import { base64UrlToBytes, bytesToBase64Url, fnv1a } from './coding';
+import {
+  decodePlay,
+  encodePlay,
+  MAX_INPUTS,
+  MAX_TICKS,
+  SHARE_RULES_VERSION,
+  type EncodePlayArgs,
+} from './codec';
+import { base64UrlToBytes, bytesToBase64Url, fnv1a, writeF64 } from './coding';
 
 const GRID_DENOM = 4294967296;
 const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-/** codec.ts の上限と同じ（= 4 時間）。プレイ長の上限の境界テスト用。 */
-const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
 
 /** rng() * Math.PI * 2 と同じ計算順で、格子（2π/2^32）上の角度を作る。 */
 function gridAngle(k: number): number {
@@ -293,8 +298,8 @@ describe('encodePlay / decodePlay', () => {
   });
 
   it('上限を越える物は空文字列を返す', () => {
-    // 入力の数が上限（100,000）を越える
-    const tooMany: LaunchInput[] = Array.from({ length: 100_001 }, () => drop(0, 0.5));
+    // 入力の数が上限を越える
+    const tooMany: LaunchInput[] = Array.from({ length: MAX_INPUTS + 1 }, () => drop(0, 0.5));
     expect(encodePlay({ rulesVersion: 1, seed: 1, endTick: 100, inputs: tooMany })).toBe('');
     // 文字列の上限（262,144 文字）を越える = 全部「投げる」だと約 8,000 入力で頭打ち
     const raws: LaunchInput[] = Array.from({ length: 9_000 }, (_, i) => ({

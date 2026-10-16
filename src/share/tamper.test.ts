@@ -5,12 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import type { LaunchInput } from '../contracts/game';
 import { DROP_SPEED } from '../game/constants';
-import { decodePlay, encodePlay, SHARE_FORMAT_VERSION } from './codec';
+import { decodePlay, encodePlay, MAX_TEXT_LENGTH, SHARE_FORMAT_VERSION } from './codec';
 import { base64UrlToBytes, bytesToBase64Url, fnv1a, writeF64, writeVarint } from './coding';
 
 const GRID_DENOM = 4294967296;
-/** codec.ts の MAX_TEXT_LENGTH と同じ（上限の境目テスト用）。 */
-const MAX_TEXT_LENGTH = 262_144;
 
 /** rng() * Math.PI * 2 と同じ計算順で、格子（2π/2^32）上の角度を作る。 */
 function gridAngle(k: number): number {
