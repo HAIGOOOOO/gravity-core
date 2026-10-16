@@ -1,17 +1,20 @@
 import type { GameEvent } from '../contracts/game';
 import { impactStrength } from '../effects/appearance';
 import { AUDIO, chainFrequency, mergeDuration, mergeFrequency } from './tuning';
+import { launchTones } from './launch';
 
 export type Tone = {
   frequency: number; endFrequency?: number; wave: OscillatorType;
   gain: number; seconds: number; delay: number;
+  attackSeconds?: number;
+  tailGroup?: 'launch';
 };
 
 export function eventTones(event: GameEvent): readonly Tone[] {
   const tier = event.sourceTier ?? 0;
   switch (event.kind) {
     case 'launch':
-      return [{ frequency: 220, endFrequency: 330, wave: 'sine', gain: 0.035, seconds: 0.12, delay: 0 }];
+      return launchTones(tier, event.sequence);
     case 'land': {
       const power = impactStrength(event.impactSpeed ?? 0);
       return [{ frequency: 100 + power * 70, endFrequency: 55, wave: 'triangle', gain: 0.012 + power * 0.028, seconds: 0.07 + power * 0.07, delay: 0 }];

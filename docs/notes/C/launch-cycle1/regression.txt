@@ -1,0 +1,5 @@
+launch tier=2 chain=- heat=-
+launch tier=2 chain=- heat=-
+音の生成・上限・消去 OK
+{"results":[{"kind":"launch","peak":0.08693671226501465,"rms":0.004554035055027552,"silentLead":false},{"kind":"land","peak":0.028394222259521484,"rms":0.001448404811695184,"silentLead":false},{"kind":"merge","peak":0.040013015270233154,"rms":0.0034856855262748814,"silentLead":false},{"kind":"supernova","peak":0.09697258472442627,"rms":0.00817108355507712,"silentLead":true},{"kind":"overLimitStart","peak":0.026047706604003906,"rms":0.0020483661970225595,"silentLead":false},{"kind":"overLimitEnd","peak":0.019695281982421875,"rms":0.0017366596014828535,"silentLead":false}],"capped":true,"cleared":true}
+音を検証中

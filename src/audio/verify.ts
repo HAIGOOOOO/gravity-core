@@ -6,7 +6,7 @@ import { createVoices } from './voices';
 const SAMPLE_RATE = 48000;
 const VERIFY_SECONDS = 2;
 
-/** 見本専用。同じ発振器・音量・コンプレッサーで波形を作り、無音や飽和を検出する。 */
+/** 見本専用。同じ発振器・音量・出力段で波形を作り、無音や飽和を検出する。 */
 export async function verifySynthesis() {
   const results: { kind: string; peak: number; rms: number; silentLead: boolean }[] = [];
   for (const kind of ['launch', 'land', 'merge', 'supernova', 'overLimitStart', 'overLimitEnd'] as const) {
