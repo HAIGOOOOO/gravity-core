@@ -2,7 +2,7 @@
 // 端・壊れた記録・想定外の呼び方を確かめる。
 
 import { describe, expect, it } from 'vitest';
-import type { Tier } from '../contracts/game';
+import type { LaunchInput, Tier } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
 import { at, createAutoPlay, dropAt } from '../fixtures/index';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
@@ -14,7 +14,7 @@ import {
   snapshotHash,
   type ReplayRecord,
 } from './record';
-import { launchAnyhow, recordAutoPlay, recordSetup, UP } from './testkit';
+import { launchAnyhow, recordAutoPlay, recordSetup, snapshotJsonAt, UP } from './testkit';
 
 describe('記録の端と抜け', () => {
   it('tick 0・入力 0 件の記録を再生できる', () => {
@@ -213,6 +213,40 @@ describe('記録の文字列化（続き）', () => {
   });
 });
 
+describe('記録をあとで書き換える', () => {
+  it('プレイヤーを作ったあと入力ログを増やしても、再生は作った時点のまま進む', { timeout: 30_000 }, () => {
+    const { record } = recordAutoPlay(58, 1_200);
+    // 呼び出し側が配列を持ち回って書き換える事故を再現するため、
+    // 書き換えられる配列を記録へ入れてからプレイヤーを作る
+    const inputs: LaunchInput[] = record.inputs.map((i) => ({ ...i }));
+    const rec: ReplayRecord = { ...record, inputs };
+    const start = createReplayPlayer(rec);
+    expect(start.ok).toBe(true);
+    if (!start.ok) return;
+    const t = Math.min(700, record.endTick - 1);
+    const want = snapshotJsonAt(58, t);
+    // 作ったあとで tick 0 へ入力を足す。プレイヤーが複製して持つので再計算に出ない
+    inputs.push({ tick: 0, ...dropAt(UP) });
+    if (want !== undefined) expect(JSON.stringify(start.player.seek(t))).toBe(want);
+    // 終端の盤面も記録どおり
+    expect(snapshotHash(start.player.seek(record.endTick))).toBe(record.finalHash);
+  });
+
+  it('setup 付きの記録をあとで書き換えても、開始状態は記録時のまま再現される', { timeout: 30_000 }, () => {
+    const rec = recordSetup(4, { heat: 30, bodies: [at(3, 200, 0.2)] }, 600);
+    const a = createReplayPlayer(rec);
+    const b = createReplayPlayer(rec);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    // プレイヤーを作ったあとで、記録の開始状態を書き換える
+    rec.setup!.heat = 99;
+    rec.setup!.bodies![0]!.x = 9_999;
+    // キーフレーム間隔に乗らない tick を選び、カーソルに計算させる
+    const t = Math.min(301, rec.endTick - 1);
+    expect(JSON.stringify(a.player.seek(t))).toBe(JSON.stringify(b.player.seek(t)));
+  });
+});
+
 describe('出来事・peek・複数プレイヤー', () => {
   it('後ろ向きに飛んだ時も、越えた区間に起きた出来事が返る', { timeout: 30_000 }, () => {
     const sim = createSimulation(3);
@@ -244,10 +278,10 @@ describe('出来事・peek・複数プレイヤー', () => {
     expect(p.tick).toBe(base); // いまの位置は動かない
     expect(p.snapshot().tick).toBe(base);
     expect(p.events).toBe(before);
-    // 範囲外・壊れた値を渡しても、決まったキーフレームを返す（落ちない）
+    // 範囲外・壊れた値を渡しても、決まった盤面を返す（落ちない）
     expect(p.peek(-5).tick).toBe(0);
-    expect(p.peek(Number.POSITIVE_INFINITY).tick).toBe(Math.floor(record.endTick / 60) * 60);
-    expect(p.peek(Number.NaN).tick).toBe(Math.floor(base / 60) * 60); // NaN はいまの位置
+    expect(p.peek(Number.POSITIVE_INFINITY).tick).toBe(record.endTick); // 先は終端の盤面
+    expect(p.peek(Number.NaN).tick).toBe(base); // NaN はいまの位置そのもの
   });
 
   it('2 つのプレイヤーは別々の記録を独立に再生する', { timeout: 60_000 }, () => {

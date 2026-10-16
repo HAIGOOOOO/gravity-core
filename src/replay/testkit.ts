@@ -31,6 +31,19 @@ export function recordSetup(seed: number, setup: SimulationSetup, maxTicks: numb
   return createReplayRecord(sim, { setup });
 }
 
+/** 同じシードの自動プレイをもう一度回して、ある tick の盤面（JSON）を取る。無ければ undefined。 */
+export function snapshotJsonAt(seed: number, tick: number): string | undefined {
+  const auto = createAutoPlay(seed);
+  // tick までに丁度届く。先に終わった・到達しない時は undefined（無限ループしないよう回数で止める）
+  for (let i = 0; i <= tick; i++) {
+    const snap = auto.sim.getSnapshot();
+    if (snap.tick === tick) return JSON.stringify(snap);
+    if (snap.tick > tick || snap.phase === 'over') return undefined;
+    auto.step();
+  }
+  return undefined;
+}
+
 /**
  * 角度を少しずつ変えながら、受理されるまで射出を試す。
  * 盤面の状態（冷却・射出点の混み具合）で拒否される事があるため、1 角度だけに頼らない。

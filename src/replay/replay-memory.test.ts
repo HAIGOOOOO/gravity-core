@@ -5,22 +5,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { TICK_HZ } from '../game/constants';
-import { at, createAutoPlay } from '../fixtures/index';
+import { at } from '../fixtures/index';
 import { createReplayPlayer, keyframeInterval } from './player';
-import { recordAutoPlay, recordSetup } from './testkit';
-
-/** 同じシードの自動プレイをもう一度回して、ある tick の盤面（JSON）を取る。 */
-function truthAt(seed: number, tick: number): string | undefined {
-  const auto = createAutoPlay(seed);
-  // tick までに丁度届く。先に終わった・到達しない時は undefined（無限ループしないよう回数で止める）
-  for (let i = 0; i <= tick; i++) {
-    const snap = auto.sim.getSnapshot();
-    if (snap.tick === tick) return JSON.stringify(snap);
-    if (snap.tick > tick || snap.phase === 'over') return undefined;
-    auto.step();
-  }
-  return undefined;
-}
+import { recordAutoPlay, recordSetup, snapshotJsonAt } from './testkit';
 
 describe('キーフレーム間隔', () => {
   it('短い記録は 60 tick ごと、長い記録は面数が上限に収まる間隔へ広がる', () => {
@@ -49,14 +36,17 @@ describe('覚える物の量', () => {
     // キーフレームに当たらない tick も含めて、飛んだ先の盤面は真値と一致する
     for (const t of [0, 37, 150, 901, 1_500, record.endTick]) {
       if (t > record.endTick) continue;
-      const want = truthAt(44, t);
+      const want = snapshotJsonAt(44, t);
       if (want === undefined) continue;
       expect(JSON.stringify(p.seek(t)), `tick ${t}`).toBe(want);
     }
-    // まばらな間隔でも、peek は「t 以下の一番近いキーフレーム」を返す
     const every = keyframeInterval(record.endTick, cap);
-    const t = Math.min(901, record.endTick);
-    expect(p.peek(t).tick).toBe(Math.floor(t / every) * every);
+    if (record.endTick >= 950) {
+      // まばらな間隔でも、行っていない場所への peek は「t 以下の一番近いキーフレーム」
+      expect(p.peek(950).tick).toBe(Math.floor(950 / every) * every);
+      // 行った所（901）への peek は、キーフレームではなくその tick ちょうどの盤面
+      expect(p.peek(901).tick).toBe(901);
+    }
   });
 
   it('行った所の記憶は 240 面で止まり、古い物が捨てられても再 seek は正しい', { timeout: 60_000 }, () => {
@@ -76,7 +66,7 @@ describe('覚える物の量', () => {
     // 捨てられたはずの最初の場所へもう一度飛んでも、盤面は正確に再現される
     // （記録が短すぎて targets が無い異例では、ここだけ何も確かめない）
     if (targets.length > 0) {
-      const want = truthAt(45, targets[0]!);
+      const want = snapshotJsonAt(45, targets[0]!);
       if (want !== undefined) expect(JSON.stringify(p.seek(targets[0]!))).toBe(want);
     }
   });

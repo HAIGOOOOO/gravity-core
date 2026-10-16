@@ -115,7 +115,8 @@ export function snapshotHash(snap: GameSnapshot): string {
 
 // 呼び出し側があとで setup を書き換えても記録が腐らないよう、中身を複製する。
 // （inputs と stats は最初から複製している。ここだけ参照のままだった）
-function copySetup(setup: SimulationSetup): SimulationSetup {
+// player も、カーソルがあとから読む setup の複製にこれを使う。
+export function copySetup(setup: SimulationSetup): SimulationSetup {
   const copy: SimulationSetup = { ...setup };
   if (setup.bodies) copy.bodies = setup.bodies.map((b) => ({ ...b }));
   if (setup.queue) copy.queue = [...setup.queue];

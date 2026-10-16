@@ -118,6 +118,9 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
 
   // 記録された tick ちょうどに撃たれた入力は、ステップを進めずに反映する
   // （記録の直前に撃って終わった分。盤面には出るがイベントはまだ返っていない）。
+  // 注意: この反映は中間の盤面を取った「あと」なので、endTick が
+  // checkpointEvery の倍数のとき、checkpoints の終端面（入力反映前）と
+  // 下の final（入力反映後）は同じ tick の別物になる。終端の基準は必ず final。
   const badEnd = applyInputs(sim.getSnapshot().tick);
   if (badEnd) return { ok: false, reason: 'diverged', detail: badEnd };
 

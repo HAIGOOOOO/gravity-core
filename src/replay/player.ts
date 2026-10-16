@@ -9,7 +9,8 @@
 //        その tick への seek と peek（つまみの表示）は一瞬で返る。
 //        記録が長いほど取る間隔を広げて、面数が KEYFRAME_CAP を越えないようにする。
 //     2. 行った所: seek した先の盤面も覚える（上限つきで古い物から捨てる）。
-//        同じ所への再 seek は一瞬。
+//        同じ所への再 seek は一瞬。peek もここを引くので、
+//        一度止まった tick へつまみを戻すと正確な盤面が出る。
 //     3. カーソル: 前にしか進めないシミュレーションを数本持ち、
 //        目的地に一番近い（手前にいる）ものを選んで進める。
 //        行き来するほどカーソルが散って、戻る距離が短くなる。
@@ -22,7 +23,7 @@ import type { GameEvent, GameSnapshot, SimulationPort, Tick } from '../contracts
 import { TICK_HZ } from '../game/constants';
 import { createSimulation } from '../game/simulation';
 import { runReplay, type ReplayFailure } from './engine';
-import type { ReplayRecord } from './record';
+import { copySetup, type ReplayRecord } from './record';
 
 /** キーフレーム・キャッシュを取る間隔（60 tick = 0.5 秒）。 */
 const KEYFRAME_EVERY = 60;
@@ -73,7 +74,9 @@ export type ReplayPlayer = {
    */
   snapshot(): GameSnapshot;
   /**
-   * seek の速い版。tick 以下の一番近いキーフレームの盤面を即返す。
+   * seek の速い版。tick にちょうどの記憶面（間隔の倍数・終端・
+   * 以前に seek で止まった所）があればそれを、
+   * なければ tick 以下で一番近いキーフレームの盤面を即返す。
    * つまみを動かしている途中の表示用。正確な盤面が要るなら seek を使う。
    */
   peek(tick: Tick): GameSnapshot;
@@ -106,7 +109,10 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
   const run = runReplay(record, { checkpointEvery: every });
   if (!run.ok) return run;
   const { endTick } = record;
-  const inputs = record.inputs;
+  // 呼び出し側があとで記録の中身を書き換えても、カーソルの再計算が腐らないよう
+  // 入力と開始状態は作るときに複製して持つ（record.ts と同じ考え方）。
+  const inputs = record.inputs.map((i) => ({ ...i }));
+  const setup = record.setup === undefined ? undefined : copySetup(record.setup);
   // run の中身は必要な物だけ取り出し、配列ごとの参照をクロージャに残さない
   // （checkpoints の配列自体はキーフレームへ移したあと手放す）。
   const runEvents = run.events;
@@ -139,7 +145,7 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
   };
 
   const cursors: Cursor[] = [];
-  const newCursor = (): Cursor => ({ sim: createSimulation(record.seed, record.setup), nextInput: 0 });
+  const newCursor = (): Cursor => ({ sim: createSimulation(record.seed, setup), nextInput: 0 });
 
   /** いまの tick に届いている入力を順に投入する（記録は照合済みなので受理されるはず）。 */
   const applyDue = (c: Cursor): void => {
@@ -165,7 +171,10 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
       applyDue(c);
       c.sim.stepFixed();
       snap = c.sim.getSnapshot();
-      if (snap.tick % every === 0) keyframes.set(snap.tick, snap);
+      // 終端の面はここで書かない。keyframes[endTick] は「endTick の入力も
+      // 反映した」検証済みの盤面で初期化済みなので、ここで入力反映前の面を
+      // 書くと seek(endTick) が記録と違う盤面を返してしまう。
+      if (snap.tick % every === 0 && snap.tick !== endTick) keyframes.set(snap.tick, snap);
     }
     // 終端に止まった時は、終端ちょうどの入力（記録の直前に撃たれた分）も反映する。
     // runReplay が最終盤面で同じ事をするので、ここで揃えないと
@@ -256,7 +265,17 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
   };
 
   const peek = (target: Tick): GameSnapshot => {
+    // NaN は「飛べない」ので今の盤面そのものを返す（近いキーフレームへ
+    // 跳ぶと、壊れた入力 1 回で絵が巻き戻って見える）。
+    if (Number.isNaN(target)) return currentSnap;
     const t = clampTick(target, currentTick);
+    // ちょうどの記憶面があればそれを返す。終端は間隔の倍数でなくても
+    // 必ず keyframes に入っているので、ここで拾えば peek(endTick) が
+    // 1 間隔ぶん古い面ではなく記録の最後の盤面そのものを返す。
+    // 「行った所」も見る: 一度 seek で止まった tick へつまみを戻した時に、
+    // 手前のキーフレームより新しい・その tick ちょうどの盤面が出る。
+    const exact = keyframes.get(t) ?? visited.get(t);
+    if (exact) return exact;
     // t 以下で一番近いキーフレームを探す。取りこぼしがあればさらに手前へ辿る
     // （通常は最初の 1 発で当たる。検証で全ての倍数の面が入っているため）。
     for (let key = Math.floor(t / every) * every; key >= 0; key -= every) {
