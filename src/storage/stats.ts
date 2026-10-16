@@ -1,13 +1,12 @@
-// 1 回のプレイの詳しい統計（題目 2「記録を作り直す」）。
+// 1 回のプレイの詳しい統計（題目「記録を作り直す」）。
 // ランキングの 1 行（RunRecord）は得点順のために残し、こちらは「どう遊んだか」が分かる数字を
-// 別のキーに版つきで蓄える。このファイルは純粋な計算だけ（保存は history.ts）。
+// 別のキーに版つきで蓄える。このファイルは出来事の数え上げだけ（保存は history.ts、
+// 検査と移し替えは archive.ts、推移は trend.ts）。
 
-import type { RunRecord } from '../contracts/app';
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { TICK_HZ, TIER_COUNT } from '../game/constants';
-import { readRecord } from './data';
 
-/** 統計アーカイブの版。形を変えるときは 1 つ上げ、migrateStatsArchive に移し替えを足す。 */
+/** 統計アーカイブの版。形を変えるときは 1 つ上げ、archive.ts の移し替えに足す。 */
 export const STATS_VERSION = 1;
 /** 残すプレイの件数。古い順に捨てる（1 件あたり数百バイトなので、端末の上限 5MB に十分収まる）。 */
 export const MAX_STATS_RUNS = 1000;
@@ -58,8 +57,127 @@ export type RunDetailMeta = Readonly<{
   gameVersion: string;
 }>;
 
-export function defaultStatsArchive(): StatsArchive {
-  return { version: STATS_VERSION, runs: [] };
+// ───────── 出来事の数え上げ ─────────
+// buildRunDetail（列をまとめて処理）と recorder.ts（1 tick ずつ処理）で共有する。
+// ここで値を正規形にそろえるので、1 件の壊れた出来事が統計全体を壊すことはない。
+
+/** 数え上げの途中結果（内部用。recorder が保持する）。 */
+export type EventFold = {
+  launches: number;
+  lands: number;
+  merges: number;
+  supernovas: number;
+  /** 出来事から数えた最大連鎖 */
+  chainMax: number;
+  overLimitTicks: number;
+  overLimitEntries: number;
+  /** 越え始めた tick。終わっていなければその時刻、越えていなければ null */
+  overLimitSince: Tick | null;
+  maxSingleScore: number;
+  maxImpactSpeed: number;
+  mergesByTier: number[];
+};
+
+export function createEventFold(): EventFold {
+  return {
+    launches: 0,
+    lands: 0,
+    merges: 0,
+    supernovas: 0,
+    chainMax: 0,
+    overLimitTicks: 0,
+    overLimitEntries: 0,
+    overLimitSince: null,
+    maxSingleScore: 0,
+    maxImpactSpeed: 0,
+    mergesByTier: new Array<number>(TIER_COUNT).fill(0),
+  };
+}
+
+/** 整数として出る項目（連鎖・単発得点）は、壊れた値（無限・非整数）を落としてから数える。 */
+const countInt = (value: number | undefined): number | null =>
+  value !== undefined && Number.isFinite(value) ? Math.floor(value) : null;
+
+/** 出来事を 1 件数える。並びが多少乱れていても負の値や NaN に崩れない。 */
+export function foldEvent(fold: EventFold, event: GameEvent): void {
+  switch (event.kind) {
+    case 'launch':
+      fold.launches++;
+      break;
+    case 'land':
+      fold.lands++;
+      if (event.impactSpeed !== undefined && Number.isFinite(event.impactSpeed)
+        && event.impactSpeed > fold.maxImpactSpeed) {
+        fold.maxImpactSpeed = event.impactSpeed;
+      }
+      break;
+    case 'merge':
+      fold.merges++;
+      // sourceTier が範囲外だと配列の外に NaN を書き込んでしまうので、検査してから数える
+      if (event.sourceTier !== undefined && Number.isInteger(event.sourceTier)
+        && event.sourceTier >= 0 && event.sourceTier < TIER_COUNT) {
+        fold.mergesByTier[event.sourceTier]++;
+      }
+      break;
+    case 'supernova':
+      fold.supernovas++;
+      break;
+    case 'overLimitStart':
+      // 「越え始めた回数」は越えていない状態から越えた時だけ数える（重複した start は無視）
+      if (fold.overLimitSince === null) {
+        fold.overLimitSince = event.tick;
+        fold.overLimitEntries++;
+      }
+      break;
+    case 'overLimitEnd':
+      if (fold.overLimitSince !== null) {
+        fold.overLimitTicks += Math.max(0, event.tick - fold.overLimitSince);
+        fold.overLimitSince = null;
+      }
+      break;
+    case 'gameOver':
+      break;
+  }
+  if (event.kind === 'merge' || event.kind === 'supernova') {
+    const chain = countInt(event.chain);
+    if (chain !== null && chain > fold.chainMax) fold.chainMax = chain;
+    const delta = countInt(event.scoreDelta);
+    if (delta !== null && delta > fold.maxSingleScore) fold.maxSingleScore = delta;
+  }
+}
+
+/** 壊れた盤面の値が統計を保存不能（検証落ち）にしないよう、非負の有限値にそろえる。 */
+const nonNegative = (value: number): number => (Number.isFinite(value) && value > 0 ? value : 0);
+const nonNegativeInt = (value: number): number => Math.floor(nonNegative(value));
+
+/** 数え上げの結果と最後の盤面・識別情報から 1 回分の統計に仕上げる。fold は変えない。 */
+export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDetailMeta): RunDetailV1 {
+  const tick = nonNegative(snapshot.tick);
+  // 終了時点でまだ越えていた分は、最後の盤面の tick まで数える（gameOver 時は end が来ない）
+  const overLimitTicks = fold.overLimitTicks
+    + (fold.overLimitSince !== null ? Math.max(0, tick - fold.overLimitSince) : 0);
+  const score = nonNegativeInt(snapshot.score);
+  return {
+    id: meta.id,
+    playedAt: meta.playedAt,
+    seed: nonNegativeInt(snapshot.seed),
+    gameVersion: meta.gameVersion,
+    score,
+    seconds: tick / TICK_HZ,
+    launches: fold.launches,
+    lands: fold.lands,
+    merges: fold.merges,
+    supernovas: fold.supernovas,
+    // 出来事の連鎖と盤面の集計の大きい方（片方が欠けても正しい値を残す）
+    maxChain: Math.max(fold.chainMax, nonNegativeInt(snapshot.stats.maxChain)),
+    bestTier: Math.min(TIER_COUNT - 1, nonNegativeInt(snapshot.bestTierThisRun)),
+    overLimitSeconds: overLimitTicks / TICK_HZ,
+    overLimitEntries: fold.overLimitEntries,
+    scorePerLaunch: fold.launches > 0 ? score / fold.launches : 0,
+    maxSingleScore: fold.maxSingleScore,
+    maxImpactSpeed: fold.maxImpactSpeed,
+    mergesByTier: [...fold.mergesByTier],
+  };
 }
 
 /**
@@ -72,273 +190,7 @@ export function buildRunDetail(
   snapshot: GameSnapshot,
   meta: RunDetailMeta,
 ): RunDetailV1 {
-  let launches = 0;
-  let lands = 0;
-  let merges = 0;
-  let supernovas = 0;
-  let chainFromEvents = 0;
-  let overLimitTicks = 0;
-  let overLimitEntries = 0;
-  let overLimitSince: Tick | null = null;
-  let maxSingleScore = 0;
-  let maxImpactSpeed = 0;
-  const mergesByTier = new Array<number>(TIER_COUNT).fill(0);
-
-  for (const event of events) {
-    switch (event.kind) {
-      case 'launch':
-        launches++;
-        break;
-      case 'land':
-        lands++;
-        if (event.impactSpeed !== undefined && event.impactSpeed > maxImpactSpeed) {
-          maxImpactSpeed = event.impactSpeed;
-        }
-        break;
-      case 'merge':
-        merges++;
-        if (event.sourceTier !== undefined) mergesByTier[event.sourceTier]++;
-        break;
-      case 'supernova':
-        supernovas++;
-        break;
-      case 'overLimitStart':
-        overLimitEntries++;
-        // 重複した start で区間をずらさないよう、開いていないときだけ覚える
-        if (overLimitSince === null) overLimitSince = event.tick;
-        break;
-      case 'overLimitEnd':
-        if (overLimitSince !== null) {
-          overLimitTicks += event.tick - overLimitSince;
-          overLimitSince = null;
-        }
-        break;
-      case 'gameOver':
-        break;
-    }
-    if (event.kind === 'merge' || event.kind === 'supernova') {
-      if (event.chain !== undefined && event.chain > chainFromEvents) chainFromEvents = event.chain;
-      if (event.scoreDelta !== undefined && event.scoreDelta > maxSingleScore) {
-        maxSingleScore = event.scoreDelta;
-      }
-    }
-  }
-  // 終了時点でまだ越えていた分は、最後の盤面の tick まで数える（gameOver 時は end が来ない）
-  if (overLimitSince !== null) overLimitTicks += Math.max(0, snapshot.tick - overLimitSince);
-
-  const score = snapshot.score;
-  return {
-    id: meta.id,
-    playedAt: meta.playedAt,
-    seed: snapshot.seed,
-    gameVersion: meta.gameVersion,
-    score,
-    seconds: snapshot.tick / TICK_HZ,
-    launches,
-    lands,
-    merges,
-    supernovas,
-    // 出来事の連鎖と盤面の集計の大きい方（片方が欠けても正しい値を残す）
-    maxChain: Math.max(chainFromEvents, snapshot.stats.maxChain),
-    bestTier: snapshot.bestTierThisRun,
-    overLimitSeconds: overLimitTicks / TICK_HZ,
-    overLimitEntries,
-    scorePerLaunch: launches > 0 ? score / launches : 0,
-    maxSingleScore,
-    maxImpactSpeed,
-    mergesByTier,
-  };
-}
-
-/** 古い形（得点順の 1 行だけの RunRecord）を版 1 の統計に移す。元の記録に無い項目は 0。 */
-export function detailFromRecord(record: RunRecord): RunDetailV1 {
-  return {
-    id: record.id,
-    playedAt: record.playedAt,
-    seed: record.seed,
-    gameVersion: record.gameVersion,
-    score: record.score,
-    seconds: record.seconds,
-    launches: record.launches,
-    lands: 0,
-    merges: record.merges,
-    supernovas: record.supernovas,
-    maxChain: record.maxChain,
-    bestTier: record.bestTier,
-    overLimitSeconds: 0,
-    overLimitEntries: 0,
-    scorePerLaunch: record.launches > 0 ? record.score / record.launches : 0,
-    maxSingleScore: 0,
-    maxImpactSpeed: 0,
-    mergesByTier: new Array<number>(TIER_COUNT).fill(0),
-  };
-}
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
-const nonNegativeNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0;
-const nonNegativeInt = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 0;
-
-/** mergesByTier は書き忘れに耐える（無ければ 0 埋め）。あるのに形が違う物は捨てる。 */
-function readMergesByTier(value: unknown): number[] | null {
-  if (value === undefined) return new Array<number>(TIER_COUNT).fill(0);
-  if (!Array.isArray(value) || value.length !== TIER_COUNT || !value.every(nonNegativeInt)) return null;
-  return [...value] as number[];
-}
-
-/** 壊れた項目を渡さないための検査（data.ts の readRecord と同じ方針）。 */
-export function readRunDetail(value: unknown): RunDetailV1 | null {
-  if (!isObject(value)) return null;
-  if (typeof value.id !== 'string' || !value.id) return null;
-  if (typeof value.playedAt !== 'string' || !Number.isFinite(Date.parse(value.playedAt))) return null;
-  if (typeof value.gameVersion !== 'string') return null;
-  const ints = ['score', 'seed', 'launches', 'lands', 'merges', 'supernovas', 'maxChain', 'bestTier', 'overLimitEntries', 'maxSingleScore'] as const;
-  if (ints.some((key) => !nonNegativeInt(value[key]))) return null;
-  const reals = ['seconds', 'overLimitSeconds', 'scorePerLaunch', 'maxImpactSpeed'] as const;
-  if (reals.some((key) => !nonNegativeNumber(value[key]))) return null;
-  if ((value.bestTier as number) >= TIER_COUNT) return null;
-  const mergesByTier = readMergesByTier(value.mergesByTier);
-  if (mergesByTier === null) return null;
-  return {
-    id: value.id,
-    playedAt: value.playedAt,
-    seed: value.seed as number,
-    gameVersion: value.gameVersion,
-    score: value.score as number,
-    seconds: value.seconds as number,
-    launches: value.launches as number,
-    lands: value.lands as number,
-    merges: value.merges as number,
-    supernovas: value.supernovas as number,
-    maxChain: value.maxChain as number,
-    bestTier: value.bestTier as number,
-    overLimitSeconds: value.overLimitSeconds as number,
-    overLimitEntries: value.overLimitEntries as number,
-    scorePerLaunch: value.scorePerLaunch as number,
-    maxSingleScore: value.maxSingleScore as number,
-    maxImpactSpeed: value.maxImpactSpeed as number,
-    mergesByTier,
-  };
-}
-
-/** RunRecord の形の列を、版 1 の統計に移す（読めない項目は捨てる）。 */
-function migrateLegacyRuns(list: readonly unknown[]): RunDetailV1[] {
-  const runs: RunDetailV1[] = [];
-  for (const item of list) {
-    const record = readRecord(item);
-    if (record) runs.push(detailFromRecord(record));
-  }
-  return runs;
-}
-
-/** id の重複を除き、playedAt の古い順に並べて件数を制限する。 */
-function normalizeRuns(runs: readonly RunDetailV1[]): RunDetailV1[] {
-  const seen = new Set<string>();
-  const unique = runs.filter((run) => {
-    if (seen.has(run.id)) return false;
-    seen.add(run.id);
-    return true;
-  });
-  unique.sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
-  return unique.slice(-MAX_STATS_RUNS);
-}
-
-/**
- * 保存値（JSON.parse 済みの unknown）を版 1 のアーカイブに移す。
- * - `{version:1, runs}` …… いまの形。1 件ずつ検査し、壊れた物だけ捨てる。
- *   runs の中に旧 RunRecord が混ざっていても拾えるだけ拾う。
- * - `records` を持つ物・裸の配列・`{version:0, runs}` …… 旧 RunRecord の列として移す。
- * - それ以外（未来の版・壊れた物）は移せないので捨てて初期値。
- */
-export function migrateStatsArchive(value: unknown): StatsArchive {
-  let runs: RunDetailV1[] | null = null;
-  if (isObject(value) && value.version === STATS_VERSION && Array.isArray(value.runs)) {
-    runs = [];
-    for (const item of value.runs) {
-      const detail = readRunDetail(item);
-      if (detail) runs.push(detail);
-      else {
-        const record = readRecord(item);
-        if (record) runs.push(detailFromRecord(record));
-      }
-    }
-  } else {
-    const legacyList = Array.isArray(value)
-      ? value
-      : isObject(value) && Array.isArray(value.records)
-        ? value.records
-        : isObject(value) && (value.version === undefined || value.version === 0) && Array.isArray(value.runs)
-          ? value.runs
-          : null;
-    if (legacyList !== null) runs = migrateLegacyRuns(legacyList);
-    else if (isObject(value) && value.version === STATS_VERSION) runs = [];
-  }
-  if (runs === null) return defaultStatsArchive();
-  return { version: STATS_VERSION, runs: normalizeRuns(runs) };
-}
-
-/** 1 つの指標の、直近の窓とその前の窓の比較。件数が足りない所は null。 */
-export type MetricTrend = Readonly<{
-  /** 直近 window 件の平均 */
-  average: number | null;
-  /** 直近 window 件の最大 */
-  best: number | null;
-  /** その前の window 件の平均（無ければ null） */
-  previousAverage: number | null;
-  /** average - previousAverage（比較できなければ null） */
-  delta: number | null;
-}>;
-
-export type RunTrend = Readonly<{
-  /** 使った窓の大きさ */
-  window: number;
-  recentCount: number;
-  previousCount: number;
-  score: MetricTrend;
-  scorePerLaunch: MetricTrend;
-  maxChain: MetricTrend;
-  bestTier: MetricTrend;
-  overLimitSeconds: MetricTrend;
-}>;
-
-function metricTrend(recent: readonly number[], previous: readonly number[]): MetricTrend {
-  const averageOf = (xs: readonly number[]): number | null =>
-    xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
-  const average = averageOf(recent);
-  const previousAverage = averageOf(previous);
-  let best: number | null = null;
-  for (const v of recent) if (best === null || v > best) best = v;
-  return {
-    average,
-    best,
-    previousAverage,
-    delta: average !== null && previousAverage !== null ? average - previousAverage : null,
-  };
-}
-
-/**
- * 直近 window 件とその前の window 件を比べて、上達の移り変わりを出す。
- * runs はどの順で渡してもよい（playedAt で並べ直す）。
- */
-export function summarizeTrend(runs: readonly RunDetailV1[], windowSize = 10): RunTrend {
-  const window = Number.isFinite(windowSize) ? Math.max(1, Math.floor(windowSize)) : 10;
-  const sorted = [...runs].sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
-  const recent = sorted.slice(-window);
-  const previous = sorted.slice(Math.max(0, sorted.length - window * 2), Math.max(0, sorted.length - window));
-  const values = (list: readonly RunDetailV1[], pick: (run: RunDetailV1) => number): number[] => list.map(pick);
-  return {
-    window,
-    recentCount: recent.length,
-    previousCount: previous.length,
-    score: metricTrend(values(recent, (r) => r.score), values(previous, (r) => r.score)),
-    scorePerLaunch: metricTrend(values(recent, (r) => r.scorePerLaunch), values(previous, (r) => r.scorePerLaunch)),
-    maxChain: metricTrend(values(recent, (r) => r.maxChain), values(previous, (r) => r.maxChain)),
-    bestTier: metricTrend(values(recent, (r) => r.bestTier), values(previous, (r) => r.bestTier)),
-    overLimitSeconds: metricTrend(
-      values(recent, (r) => r.overLimitSeconds),
-      values(previous, (r) => r.overLimitSeconds),
-    ),
-  };
+  const fold = createEventFold();
+  for (const event of events) foldEvent(fold, event);
+  return finishFold(fold, snapshot, meta);
 }

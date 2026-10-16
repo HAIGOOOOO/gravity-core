@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TIER_COUNT } from '../game/constants';
 import { STATS_BACKUP_KEY, STATS_KEY, createStatsStore } from './history';
-import { MAX_STATS_RUNS, STATS_VERSION, defaultStatsArchive, summarizeTrend } from './stats';
+import { MAX_STATS_RUNS, STATS_VERSION } from './stats';
+import { defaultStatsArchive } from './archive';
+import { summarizeTrend } from './trend';
+import { createRunRecorder } from './recorder';
 import type { RunDetailV1 } from './stats';
+import type { GameSnapshot } from '../contracts/game';
 import type { RunRecord } from '../contracts/app';
 
 function fakeStorage(raw: string | null = null) {
@@ -86,6 +90,28 @@ describe('統計アーカイブの保存', () => {
     store.add(detail('a', '2026-10-10T00:00:00.000Z'));
     store.clear();
     expect(store.load().runs).toHaveLength(0);
+  });
+  it('蓄積器で作った統計をそのまま足し、推移の計算に載る', () => {
+    const store = createStatsStore(fakeStorage());
+    const recorder = createRunRecorder();
+    recorder.feed([
+      { sequence: 1, tick: 1, kind: 'launch' },
+      { sequence: 2, tick: 40, kind: 'merge', sourceTier: 0, chain: 2, scoreDelta: 100 },
+      { sequence: 3, tick: 60, kind: 'gameOver' },
+    ]);
+    const snap: GameSnapshot = {
+      tick: 60, phase: 'over', bodies: [], heat: 0, overLimit: false,
+      score: 100, bestTierThisRun: 1, nextQueue: [0, 0, 0],
+      launchCooldownLeftSeconds: 0, seed: 7,
+      stats: { launches: 1, merges: 1, supernovas: 0, maxChain: 2 },
+    };
+    store.add(recorder.finish(snap, { id: 'rec-1', playedAt: '2026-10-10T00:00:00.000Z', gameVersion: '0.1.0' }));
+    const archive = store.load();
+    expect(archive.runs.map((r) => r.id)).toEqual(['rec-1']);
+    expect(archive.runs[0]?.mergesByTier[0]).toBe(1);
+    const trend = summarizeTrend(archive.runs, 10);
+    expect(trend.totalCount).toBe(1);
+    expect(trend.score.allTimeBest).toBe(100);
   });
   it('読み込み・書き込みが拒否されてもメモリで続ける', () => {
     const storage = {

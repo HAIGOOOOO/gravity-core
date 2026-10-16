@@ -1,0 +1,141 @@
+// 統計アーカイブの検査と版の移し替え。
+// 壊れた項目は 1 件ずつ捨て、移せない形はまるごと捨てて初期値にする（data.ts / save.ts と同じ方針）。
+
+import type { RunRecord } from '../contracts/app';
+import { TIER_COUNT } from '../game/constants';
+import { readRecord } from './data';
+import type { RunDetailV1, StatsArchive } from './stats';
+import { MAX_STATS_RUNS, STATS_VERSION } from './stats';
+
+export function defaultStatsArchive(): StatsArchive {
+  return { version: STATS_VERSION, runs: [] };
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+const nonNegativeNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const nonNegativeInt = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
+
+/** mergesByTier は書き忘れに耐える（無ければ 0 埋め）。あるのに形が違う物は捨てる。 */
+function readMergesByTier(value: unknown): number[] | null {
+  if (value === undefined) return new Array<number>(TIER_COUNT).fill(0);
+  if (!Array.isArray(value) || value.length !== TIER_COUNT || !value.every(nonNegativeInt)) return null;
+  return [...value] as number[];
+}
+
+/** 壊れた項目を渡さないための検査（data.ts の readRecord と同じ方針）。 */
+export function readRunDetail(value: unknown): RunDetailV1 | null {
+  if (!isObject(value)) return null;
+  if (typeof value.id !== 'string' || !value.id) return null;
+  if (typeof value.playedAt !== 'string' || !Number.isFinite(Date.parse(value.playedAt))) return null;
+  if (typeof value.gameVersion !== 'string') return null;
+  const ints = ['score', 'seed', 'launches', 'lands', 'merges', 'supernovas', 'maxChain', 'bestTier', 'overLimitEntries', 'maxSingleScore'] as const;
+  if (ints.some((key) => !nonNegativeInt(value[key]))) return null;
+  const reals = ['seconds', 'overLimitSeconds', 'scorePerLaunch', 'maxImpactSpeed'] as const;
+  if (reals.some((key) => !nonNegativeNumber(value[key]))) return null;
+  if ((value.bestTier as number) >= TIER_COUNT) return null;
+  const mergesByTier = readMergesByTier(value.mergesByTier);
+  if (mergesByTier === null) return null;
+  return {
+    id: value.id,
+    playedAt: value.playedAt,
+    seed: value.seed as number,
+    gameVersion: value.gameVersion,
+    score: value.score as number,
+    seconds: value.seconds as number,
+    launches: value.launches as number,
+    lands: value.lands as number,
+    merges: value.merges as number,
+    supernovas: value.supernovas as number,
+    maxChain: value.maxChain as number,
+    bestTier: value.bestTier as number,
+    overLimitSeconds: value.overLimitSeconds as number,
+    overLimitEntries: value.overLimitEntries as number,
+    scorePerLaunch: value.scorePerLaunch as number,
+    maxSingleScore: value.maxSingleScore as number,
+    maxImpactSpeed: value.maxImpactSpeed as number,
+    mergesByTier,
+  };
+}
+
+/** 古い形（得点順の 1 行だけの RunRecord）を版 1 の統計に移す。元の記録に無い項目は 0。 */
+export function detailFromRecord(record: RunRecord): RunDetailV1 {
+  return {
+    id: record.id,
+    playedAt: record.playedAt,
+    seed: record.seed,
+    gameVersion: record.gameVersion,
+    score: record.score,
+    seconds: record.seconds,
+    launches: record.launches,
+    lands: 0,
+    merges: record.merges,
+    supernovas: record.supernovas,
+    maxChain: record.maxChain,
+    bestTier: record.bestTier,
+    overLimitSeconds: 0,
+    overLimitEntries: 0,
+    scorePerLaunch: record.launches > 0 ? record.score / record.launches : 0,
+    maxSingleScore: 0,
+    maxImpactSpeed: 0,
+    mergesByTier: new Array<number>(TIER_COUNT).fill(0),
+  };
+}
+
+/** RunRecord の形の列を、版 1 の統計に移す（読めない項目は捨てる）。 */
+function migrateLegacyRuns(list: readonly unknown[]): RunDetailV1[] {
+  const runs: RunDetailV1[] = [];
+  for (const item of list) {
+    const record = readRecord(item);
+    if (record) runs.push(detailFromRecord(record));
+  }
+  return runs;
+}
+
+/** id の重複を除き、playedAt の古い順に並べて件数を制限する。 */
+function normalizeRuns(runs: readonly RunDetailV1[]): RunDetailV1[] {
+  const seen = new Set<string>();
+  const unique = runs.filter((run) => {
+    if (seen.has(run.id)) return false;
+    seen.add(run.id);
+    return true;
+  });
+  unique.sort((a, b) => Date.parse(a.playedAt) - Date.parse(b.playedAt));
+  return unique.slice(-MAX_STATS_RUNS);
+}
+
+/**
+ * 保存値（JSON.parse 済みの unknown）を版 1 のアーカイブに移す。
+ * - `{version:1, runs}` …… いまの形。1 件ずつ検査し、壊れた物だけ捨てる。
+ *   runs の中に旧 RunRecord が混ざっていても拾えるだけ拾う。
+ * - `records` を持つ物・裸の配列・`{version:0, runs}` …… 旧 RunRecord の列として移す。
+ * - それ以外（未来の版・壊れた物）は移せないので捨てて初期値。
+ */
+export function migrateStatsArchive(value: unknown): StatsArchive {
+  let runs: RunDetailV1[] | null = null;
+  if (isObject(value) && value.version === STATS_VERSION && Array.isArray(value.runs)) {
+    runs = [];
+    for (const item of value.runs) {
+      const detail = readRunDetail(item);
+      if (detail) runs.push(detail);
+      else {
+        const record = readRecord(item);
+        if (record) runs.push(detailFromRecord(record));
+      }
+    }
+  } else {
+    const legacyList = Array.isArray(value)
+      ? value
+      : isObject(value) && Array.isArray(value.records)
+        ? value.records
+        : isObject(value) && (value.version === undefined || value.version === 0) && Array.isArray(value.runs)
+          ? value.runs
+          : null;
+    if (legacyList !== null) runs = migrateLegacyRuns(legacyList);
+    else if (isObject(value) && value.version === STATS_VERSION) runs = [];
+  }
+  if (runs === null) return defaultStatsArchive();
+  return { version: STATS_VERSION, runs: normalizeRuns(runs) };
+}

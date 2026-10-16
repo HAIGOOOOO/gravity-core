@@ -2,7 +2,8 @@
 // 壊れた値・保存できない端末・別の版で落ちない方針は save.ts と同じ。
 
 import type { RunDetailV1, StatsArchive } from './stats';
-import { MAX_STATS_RUNS, STATS_VERSION, defaultStatsArchive, migrateStatsArchive, readRunDetail } from './stats';
+import { MAX_STATS_RUNS, STATS_VERSION } from './stats';
+import { defaultStatsArchive, migrateStatsArchive, readRunDetail } from './archive';
 import type { StoragePort } from './save';
 import { browserStorage } from './save';
 

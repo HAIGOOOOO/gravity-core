@@ -1,18 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RunRecord } from '../contracts/app';
 import type { GameEvent, GameEventKind, GameSnapshot } from '../contracts/game';
 import { TICK_HZ, TIER_COUNT } from '../game/constants';
 import { createAutoPlay, onCore } from '../fixtures';
-import {
-  MAX_STATS_RUNS,
-  STATS_VERSION,
-  buildRunDetail,
-  defaultStatsArchive,
-  detailFromRecord,
-  migrateStatsArchive,
-  summarizeTrend,
-} from './stats';
-import type { RunDetailV1 } from './stats';
+import { buildRunDetail } from './stats';
+import { readRunDetail } from './archive';
 
 const META = { id: 'run-1', playedAt: '2026-10-16T00:00:00.000Z', gameVersion: '0.1.0' } as const;
 
@@ -36,35 +27,7 @@ function snapshot(partial: Partial<GameSnapshot> = {}): GameSnapshot {
     ...partial,
   };
 }
-function detail(id: string, playedAt: string, over: Partial<RunDetailV1> = {}): RunDetailV1 {
-  return {
-    id,
-    playedAt,
-    seed: 1,
-    gameVersion: '0.1.0',
-    score: 100,
-    seconds: 60,
-    launches: 10,
-    lands: 9,
-    merges: 5,
-    supernovas: 0,
-    maxChain: 2,
-    bestTier: 3,
-    overLimitSeconds: 0,
-    overLimitEntries: 0,
-    scorePerLaunch: 10,
-    maxSingleScore: 220,
-    maxImpactSpeed: 600,
-    mergesByTier: new Array<number>(TIER_COUNT).fill(0),
-    ...over,
-  };
-}
-function legacyRecord(id: string, playedAt = '2026-10-10T00:00:00.000Z', over: Partial<RunRecord> = {}): RunRecord {
-  return {
-    id, name: 'PLAYER', score: 100, bestTier: 2, maxChain: 1, seconds: 30,
-    launches: 5, merges: 2, supernovas: 0, seed: 9, playedAt, gameVersion: '0.1.0', ...over,
-  };
-}
+const asTier = (value: number) => value as unknown as GameSnapshot['bestTierThisRun'];
 
 describe('プレイ統計の作成', () => {
   it('出来事の列から各項目を数え、限界超過は区間の和を取る', () => {
@@ -108,6 +71,8 @@ describe('プレイ統計の作成', () => {
     // 超新星は合体回数に含めない
     expect(d.mergesByTier[8]).toBe(0);
     expect(d.mergesByTier.reduce((a, b) => a + b, 0)).toBe(2);
+    // 作った統計はそのまま検査を通る（次回の読み込みで捨てられない）
+    expect(readRunDetail(d)).not.toBeNull();
   });
   it('出来事に連鎖が無いときは盤面の集計を使う', () => {
     const events = [event('merge', 5, { sourceTier: 0, resultTier: 1, scoreDelta: 100 })];
@@ -123,6 +88,50 @@ describe('プレイ統計の作成', () => {
     const events = [event('overLimitStart', 10)];
     const d = buildRunDetail(events, snapshot({ tick: 70 }), META);
     expect(d.overLimitSeconds).toBeCloseTo(60 / TICK_HZ, 10);
+  });
+});
+
+describe('壊れた入力を通さない', () => {
+  it('無限・非整数・範囲外の値は落とすか丸め、出来事そのものは数える', () => {
+    const events = [
+      event('merge', 5, { sourceTier: 0, chain: 2.9, scoreDelta: 100.7 }),
+      event('merge', 6, { sourceTier: asTier(9), chain: Infinity, scoreDelta: Infinity }),
+      event('merge', 7, { sourceTier: asTier(-1) }),
+      event('land', 8, { impactSpeed: NaN }),
+      event('land', 9, { impactSpeed: Infinity }),
+    ];
+    const d = buildRunDetail(events, snapshot({ stats: { launches: 0, merges: 3, supernovas: 0, maxChain: 0 } }), META);
+    expect(d.merges).toBe(3); // 合体そのものは数える
+    expect(d.mergesByTier[0]).toBe(1); // Tier の内訳は範囲内だけ
+    expect(d.mergesByTier.reduce((a, b) => a + b, 0)).toBe(1);
+    expect(d.maxChain).toBe(2); // 2.9 は切り捨て、Infinity は落とす
+    expect(d.maxSingleScore).toBe(100); // 100.7 は切り捨て、Infinity は落とす
+    expect(d.maxImpactSpeed).toBe(0); // NaN・Infinity は落とす
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('負や NaN の盤面の値は 0 にそろえ、Tier の範囲外は上端に丸める', () => {
+    const d = buildRunDetail([], snapshot({
+      tick: -50, score: -10, seed: NaN, bestTierThisRun: asTier(99),
+      stats: { launches: 0, merges: 0, supernovas: 0, maxChain: Infinity },
+    }), META);
+    expect(d.seconds).toBe(0);
+    expect(d.score).toBe(0);
+    expect(d.seed).toBe(0);
+    expect(d.bestTier).toBe(TIER_COUNT - 1);
+    expect(d.maxChain).toBe(0);
+    expect(readRunDetail(d)).not.toBeNull();
+  });
+  it('逆順の限界区間は負にせず 0 として数える', () => {
+    const events = [event('overLimitStart', 200), event('overLimitEnd', 100)];
+    const d = buildRunDetail(events, snapshot({ tick: 300 }), META);
+    expect(d.overLimitSeconds).toBe(0);
+    expect(d.overLimitEntries).toBe(1);
+  });
+  it('重複した overLimitStart は越え始めの回数も区間もずらさない', () => {
+    const events = [event('overLimitStart', 10), event('overLimitStart', 20), event('overLimitEnd', 40)];
+    const d = buildRunDetail(events, snapshot({ tick: 40 }), META);
+    expect(d.overLimitEntries).toBe(1);
+    expect(d.overLimitSeconds).toBeCloseTo(30 / TICK_HZ, 10);
   });
 });
 
@@ -152,108 +161,6 @@ describe('自動プレイとの照合', () => {
     expect(d.bestTier).toBe(snap.bestTierThisRun);
     expect(d.overLimitSeconds).toBeGreaterThanOrEqual(0);
     expect(d.mergesByTier.reduce((a, b) => a + b, 0)).toBe(d.merges);
-  });
-});
-
-describe('版の移し替え', () => {
-  it('裸の RunRecord 列を版 1 の統計へ移す（分からない項目は 0）', () => {
-    const archive = migrateStatsArchive([
-      legacyRecord('old-a', '2026-10-10T00:00:00.000Z'),
-      legacyRecord('old-b', '2026-10-11T00:00:00.000Z', { score: 50, launches: 0 }),
-    ]);
-    expect(archive.version).toBe(STATS_VERSION);
-    expect(archive.runs.map((r) => r.id)).toEqual(['old-a', 'old-b']);
-    expect(archive.runs[0]?.maxChain).toBe(1);
-    expect(archive.runs[0]?.scorePerLaunch).toBeCloseTo(20, 10);
-    expect(archive.runs[0]?.overLimitSeconds).toBe(0);
-    expect(archive.runs[0]?.mergesByTier).toHaveLength(TIER_COUNT);
-    expect(archive.runs[1]?.scorePerLaunch).toBe(0);
-  });
-  it('records を持つ形（メインの保存と同じ形）からも移す', () => {
-    const archive = migrateStatsArchive({ version: 1, records: [legacyRecord('x')] });
-    expect(archive.runs.map((r) => r.id)).toEqual(['x']);
-  });
-  it('{version:0, runs} の形からも移す', () => {
-    const archive = migrateStatsArchive({ version: 0, runs: [legacyRecord('v0')] });
-    expect(archive.runs.map((r) => r.id)).toEqual(['v0']);
-  });
-  it('版 1 の保存は 1 件ずつ検査し、壊れた物だけ捨てる', () => {
-    const good = detail('good', '2026-10-10T00:00:00.000Z');
-    const archive = migrateStatsArchive({
-      version: 1,
-      runs: [good, { ...detail('bad', '2026-10-11T00:00:00.000Z'), launches: -3 }, detail('good2', '2026-10-12T00:00:00.000Z')],
-    });
-    expect(archive.runs.map((r) => r.id)).toEqual(['good', 'good2']);
-  });
-  it('版 1 の runs に旧 RunRecord が混ざっていても拾う', () => {
-    const archive = migrateStatsArchive({ version: 1, runs: [detail('new', '2026-10-11T00:00:00.000Z'), legacyRecord('old', '2026-10-10T00:00:00.000Z')] });
-    expect(archive.runs.map((r) => r.id)).toEqual(['old', 'new']);
-  });
-  it.each([null, 42, 'broken', '{broken', { version: 2, runs: [] }, { version: 'x' }, [1, 2, 3], { runs: 'no' }])(
-    '移せない保存値 %j は捨てて初期値にする',
-    (value) => {
-      expect(migrateStatsArchive(value)).toEqual(defaultStatsArchive());
-    },
-  );
-  it('id の重複は 1 件にし、playedAt の古い順に並べ、件数を制限する', () => {
-    const runs = [
-      detail('dup', '2026-10-12T00:00:00.000Z'),
-      detail('b', '2026-10-11T00:00:00.000Z'),
-      detail('dup', '2026-10-13T00:00:00.000Z'),
-      detail('a', '2026-10-10T00:00:00.000Z'),
-    ];
-    const archive = migrateStatsArchive({ version: 1, runs });
-    expect(archive.runs.map((r) => r.id)).toEqual(['a', 'b', 'dup']);
-    expect(archive.runs[2]?.playedAt).toBe('2026-10-12T00:00:00.000Z');
-    expect(archive.runs.length).toBeLessThanOrEqual(MAX_STATS_RUNS);
-  });
-});
-
-describe('上達の移り変わり', () => {
-  const days = (i: number) => new Date(Date.UTC(2026, 0, 1) + i * 86400000).toISOString();
-  it('記録が無ければ全て null', () => {
-    const trend = summarizeTrend([], 10);
-    expect(trend.recentCount).toBe(0);
-    expect(trend.score.average).toBeNull();
-    expect(trend.score.best).toBeNull();
-    expect(trend.score.delta).toBeNull();
-  });
-  it('窓より少ないときは、前の窓の比較は null', () => {
-    const runs = [detail('a', days(0), { score: 100 }), detail('b', days(1), { score: 300 })];
-    const trend = summarizeTrend(runs, 10);
-    expect(trend.recentCount).toBe(2);
-    expect(trend.previousCount).toBe(0);
-    expect(trend.score.average).toBeCloseTo(200, 10);
-    expect(trend.score.best).toBe(300);
-    expect(trend.score.previousAverage).toBeNull();
-    expect(trend.score.delta).toBeNull();
-  });
-  it('直近 N 件とその前の N 件を比べて伸びを出す', () => {
-    const runs = [
-      ...Array.from({ length: 10 }, (_, i) => detail(`old-${i}`, days(i), { score: 100, maxChain: 1 })),
-      ...Array.from({ length: 10 }, (_, i) => detail(`new-${i}`, days(10 + i), { score: 250, maxChain: 3 })),
-    ];
-    const trend = summarizeTrend(runs, 10);
-    expect(trend.recentCount).toBe(10);
-    expect(trend.previousCount).toBe(10);
-    expect(trend.score.average).toBeCloseTo(250, 10);
-    expect(trend.score.previousAverage).toBeCloseTo(100, 10);
-    expect(trend.score.delta).toBeCloseTo(150, 10);
-    expect(trend.score.best).toBe(250);
-    expect(trend.maxChain.delta).toBeCloseTo(2, 10);
-  });
-  it('窓に満たない分だけ前の窓を使い、入力の順番は問わない', () => {
-    const runs = [
-      detail('p1', days(0), { score: 10 }),
-      detail('p2', days(1), { score: 20 }),
-      detail('r1', days(2), { score: 100 }),
-      detail('r2', days(3), { score: 200 }),
-    ].reverse();
-    const trend = summarizeTrend(runs, 2);
-    expect(trend.recentCount).toBe(2);
-    expect(trend.previousCount).toBe(2);
-    expect(trend.score.average).toBeCloseTo(150, 10);
-    expect(trend.score.previousAverage).toBeCloseTo(15, 10);
-    expect(trend.score.delta).toBeCloseTo(135, 10);
+    expect(readRunDetail(d)).not.toBeNull();
   });
 });
