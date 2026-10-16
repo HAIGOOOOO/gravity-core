@@ -37,6 +37,16 @@ for (const [id, text] of [['compare','3案を並べる'], ...LOOK_PALETTES.map(p
   const button = node('button', '', text); button.type = 'button'; button.dataset.choice = id;
   button.setAttribute('aria-pressed', String(id === 'compare')); button.addEventListener('click', () => choose(id as LookDirection | 'compare')); controls.append(button);
 }
+const monochrome = node('button', '', '白黒で比べる'); monochrome.type = 'button'; monochrome.setAttribute('aria-pressed', 'false');
+monochrome.addEventListener('click', () => {
+  const on = root.dataset.monochrome !== 'true'; root.dataset.monochrome = String(on);
+  monochrome.setAttribute('aria-pressed', String(on)); monochrome.textContent = on ? '色を戻す' : '白黒で比べる'; choose('compare');
+}); controls.append(monochrome);
+const blind = node('button', '', '案名を隠して比べる'); blind.type = 'button'; blind.setAttribute('aria-pressed', 'false');
+blind.addEventListener('click', () => {
+  const on = root.dataset.blind !== 'true'; root.dataset.blind = String(on);
+  blind.setAttribute('aria-pressed', String(on)); blind.textContent = on ? '案名を表示する' : '案名を隠して比べる'; choose('compare');
+}); controls.append(blind);
 for (const palette of LOOK_PALETTES) {
   const words = labels[palette.id];
   const section = node('section', 'direction'); section.dataset.direction = palette.id;
@@ -47,7 +57,7 @@ for (const palette of LOOK_PALETTES) {
   const masthead = node('div', 'scene-masthead'); masthead.append(node('span', '', 'GRAVITY CORE'), node('span', '', words.english));
   const board = node('canvas', 'study-board'); board.setAttribute('role', 'img'); board.setAttribute('aria-label', `${words.title}：同じ場面の天体と核、限界リング`);
   const boardArea = node('div', 'study-board-area');
-  boardArea.append(board, node('p', 'board-instruction', '同じ天体を合体させよう。外周から、核へ落とす。'));
+  boardArea.append(board, node('p', 'board-instruction', '同じ天体を合体。外周を押して落とす。'));
   const hud = node('div', 'study-hud');
   const score = node('div', 'study-score'); score.append(node('span', 'data-label', 'スコア'), node('strong', '', snapshot.score.toLocaleString('ja-JP')));
   const heat = node('div', 'study-heat');
@@ -58,7 +68,7 @@ for (const palette of LOOK_PALETTES) {
     const mark = node('span', '', `${value}\n${HEAT_STATE_LABEL[heatState(value)]}`);
     mark.style.left = `${value / HEAT_MAX * 100}%`; breaks.append(mark);
   });
-  heat.append(breaks, node('span', 'heat-rule', `${HEAT_MAX}で終了。限界を越えている間、上昇。`));
+  heat.append(breaks, node('span', 'heat-rule', `限界越えで上昇\n${HEAT_MAX}で終了`));
   const queue = node('div', 'study-queue'); queue.append(node('span', 'data-label', '次の天体'));
   const icons = node('div', 'study-icons');
   snapshot.nextQueue.forEach((tier, index) => {
@@ -79,7 +89,7 @@ for (const palette of LOOK_PALETTES) {
   }); key.append(tierList);
   const caption = node('div', 'direction-caption'); caption.append(node('h3', '', words.lead), node('p', '', words.main), node('p', '', words.omit));
   section.append(title, scene, key, caption); root.append(section);
-  const draw = () => { if (!section.hidden) drawLookStudy(board, snapshot, palette, prediction, { launch: '射出位置', limit: '限界リング', aim: '押して離す ↓' }); }; drawings.push(draw);
+  const draw = () => { if (!section.hidden) drawLookStudy(board, snapshot, palette, prediction, { launch: '射出位置', limit: '限界リング', aim: '押して離す ↓', core: '核' }); }; drawings.push(draw);
   new ResizeObserver(draw).observe(board);
   const row = node('tr'); row.append(node('th', '', `${words.letter} ${words.title}`), node('td', '', contrastRatio(palette.ink, palette.bg).toFixed(2)), node('td', '', contrastRatio(palette.muted, palette.bg).toFixed(2)));
   row.querySelector('th')!.scope = 'row'; document.getElementById('contrast-results')!.append(row);

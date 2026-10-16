@@ -15,6 +15,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid #b34322; outline-offs
 main { max-width: 1680px; margin: auto; padding: 26px 32px 64px; }
 #studies { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
 #studies:not([data-mode='compare']) { grid-template-columns: minmax(0, 1fr); max-width: 1120px; margin: auto; }
+#studies[data-monochrome='true'] .study-scene { filter: grayscale(1); }
+#studies[data-blind='true'] .direction-title h2,
+#studies[data-blind='true'] .direction-caption,
+#studies[data-blind='true'] .scene-masthead span:last-child { visibility: hidden; }
 [hidden] { display: none !important; }
 .direction { min-width: 0; container-type: inline-size; }
 .direction-title { display: flex; align-items: baseline; gap: 12px; padding-bottom: 14px; }
@@ -25,7 +29,7 @@ main { max-width: 1680px; margin: auto; padding: 26px 32px 64px; }
 .scene-masthead span:last-child { font-size: 11px; letter-spacing: 0; text-align: right; }
 .study-board-area { grid-area: board; min-width: 0; }
 .study-board { width: 100%; max-width: calc(100% - 16px); margin: auto; height: auto; aspect-ratio: 1; display: block; }
-.board-instruction { color: var(--study-ink); font-size: 11px; line-height: 1.6; margin: 0 0 10px; text-align: center; }
+.board-instruction { color: var(--study-ink); font-size: 12px; line-height: 1.6; margin: 0 0 10px; text-align: center; }
 .study-hud { grid-area: hud; display: grid; grid-template-columns: 1fr 1fr; gap: 16px 12px; border-top: 1px solid var(--study-line); padding-top: 16px; }
 .data-label { display: block; color: var(--study-muted); font-size: 11px; letter-spacing: .06em; margin-bottom: 6px; }
 .study-score strong { font-size: 30px; line-height: 1; display: block; font-variant-numeric: tabular-nums; }
@@ -41,7 +45,7 @@ main { max-width: 1680px; margin: auto; padding: 26px 32px 64px; }
 .heat-breaks { position: relative; height: 31px; font-size: 11px; margin-top: 3px; color: var(--study-muted); }
 .heat-breaks span { position: absolute; transform: translateX(-50%); white-space: pre; text-align: center; line-height: 1.25; }
 .heat-breaks span::before { content: ''; position: absolute; width: 1px; height: 5px; top: -7px; left: 50%; background: var(--study-ink); }
-.heat-rule { display: block; font-size: 11px; line-height: 1.6; margin-top: 5px; color: var(--study-muted); }
+.heat-rule { display: block; font-size: 12px; line-height: 1.4; margin-top: 5px; color: var(--study-muted); white-space: pre-line; }
 .tier-key { font-size: 12px; border-bottom: 1px solid #a4aaa1; padding: 12px 0; }
 .tier-key summary { cursor: pointer; min-height: 28px; }
 .tier-key summary:focus-visible { outline: 3px solid #b34322; }
