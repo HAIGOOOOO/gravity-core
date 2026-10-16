@@ -69,10 +69,15 @@ describe('runBatch', () => {
   });
 
   it('setup は全部の回に渡る（比較用の条件変更が 1 回だけに効く事はない）', () => {
-    const runs = runBatch(randomBot, { runs: 3, seedStart: 20, maxTicks: 5 * TICK_HZ, setup: { bestTier: 8 } });
+    const setup: SimulationSetup = { bestTier: 8 };
+    const runs = runBatch(randomBot, { runs: 3, seedStart: 20, maxTicks: 5 * TICK_HZ, setup });
     expect(runs).toHaveLength(3);
-    // bestTierThisRun は開始値がそのまま（Tier 8 同士は超新星で消え、9 以上にはならない）
-    for (const r of runs) expect(r.bestTier).toBe(8);
+    for (const r of runs) {
+      // bestTierThisRun は開始値がそのまま（Tier 8 同士は超新星で消え、9 以上にはならない）
+      expect(r.bestTier).toBe(8);
+      // 再現に使う setup も各回の結果に残る
+      expect(r.setup).toEqual(setup);
+    }
   });
 
   it('0 回なら空を返す', () => {

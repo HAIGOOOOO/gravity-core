@@ -17,6 +17,7 @@ import {
   measureAccuracyBatch,
   mergeMisses,
   summarizeAccuracy,
+  summarizeByTier,
   type ShotRecord,
 } from './accuracy';
 
@@ -118,6 +119,17 @@ describe('summarizeAccuracy', () => {
     expect(s.landError.median).toBe(4);
   });
 
+  it('相手が分からない合体（hitBodyId なし）は相手一致の母数に入れない', () => {
+    const s = summarizeAccuracy([
+      // 着地の予測だったのに合体した（相手は予測では不明 → 母数外）
+      shot({ bodyId: 1, predictedMerge: false, predictedHitBodyId: null, outcome: 'merged', mergePartners: [5] }),
+      // 予測どおり合体したが相手が違う（母数に入る唯一の 1 件 → 0%）
+      shot({ bodyId: 2, predictedMerge: true, predictedHitBodyId: 5, outcome: 'merged', mergePartners: [9] }),
+    ]);
+    expect(s.actualMerges).toBe(2);
+    expect(s.partnerMatchRate).toBe(0);
+  });
+
   it('合体を予測して着地→合体した射出も「外れ」に数える（最初の接触が合体ではない）', () => {
     const s = summarizeAccuracy([
       shot({ predictedMerge: true, predictedHitBodyId: 3, outcome: 'landedThenMerged', mergePartners: [3], mergeTick: 9 }),
@@ -127,6 +139,34 @@ describe('summarizeAccuracy', () => {
     // landedThenMerged は「最初の接触が合体」の母数に入らないので、相手一致の母数にも入らない
     expect(s.actualMerges).toBe(0);
     expect(s.partnerMatchRate).toBeNaN();
+  });
+});
+
+describe('summarizeByTier（Tier ごとの的中率）', () => {
+  it('Tier ごとに分けて集計し、Tier 番号順に返す', () => {
+    const tiers = summarizeByTier([
+      shot({ tier: 2, predictedMerge: true, outcome: 'merged', predictedHitBodyId: 5, mergePartners: [5] }),
+      shot({ tier: 0, predictedMerge: true, outcome: 'landed' }),
+      shot({ tier: 0, predictedMerge: true, outcome: 'merged', predictedHitBodyId: 3, mergePartners: [3] }),
+      shot({ tier: 2, outcome: 'landed' }),
+    ]);
+    expect(tiers.map((t) => t.tier)).toEqual([0, 2]);
+    const t0 = tiers[0]!.summary;
+    expect(t0.shots).toBe(2);
+    expect(t0.predictedMerges).toBe(2);
+    expect(t0.mergeHitRate).toBe(0.5);
+    const t2 = tiers[1]!.summary;
+    expect(t2.shots).toBe(2);
+    expect(t2.predictedMerges).toBe(1);
+    expect(t2.mergeHitRate).toBe(1);
+    expect(t2.noContact).toBe(0);
+  });
+
+  it('出てこない Tier は行を作らず、空なら空を返す', () => {
+    const tiers = summarizeByTier([shot({ tier: 3 })]);
+    expect(tiers).toHaveLength(1);
+    expect(tiers[0]!.tier).toBe(3);
+    expect(summarizeByTier([])).toEqual([]);
   });
 });
 

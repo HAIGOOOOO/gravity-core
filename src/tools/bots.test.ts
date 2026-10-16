@@ -173,6 +173,18 @@ describe('狙いを定める判断（予測を差し替える）', () => {
     expect(Math.hypot(cmd.vx, cmd.vy)).toBeCloseTo(DROP_SPEED, 9);
   });
 
+  it('curve: 曲げた候補が危ない着地しかしないなら、安全な直投げを選ぶ', () => {
+    // 曲げた射出は全部リングの外に着地（危ない）、直投げは核に着く（安全）
+    const predict: PredictFn = (c) => {
+      if (Math.hypot(c.vx, c.vy) > DROP_SPEED + 1) {
+        return pred({ end: 'body', points: [{ x: 400, y: 0, t: 1 }], hitBodyId: 1 });
+      }
+      return pred({ end: 'core' });
+    };
+    const cmd = curveBot(1).decide(snap({ bodies: [body({ id: 1 })] }), predict);
+    expect(Math.hypot(cmd.vx, cmd.vy)).toBeCloseTo(DROP_SPEED, 9);
+  });
+
   it('curve: 全部の候補が invalid なら、24 刻みの直投げに倒れる', () => {
     const cmd = curveBot(1).decide(snap(), () => pred({ valid: false }));
     const grid = (Math.PI * 2) / 24;

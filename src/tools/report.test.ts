@@ -14,6 +14,7 @@ import {
   outcomeTable,
   seedTable,
   statsTable,
+  tierTable,
 } from './report';
 import { summarize } from './stats';
 
@@ -277,6 +278,35 @@ describe('missTable', () => {
   it('外れが無ければ見出しと空の表だけ', () => {
     const t = missTable('m', [shot({ predictedMerge: true, outcome: 'merged' })], 12);
     expect(t).toContain('0 件中 0 件');
+    expect(t.split('\n')).toHaveLength(4);
+  });
+
+  it('件数 0 なら外れがあっても行を出さない', () => {
+    const t = missTable('m', [shot({ predictedMerge: true, outcome: 'landed' })], 0);
+    expect(t).toContain('1 件中 0 件');
+    expect(t.split('\n')).toHaveLength(4);
+  });
+});
+
+describe('tierTable', () => {
+  it('Tier ごとの射出数・的中率・結末の内訳を並べる', () => {
+    const shots = [
+      shot({ tier: 0, predictedMerge: true, outcome: 'merged' }),
+      shot({ tier: 0, predictedMerge: true, outcome: 'landed' }),
+      shot({ tier: 3, outcome: 'noContact' }),
+    ];
+    const t = tierTable('x', shots);
+    expect(t).toContain('### x: Tier ごとの的中率');
+    const lines = t.split('\n');
+    // 見出し・空行・ヘッダ・区切り・2 行 = 6 行
+    expect(lines).toHaveLength(6);
+    expect(lines[4]).toBe('| 0 | 2 | 2 | 50% | 1 | 0 | 0 |');
+    expect(lines[5]).toBe('| 3 | 1 | 0 | — | 0 | 0 | 1 |');
+  });
+
+  it('0 件なら見出しと空の表だけ', () => {
+    const t = tierTable('x', []);
+    expect(t).toContain('### x');
     expect(t.split('\n')).toHaveLength(4);
   });
 });

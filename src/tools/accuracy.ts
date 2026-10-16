@@ -236,6 +236,28 @@ export function summarizeAccuracy(shots: readonly ShotRecord[]): AccuracySummary
   };
 }
 
+/** Tier ごとの的中率。 */
+export type TierAccuracy = Readonly<{
+  tier: Tier;
+  summary: AccuracySummary;
+}>;
+
+/**
+ * 射出を撃った天体の Tier ごとに分けて集計する（Tier 番号順。出てこない Tier は行を作らない）。
+ * 「どの Tier の狙いが外れやすいか」と「キューがどの Tier をどれだけ出したか」が分かる。
+ */
+export function summarizeByTier(shots: readonly ShotRecord[]): readonly TierAccuracy[] {
+  const byTier = new Map<Tier, ShotRecord[]>();
+  for (const s of shots) {
+    const list = byTier.get(s.tier);
+    if (list !== undefined) list.push(s);
+    else byTier.set(s.tier, [s]);
+  }
+  return [...byTier.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([tier, list]) => ({ tier, summary: summarizeAccuracy(list) }));
+}
+
 /**
  * 「合体する」と予測したのに最初の接触が合体でなかった射出だけを拾う。
  * 外れの原因を調べる用: 記録の seed と tick から replayLaunches で

@@ -10,7 +10,16 @@ import { measureAccuracyBatch, type AccuracySummary, type ShotRecord } from './a
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
 import { ALL_BOTS, randomBot } from './bots';
 import { diffRuns } from './compare';
-import { accuracyTable, balanceTable, diffTable, missTable, outcomeTable, seedTable, statsTable } from './report';
+import {
+  accuracyTable,
+  balanceTable,
+  diffTable,
+  missTable,
+  outcomeTable,
+  seedTable,
+  statsTable,
+  tierTable,
+} from './report';
 
 const FULL = import.meta.env.VITE_BALANCE === '1';
 const RUNS = FULL ? 100 : 3;
@@ -61,10 +70,12 @@ describe('数値調整レポート', () => {
       console.log('\n## 予測の的中率（ボット別）\n');
       console.log(accuracyTable(accuracies));
 
-      // 外れの内訳（どの結末に散ったか）と個票。個票の シード+tick から replay で直前の盤面を再現できる
+      // 外れの内訳（どの結末・どの Tier に散ったか）と個票。
+      // 個票の シード+tick から boardBeforeShot で直前の盤面を再現できる
       console.log('\n## 予測の外れの内訳と例（ボット別）\n');
       for (const a of accuracies) {
         console.log(`\n${outcomeTable(a.name, a.shots)}`);
+        console.log(`\n${tierTable(a.name, a.shots)}`);
         console.log(`\n${missTable(a.name, a.shots, 12)}`);
       }
 

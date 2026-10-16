@@ -1,6 +1,14 @@
 // まわした結果を Markdown の表にする。文字列を作るだけ（ファイルには書かない）。
 
-import { countOutcomes, mergeMisses, SHOT_OUTCOMES, type AccuracySummary, type ShotOutcome, type ShotRecord } from './accuracy';
+import {
+  countOutcomes,
+  mergeMisses,
+  SHOT_OUTCOMES,
+  summarizeByTier,
+  type AccuracySummary,
+  type ShotOutcome,
+  type ShotRecord,
+} from './accuracy';
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
 import { diffRuns } from './compare';
 import type { Stats } from './stats';
@@ -168,8 +176,29 @@ export function outcomeTable(name: string, shots: readonly ShotRecord[]): string
 }
 
 /**
+ * 射出を Tier ごとに分けた的中率の表。
+ * 「どの Tier の狙いが外れやすいか」が分かる（大きい Tier ほど動く盤面に弱い等）。
+ * 「射出」列はキューがその Tier を出した回数でもあるので、出現バランスの目安にもなる。
+ */
+export function tierTable(name: string, shots: readonly ShotRecord[]): string {
+  const table = markdownTable(
+    ['Tier', '射出', '予測合体', '的中率', '外れ', '着地→合体', '未接触'],
+    summarizeByTier(shots).map((t) => [
+      String(t.tier),
+      String(t.summary.shots),
+      String(t.summary.predictedMerges),
+      formatPercent(t.summary.mergeHitRate),
+      String(t.summary.mergeMisses),
+      String(t.summary.landedThenMerged),
+      String(t.summary.noContact),
+    ]),
+  );
+  return `### ${name}: Tier ごとの的中率\n\n${table}`;
+}
+
+/**
  * 「合体を予測したのに合体しなかった」射出の個票（シード→tick 順、最大 count 件）。
- * シードと tick があれば、replayLaunches(seed, ログ, { stopTick: tick }) で
+ * シードと tick があれば、boardBeforeShot(seed, ログ, tick) で
  * 撃つ直前の盤面を再現して目で確かめられる。
  * 着地まで = 撃ってから着地するまでの tick（長いほど予測が崩れる隙が大きい）。
  */

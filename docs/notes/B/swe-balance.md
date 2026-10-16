@@ -2,19 +2,18 @@
 
 ## いま / つぎ
 
-- いま: 10 回目の検査で accuracy.test.ts の「キューの Tier が記録に残る」が落ちたので直した。原因はテストの前提:「キュー [4,4,4] の 4 射目以降は bestTier 0 の抽選で Tier 0〜1 しか出ない」は誤りで、撃った Tier 4 どうしが合体すると bestTier が 5 に上がり抽選に Tier 4 も出る（`drawTier(bestTier)` が射出時点の bestTier を見る）。
-- 直し方: 抽選結果の値を決めつけず、hooks.onLaunch の snapshot で「記録の Tier = 撃つ直前のキュー先頭」と「キューは順に消費される（次の先頭 = 前の 2 番目）」を確かめる形にした。最初の 3 射が Tier 4 の断言は残した。
-- つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す → 外れの多い射出（predictedMerge なのに landed）を seedTable 的に拾って原因を見る道具を考える。
+- いま: 12 回目。「外れの原因を見る」道具を足した。`boardBeforeShot`（replay.ts）で記録した射出の直前の盤面を再現でき、predict の再取得と撃ち直しでの結末の追い直しができる。`summarizeByTier` + `tierTable` で Tier ごとの的中率（= キューが出した Tier の内訳も兼ねる）を出し、FULL レポートに載せた。抜けのテストも追加（replayLaunches の maxTicks 指定・missTable の件数 0・相手不明の相手一致母数・危ない曲げを避ける判断）。
+- つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す。
 
 ## 構成（`src/tools/`）
 
 - `bots.ts`: ボット 6 種。`random`（無作為に直投げ）、`spiral`（黄金比で方角を回す）、`merge`（予測で同じ Tier に当たる方角を選ぶ）、`merge-safe`（加えて限界リングを越えそうな方角を避ける）、`near`（merge-safe + 同じ Tier の隣へ置く追加点）、`curve`（接線方向の `aimVelocity` で曲げて投げる）。全部、盤面と `predict` だけを見て決める。乱数は `createRng(seed)` だけなので決定的。方角の刻み・候補・着地への追加点は `Probe` にまとめた（対がずれないように）。
 - `batch.ts`: `playOnce`（1 回）と `runBatch`（N 回・シード順）。指標は秒数・得点・到達 Tier・合体数・合体効率・最大連鎖・熱量 75 超え回数・最高熱量・限界越え秒・射出数・超新星数。
-- `replay.ts`: `replayLaunches`（入力ログを同じ tick に撃ち直して完全再現。異常シードの検査・「同じ手順で条件だけ変えたら」用）。
-- `accuracy.ts`: `measureAccuracy` / `measureAccuracyBatch`（playOnce のフックで射出の予測と結末を記録）。結末は最初のイベントで決める: land 前に合体消費 = 'merged'、land のみ = 'landed'、land 後に合体消費 = 'landedThenMerged'、何も無し = 'noContact'。集計は的中率・外れ・予測外合体・相手一致率・着地誤差。
+- `replay.ts`: `replayLaunches`（入力ログを同じ tick に撃ち直して完全再現。異常シードの検査・「同じ手順で条件だけ変えたら」用）と `boardBeforeShot`（記録した射出の直前の盤面を再現。外れの原因を見る道具）。
+- `accuracy.ts`: `measureAccuracy` / `measureAccuracyBatch`（playOnce のフックで射出の予測と結末を記録）。結末は最初のイベントで決める: land 前に合体消費 = 'merged'、land のみ = 'landed'、land 後に合体消費 = 'landedThenMerged'、何も無し = 'noContact'。集計は的中率・外れ・予測外合体・相手一致率・着地誤差と、Tier 別の `summarizeByTier`。
 - `stats.ts`: 平均・中央値・10%・90%（線形補間）。
 - `compare.ts`: `diffRuns`（シードで対を作り、指標ごとの「B − A」の分布を出す）。
-- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較）。
+- `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較・`accuracyTable`/`outcomeTable`/`tierTable`/`missTable` 的中率まわり）。
 - `speed.test.ts`: 各ボット 30 秒ぶんを回して tick/秒を出す。下限は「実時間の 2 倍」。
 - `balance.report.test.ts`: ふだん各 3 回で動作確認。`VITE_BALANCE=1` で各 100 回 + setup 差し替え比較を console.log に出す。
 
@@ -35,6 +34,7 @@
 - `diffRuns` の理由: setup の差し替え比較は `balanceTable` を並べるだけだとシードのばらつきで差が読めない。同じシードの対ごとの差を取れば、ばらつきが相殺されて小さい差も見える（ペア検定の考え方）。対にならないシード（片方だけ）は `onlyA` / `onlyB` に数えて外す。秒数の差は打ち切りの回で実際より小さく出るので、表の件名に打ち切り数も出す。
 - `accuracy.ts` の決め事: ① 予測は submitLaunch の「前」に取る（撃った後は自分が盤面にいて predict が自分に当たって壊れる。実際に試して確かめた）② 結末はイベントだけで決める（盤面を覗かない）。'merge' の bodyIds 末尾は生まれた子なので消費に含めない（2 件しか無ければ全部消費扱い）③ 「予測合体→未接触」も外れに数える（着地した時だけ外れだと、終了間際の未着が免れる）④ 相手一致は 'merged' の中で予測の相手が分かる物だけを母数にする（合体はしたが相手が違う = 狙いがずれた、を区別する）⑤ 着地誤差は landPoint と予測の最後の点の距離（land イベントはどの天体に触れたか持たないので、距離でずれを測る）。
 - `PlayHooks` は結果を変えない観察専用。呼び出し側が渡した hooks も measureAccuracy は最後に呼ぶ（取りこぼし防止）。
+- `boardBeforeShot` が「直前の盤面」を正確に作れる根拠: 受理された射出は必ず別々の tick にある（playOnce は射出のたびに step を挟み、クールダウンもある）。だから `入力.tick < shot.tick` の絞り込みで、その射出だけを除いた同じ入力列が作れる。再現は乱数列ごと同じなので、戻った盤面で submit すると受理・天体番号・結末のイベントまで一致する（テストで固定）。予測は `predictLaunch(getSnapshot(), command)` = 盤面だけの純粋計算なので、predict の再取得も記録と一致する。
 
 ## リーダーへの依頼
 
