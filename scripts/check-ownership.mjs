@@ -8,12 +8,8 @@ const OWNERS = {
   // 感じる: 演出、効果音、曲、手触り
   'team-c': [
     'src/effects/',
-    'src/audio/',
     'src/dev/effects-demo.ts',
-    'src/dev/sound-demo.ts',
     'dev/effects.html',
-    'dev/sound.html',
-    'public/audio/',
     'docs/progress/C.md',
     'docs/notes/C/',
   ],
