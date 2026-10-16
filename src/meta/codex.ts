@@ -72,6 +72,11 @@ export type CodexItemView = Readonly<{
   found: boolean;
   name: string;
   text: string;
+  /**
+   * 見つけたあと、まだ一覧で見ていない（NEW バッジ用）。
+   * markAllSeen に渡した時刻より新しい発見が true になる。
+   */
+  isNew: boolean;
   discovery: CodexDiscovery | null;
 }>;
 
@@ -107,6 +112,17 @@ export interface CodexStore {
    */
   latest(limit?: number): readonly CodexItemView[];
   progress(): CodexProgress;
+  /**
+   * 「見た」と記録した時刻より新しく見つかった項目の数（NEW バッジの数字に使う）。
+   * 今の表に無い項目（別の版で記録された物）は数えない。
+   */
+  newCount(): number;
+  /**
+   * いま見つかっている項目を全部「見た」ことにする（図鑑画面を開いた・閉じたときに呼ぶ）。
+   * 端末の時計が巻き戻っても記録は戻らない（消えたバッジが復活しないようにするため）。
+   * 有限でない時刻は無視する。
+   */
+  markAllSeen(nowMs: number): void;
 }
 
 /** 表をなめて、いま見つかっている項目を全部返す（純粋。記録も表示もしない）。 */
@@ -121,6 +137,12 @@ export function evaluateCodex(
 function discoveryTick(tick: number | null, snapshot: GameSnapshot): number {
   if (typeof tick === 'number' && Number.isFinite(tick) && tick >= 0) return tick;
   return Number.isFinite(snapshot.tick) && snapshot.tick >= 0 ? snapshot.tick : 0;
+}
+
+/** 「一覧を見た」時刻。古い保存（キー無し）や壊れた値は 0 = 全部新しい扱いにする。 */
+function restoreSeenMs(data: Record<string, unknown>): number {
+  const raw = data.seenMs;
+  return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : 0;
 }
 
 function restoreDiscoveries(value: unknown): Map<string, CodexDiscovery> {
@@ -148,9 +170,15 @@ export function createCodexStore(
   storage: MetaStorage | null = null,
   entries: readonly CodexEntry[] = CODEX_ENTRIES,
 ): CodexStore {
-  const discoveries = restoreDiscoveries(readStoredJson(storage, STORAGE_KEY));
+  const stored = asObject(readStoredJson(storage, STORAGE_KEY));
+  const discoveries = restoreDiscoveries(stored);
+  let seenMs = restoreSeenMs(stored);
   const persist = (): void =>
-    writeStoredJson(storage, STORAGE_KEY, { version: 1, found: Object.fromEntries(discoveries) });
+    writeStoredJson(storage, STORAGE_KEY, {
+      version: 1,
+      found: Object.fromEntries(discoveries),
+      seenMs,
+    });
 
   const api: CodexStore = {
     feed(events, snapshot, meta) {
@@ -184,6 +212,7 @@ export function createCodexStore(
           found,
           name: found ? entry.name : HIDDEN_NAME,
           text: found ? entry.description : entry.hint,
+          isNew: discovery !== null && discovery.foundAtMs > seenMs,
           discovery,
         };
       });
@@ -214,6 +243,19 @@ export function createCodexStore(
         }
       }
       return { found, total: entries.length, categories };
+    },
+    newCount() {
+      let n = 0;
+      for (const entry of entries) {
+        const d = discoveries.get(entry.id);
+        if (d && d.foundAtMs > seenMs) n++;
+      }
+      return n;
+    },
+    markAllSeen(nowMs) {
+      if (!Number.isFinite(nowMs) || nowMs <= seenMs) return;
+      seenMs = nowMs;
+      persist();
     },
   };
   return api;

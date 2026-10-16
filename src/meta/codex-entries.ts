@@ -61,7 +61,26 @@ const snapshotWhen =
   (ctx: CodexContext): number | null =>
     cond(ctx.snapshot) ? ctx.snapshot.tick : null;
 
-const scoreAtLeast = (score: number) => snapshotWhen(s => s.score >= score);
+/**
+ * 得点が score に届いたか。届いていれば「越えた瞬間」の tick を返す。
+ * 得点は合体・超新星の出来事の scoreDelta でしか増えないので、出来事の列を
+ * 時系列に足していけば越えた瞬間が復元できる（feed が粗くても正確）。
+ * 列が欠けていて合計が届かなければ、観測した盤面の tick に落とす。
+ */
+const scoreAtLeast =
+  (score: number) =>
+  (ctx: CodexContext): number | null => {
+    if (ctx.snapshot.score < score) return null;
+    let sum = 0;
+    for (const e of ctx.events) {
+      const d = e.scoreDelta;
+      if (typeof d === 'number' && Number.isFinite(d)) {
+        sum += d;
+        if (sum >= score) return e.tick;
+      }
+    }
+    return ctx.snapshot.tick;
+  };
 
 /**
  * 出来事の tick が取れればそれを、取れなくても盤面側に証拠があれば観測 tick を返す。
@@ -83,6 +102,15 @@ const nthEventTick =
     }
     return null;
   };
+
+/**
+ * n 回目の出来事の tick。出来事の列が欠けて n 回目を拾えなくても、
+ * 盤面の統計が届いていれば見つかる（その場合の tick は観測した盤面のもの）。
+ */
+const nthOrStats =
+  (match: (e: GameEvent) => boolean, n: number, stat: (s: GameSnapshot) => number) =>
+  (ctx: CodexContext): number | null =>
+    nthEventTick(match, n)(ctx) ?? snapshotWhen(s => stat(s) >= n)(ctx);
 
 /**
  * 限界を越えた状態の合計時間がしきい値に達した瞬間の tick。
@@ -270,9 +298,11 @@ const FEAT_ENTRIES: CodexEntry[] = [
   { id: 'feat-overflow', category: 'feat', name: '大混雑', description: `${OVERFLOW_BODIES} 体もの天体が同時に盤面を埋めた`,
     hint: `天体を ${OVERFLOW_BODIES} 体同時に盤面へ置く`, found: snapshotWhen(s => s.bodies.length >= OVERFLOW_BODIES) },
   { id: 'feat-merges', category: 'feat', name: '量産体制', description: `1 プレイで ${MERGES_IN_RUN} 回合体させた`,
-    hint: `1 プレイで ${MERGES_IN_RUN} 回合体させる`, found: snapshotWhen(s => s.stats.merges >= MERGES_IN_RUN) },
+    hint: `1 プレイで ${MERGES_IN_RUN} 回合体させる`,
+    found: nthOrStats(e => e.kind === 'merge', MERGES_IN_RUN, s => s.stats.merges) },
   { id: 'feat-launches', category: 'feat', name: '百発運用', description: `1 プレイで ${LAUNCHES_IN_RUN} 回、天体を撃ち続けた`,
-    hint: `1 プレイで ${LAUNCHES_IN_RUN} 回撃つ`, found: snapshotWhen(s => s.stats.launches >= LAUNCHES_IN_RUN) },
+    hint: `1 プレイで ${LAUNCHES_IN_RUN} 回撃つ`,
+    found: nthOrStats(e => e.kind === 'launch', LAUNCHES_IN_RUN, s => s.stats.launches) },
   { id: 'feat-survive', category: 'feat', name: '長距離運行', description: '1 プレイで 3 分間生き残った',
     hint: '1 プレイで 3 分間、終わらずに遊ぶ', found: whenEngaged(tickAtLeast(SURVIVE_TICKS)) },
   { id: 'feat-quiet', category: 'feat', name: '沈黙の運行', description: '開始から 1 分間、一度も合体せずに持ちこたえた',
@@ -294,7 +324,8 @@ const FEAT_ENTRIES: CodexEntry[] = [
     hint: `連鎖の途中で「${TIER_NAMES[8]}」どうしを触れさせる`,
     found: firstEventTick(e => e.kind === 'supernova' && (e.chain ?? 0) >= NOVA_CHAIN) },
   { id: 'feat-triple-nova', category: 'feat', name: '超新星三昧', description: `1 プレイで ${NOVAS_IN_RUN} 度の超新星を起こした`,
-    hint: `1 プレイで超新星を ${NOVAS_IN_RUN} 回起こす`, found: snapshotWhen(s => s.stats.supernovas >= NOVAS_IN_RUN) },
+    hint: `1 プレイで超新星を ${NOVAS_IN_RUN} 回起こす`,
+    found: nthOrStats(e => e.kind === 'supernova', NOVAS_IN_RUN, s => s.stats.supernovas) },
   // 着地の速さは盤面・統計に残らないので、着地の出来事だけが証拠になる（保守側）
   { id: 'feat-soft-land', category: 'feat', name: 'そっと着地', description: `撃った天体が、秒速 ${SOFT_LAND_SPEED} よりゆっくり触れて止まった`,
     hint: '力を抜いて投げ、ゆっくり触れさせる',

@@ -657,3 +657,118 @@ describe('着地の速さで判定する項目', () => {
     expect(ids).not.toContain('feat-hard-land');
   });
 });
+
+// feed が粗い間隔で呼ばれても、出来事の列から「条件を満たした瞬間」を復元して記録する
+describe('出来事の列から「越えた瞬間」を復元する', () => {
+  const mergeAt = (tick: number, scoreDelta = 0): GameEvent => ({
+    ...sampleEvent('merge'),
+    tick,
+    scoreDelta,
+  });
+
+  it('得点は scoreDelta の累積が越えた出来事の tick を残す', () => {
+    const codex = createCodexStore(memoryStorage());
+    const events = [mergeAt(100, 6_000), mergeAt(800, 5_000), mergeAt(5_000, 9_000)];
+    codex.feed(events, snapshot({ tick: 60_000, score: 20_000 }), META);
+    // 10,000 を越えたのは tick 800（6,000+5,000）。feed した 60,000 ではない
+    expect(codex.discovery('feat-score-10000')!.tick).toBe(800);
+    expect(codex.discovery('feat-score-50000')).toBeNull();
+  });
+
+  it('出来事の列が欠けて累積が届かなければ、観測した盤面の tick に落とす', () => {
+    const codex = createCodexStore(memoryStorage());
+    // land には scoreDelta が無いので累積は 0。盤面の得点が届いていれば見つかる
+    codex.feed(
+      [{ ...sampleEvent('land'), tick: 300 }],
+      snapshot({ tick: 60_000, score: 20_000 }),
+      META,
+    );
+    expect(codex.discovery('feat-score-10000')!.tick).toBe(60_000);
+  });
+
+  it('合体・発射・超新星の回数は、n 回目の出来事の tick を指す', () => {
+    const codex = createCodexStore(memoryStorage());
+    const merges = Array.from({ length: 25 }, (_, i) => mergeAt(i * 10));
+    const launches = Array.from({ length: 100 }, (_, i) => ({
+      ...sampleEvent('launch'),
+      tick: 300 + i * 100,
+    }));
+    const novas = [1000, 2000, 3000].map(t => ({ ...sampleEvent('supernova'), tick: t }));
+    const snap = snapshot({
+      tick: 500_000,
+      stats: { launches: 100, merges: 25, supernovas: 3, maxChain: 1 },
+    });
+    codex.feed([...merges, ...launches, ...novas], snap, META);
+    // 25 回目の合体（240）・100 回目の発射（300+9900）・3 回目の超新星（3000）
+    expect(codex.discovery('feat-merges')!.tick).toBe(240);
+    expect(codex.discovery('feat-launches')!.tick).toBe(10_200);
+    expect(codex.discovery('feat-triple-nova')!.tick).toBe(3_000);
+  });
+
+  it('n 回目の出来事が欠けていても、統計が届いていれば観測 tick で見つかる', () => {
+    const codex = createCodexStore(memoryStorage());
+    // 先頭が欠けた列（7 件しか無い）＋統計 25 → 発見はするが tick は観測時点
+    const events = Array.from({ length: 7 }, (_, i) => mergeAt(i * 10));
+    codex.feed(
+      events,
+      snapshot({ tick: 9_999, stats: { launches: 0, merges: 25, supernovas: 0, maxChain: 1 } }),
+      META,
+    );
+    expect(codex.discovery('feat-merges')!.tick).toBe(9_999);
+  });
+});
+
+// 図鑑画面の「NEW」バッジに使う、未見の発見の管理
+describe('NEW バッジ（未見の発見）', () => {
+  it('見つけた直後は新しい印が付き、一覧を見ると消える', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('launch')], snapshot(), { runIndex: 1, nowMs: 100 });
+    expect(codex.newCount()).toBe(codex.progress().found);
+    expect(codex.list().find(v => v.id === 'evt-launch')!.isNew).toBe(true);
+    codex.markAllSeen(200);
+    expect(codex.newCount()).toBe(0);
+    expect(codex.list().find(v => v.id === 'evt-launch')!.isNew).toBe(false);
+  });
+
+  it('「見た」時刻は保存をまたぎ、あとの発見だけが新しくなる', () => {
+    const storage = memoryStorage();
+    const first = createCodexStore(storage);
+    first.feed([sampleEvent('launch')], snapshot(), { runIndex: 1, nowMs: 100 });
+    first.markAllSeen(200);
+
+    const codex = createCodexStore(storage);
+    expect(codex.newCount()).toBe(0);
+    codex.feed([sampleEvent('merge')], snapshot(), { runIndex: 2, nowMs: 300 });
+    expect(codex.list().find(v => v.id === 'evt-merge')!.isNew).toBe(true);
+    expect(codex.list().find(v => v.id === 'evt-launch')!.isNew).toBe(false);
+  });
+
+  it('古い保存（見た時刻なし）は、持っている発見が全部新しい扱い', () => {
+    const old = memoryStorage({
+      [STORAGE_KEY]: JSON.stringify({
+        version: 1,
+        found: { 'evt-merge': { foundAtMs: 50, runIndex: 1, tick: 0 } },
+      }),
+    });
+    const codex = createCodexStore(old);
+    expect(codex.list().find(v => v.id === 'evt-merge')!.isNew).toBe(true);
+    expect(codex.newCount()).toBe(1);
+    codex.markAllSeen(100);
+    expect(codex.newCount()).toBe(0);
+  });
+
+  it('時計が巻き戻っても「見た」は戻らず、変な時刻は無視する', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([sampleEvent('launch')], snapshot(), { runIndex: 1, nowMs: 100 });
+    codex.markAllSeen(200);
+    codex.markAllSeen(50); // 戻さない
+    codex.markAllSeen(Number.NaN); // 無視
+    // 見た時刻（200）より前に記録された発見は、時計のずれで新しくならない
+    codex.feed([sampleEvent('land')], snapshot(), { runIndex: 2, nowMs: 150 });
+    expect(codex.list().find(v => v.id === 'evt-land')!.isNew).toBe(false);
+    expect(codex.newCount()).toBe(0);
+    // 新しい時刻の発見はふつうに新しい
+    codex.feed([sampleEvent('supernova')], snapshot(), { runIndex: 3, nowMs: 300 });
+    expect(codex.list().find(v => v.id === 'evt-supernova')!.isNew).toBe(true);
+  });
+});
