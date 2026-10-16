@@ -111,6 +111,31 @@ describe('解放の表', () => {
       }
     }
   });
+
+  it('進捗の内訳（measure）も「開いた」と一致し、目標は常に正の数', () => {
+    // 変な値（負数・NaN・Infinity）でも表示と判定がずれないことを確かめる
+    for (const runs of [-3, 0, 4, 5, 9, 10, 500, Number.POSITIVE_INFINITY]) {
+      for (const codexFound of [0, 14, 15, 24, 25]) {
+        for (const bestScore of [0, 9_999, 10_000, 100_000, Number.NaN]) {
+          for (const officialDays of [0, 1, 2, 6, 7]) {
+            const ctx: UnlockContext = { runs, bestScore, codexFound, officialDays };
+            for (const entry of UNLOCKS) {
+              const m = entry.measure(ctx);
+              expect(m.target).toBeGreaterThan(0);
+              expect(m.current).toBeGreaterThanOrEqual(0);
+              expect(m.current).toBeLessThanOrEqual(m.target);
+              expect(entry.unlocked(ctx)).toBe(m.current >= m.target);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('条件文は全部ちがう（未解放の項目どうしを見分けられる）', () => {
+    const requirements = UNLOCKS.map(e => e.requirement);
+    expect(new Set(requirements).size).toBe(requirements.length);
+  });
 });
 
 describe('部品から文脈を組み立てる', () => {
@@ -216,7 +241,7 @@ describe('解放の進み具合（実プレイで測る）', () => {
 // 200 プレイ規模で、どの解放がどのプレイで開くかを実プレイで測る。
 // 実測値は console.log で検査出力へ残し、遅すぎる解放・届かない項目の洗い出しに使う。
 describe('解放ペース（200 プレイ規模）', () => {
-  it('回数で開く物は設計した回数で開き、解放は後戻りしない', () => {
+  it('回数・本番日数で開く物は設計した回数で開き、解放は後戻りしない', () => {
     const codex = createCodexStore(memoryStorage());
     const daily = createDailyChallenge(memoryStorage());
     const noon = jstMs(2026, 10, 16) + 12 * 3_600_000; // 深夜項目が混ざらない昼の時刻
@@ -224,6 +249,9 @@ describe('解放ペース（200 プレイ規模）', () => {
     const counts: number[] = [];
     let bestScore = 0;
     for (let run = 1; run <= 200; run++) {
+      // 3 回に 1 回は「その日の本番」として扱い、日替わり系の解放も実プレイで開ける
+      const nowMs = noon + Math.floor((run - 1) / 3) * DAY_MS;
+      const official = daily.beginOfficial(nowMs);
       const auto = createAutoPlay(1000 + run);
       const events: GameEvent[] = [];
       // 7.5 秒ぶんか終了まで。解放ペースの主役は回数条件なので、ランは短く切る
@@ -232,7 +260,10 @@ describe('解放ペース（200 プレイ規模）', () => {
       }
       const snap = auto.sim.getSnapshot();
       bestScore = Math.max(bestScore, snap.score);
-      codex.feed(events, snap, { runIndex: run, nowMs: noon });
+      if (official) {
+        daily.completeOfficial(official, { score: snap.score, endedAtMs: nowMs + 60_000 });
+      }
+      codex.feed(events, snap, { runIndex: run, nowMs });
       const summary = evaluateUnlocks(unlockContextFrom({ runs: run, bestScore, codex, daily }));
       counts.push(summary.unlockedCount);
       for (const e of summary.unlocked) {
@@ -247,12 +278,15 @@ describe('解放ペース（200 プレイ規模）', () => {
     expect(firstOpenRun.get('growth')).toBe(10);
     // 最初の盤面には必ず Tier 0 がいるので、図鑑は 1 プレイ目から育つ
     expect(firstOpenRun.get('codex')).toBe(1);
+    // 3 回に 1 回が新しい日の本番 → 2 日ぶんは 4 回目、7 日ぶんは 19 回目に開く
+    expect(firstOpenRun.get('daily-history')).toBe(4);
+    expect(firstOpenRun.get('daily-regular')).toBe(19);
     // 一度開いた物は閉じない
     for (let i = 1; i < counts.length; i++) {
       expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]!);
     }
-    // 200 プレイで、回数条件の 5 件＋図鑑の入口は必ず開いている
-    expect(counts[199]).toBeGreaterThanOrEqual(6);
+    // 200 プレイで、回数条件の 5 件＋図鑑の入口＋日替わり系の 2 件は必ず開いている
+    expect(counts[199]).toBeGreaterThanOrEqual(8);
     console.log(
       `[pace] codex ${codex.progress().found}/${codex.progress().total}` +
         ` best=${bestScore} first-open=${[...firstOpenRun.entries()]

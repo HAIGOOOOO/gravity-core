@@ -27,6 +27,8 @@ const MERGES_IN_RUN = 25;
 const LAUNCHES_IN_RUN = 100;
 const NOVAS_IN_RUN = 3;
 const NOVA_CHAIN = 2;
+const OVER_LIMIT_TICKS = 10 * TICK_HZ; // 限界を越えたまま耐える合計時間
+const RECOVER_TIMES = 3; // 1 プレイで限界を切り抜ける回数
 const SURVIVE_TICKS = 3 * 60 * TICK_HZ; // 3 分
 const QUIET_TICKS = 60 * TICK_HZ; // 1 分
 /** 深夜の天文台の判定に使う時間帯（JST の 0 時台〜4 時台） */
@@ -47,10 +49,8 @@ const firstEventTick =
     return tick;
   };
 
+// 着地・立て直し・連鎖した超新星のように盤面側に証拠が残らない項目は、出来事限定で見る
 const hasEvent = (kind: GameEventKind) => firstEventTick(e => e.kind === kind);
-
-const chainAtLeast = (n: number) =>
-  firstEventTick(e => (e.kind === 'merge' || e.kind === 'supernova') && (e.chain ?? 0) >= n);
 
 /** 盤面だけで分かる項目。条件を満たせば現在の tick、満たさなければ null。 */
 const snapshotWhen =
@@ -59,6 +59,59 @@ const snapshotWhen =
     cond(ctx.snapshot) ? ctx.snapshot.tick : null;
 
 const scoreAtLeast = (score: number) => snapshotWhen(s => s.score >= score);
+
+/**
+ * 出来事の tick が取れればそれを、取れなくても盤面側に証拠があれば観測 tick を返す。
+ * feed へ渡す出来事の列が途中からでも、統計・位相・限界フラグが残っていれば見逃さない
+ * （「証拠が盤面と出来事の両方に無いときだけ見つからない」に寄せる）。
+ */
+const eventOrSnapshot =
+  (match: (e: GameEvent) => boolean, backup: (s: GameSnapshot) => boolean) =>
+  (ctx: CodexContext): number | null =>
+    firstEventTick(match)(ctx) ?? snapshotWhen(backup)(ctx);
+
+/** 条件に合う n 番目（1 始まり）の出来事の tick。n 回目が起きた瞬間を指すので再生へ飛べる。 */
+const nthEventTick =
+  (match: (e: GameEvent) => boolean, n: number) =>
+  (ctx: CodexContext): number | null => {
+    let count = 0;
+    for (const e of ctx.events) {
+      if (match(e) && ++count === n) return e.tick;
+    }
+    return null;
+  };
+
+/**
+ * 限界を越えた状態の合計時間がしきい値に達した瞬間の tick。
+ * overLimitStart/End の組で経過を積み、最後が越えたままなら盤面の tick までを足す。
+ * 組の途中からの feed（Start が無い）では時間が計れないので、保守的に見つからない。
+ */
+const overLimitDuration =
+  (ticks: number) =>
+  (ctx: CodexContext): number | null => {
+    let total = 0;
+    let since: number | null = null;
+    for (const e of ctx.events) {
+      if (e.kind === 'overLimitStart' && since === null) {
+        since = e.tick;
+      } else if (e.kind === 'overLimitEnd' && since !== null) {
+        total += Math.max(0, e.tick - since);
+        since = null;
+        if (total >= ticks) return e.tick;
+      }
+    }
+    if (since !== null && ctx.snapshot.overLimit && ctx.snapshot.tick - since >= ticks - total) {
+      return since + ticks - total;
+    }
+    return null;
+  };
+
+// 連鎖は出来事が本筋だが、統計の最大連鎖が残っていればそれを証拠にできる
+const chainAtLeast = (n: number) =>
+  eventOrSnapshot(
+    e => (e.kind === 'merge' || e.kind === 'supernova') && (e.chain ?? 0) >= n,
+    s => s.stats.maxChain >= n,
+  );
 
 /**
  * 「遊んだ」最低限の証拠。1 射もしない放置ランでも tick は進むので、
@@ -161,19 +214,24 @@ const BODY_ENTRIES: CodexEntry[] = TIER_NAMES.map((name, index) => ({
 
 const EVENT_ENTRIES: CodexEntry[] = [
   { id: 'evt-launch', category: 'event', name: '初めての射出', description: '天体を盤面へ撃ち込んだ',
-    hint: '盤面を押して離し、天体を撃つ', found: hasEvent('launch') },
+    hint: '盤面を押して離し、天体を撃つ',
+    found: eventOrSnapshot(e => e.kind === 'launch', s => s.stats.launches >= 1) },
   { id: 'evt-land', category: 'event', name: '初めての着地', description: '撃った天体が何かに触れて止まった',
     hint: '撃った天体を核か山に届かせる', found: hasEvent('land') },
   { id: 'evt-merge', category: 'event', name: '初めての合体', description: '同じ Tier どうしが触れて 1 つ上の天体になった',
-    hint: '同じ天体どうしを触れさせる', found: hasEvent('merge') },
+    hint: '同じ天体どうしを触れさせる',
+    found: eventOrSnapshot(e => e.kind === 'merge', s => s.stats.merges >= 1) },
   { id: 'evt-supernova', category: 'event', name: '超新星', description: `「${TIER_NAMES[8]}」どうしが消え、熱量が大きく下がった`,
-    hint: `「${TIER_NAMES[8]}」を 2 体作り、触れさせる`, found: hasEvent('supernova') },
+    hint: `「${TIER_NAMES[8]}」を 2 体作り、触れさせる`,
+    found: eventOrSnapshot(e => e.kind === 'supernova', s => s.stats.supernovas >= 1) },
   { id: 'evt-overlimit', category: 'event', name: '限界突破', description: '山が限界リングを越え、熱量が上がり始めた',
-    hint: '山を限界リングの外まで積み上げる', found: hasEvent('overLimitStart') },
+    hint: '山を限界リングの外まで積み上げる',
+    found: eventOrSnapshot(e => e.kind === 'overLimitStart', s => s.overLimit) },
   { id: 'evt-recover', category: 'event', name: '立て直し', description: '限界を越えたあと、山をリングの内側へ戻した',
     hint: '限界を越えたあと、合体を重ねて山をリングの内側に戻す', found: hasEvent('overLimitEnd') },
   { id: 'evt-gameover', category: 'event', name: '初めての終わり', description: '熱量が限界に達して終了した',
-    hint: '熱量 100 で終わるところまで遊ぶ', found: hasEvent('gameOver') },
+    hint: '熱量 100 で終わるところまで遊ぶ',
+    found: eventOrSnapshot(e => e.kind === 'gameOver', s => s.phase === 'over') },
 ];
 
 const CHAIN_ENTRIES: CodexEntry[] = ([2, 3, 4, 5] as const).map(n => ({
@@ -218,11 +276,17 @@ const FEAT_ENTRIES: CodexEntry[] = [
     hint: '合体させずに 1 分間生き残る', found: whenEngaged(quietMinute) },
   { id: 'feat-night-owl', category: 'feat', name: '深夜の天文台', description: '日本時間の深夜（0 時〜5 時）に観測を続けた',
     hint: `日本時間の ${NIGHT_HOURS[0]} 時〜${NIGHT_HOURS[1]} 時にプレイする`, found: whenEngaged(observedAtNight) },
-  { id: 'feat-critical', category: 'feat', name: '臨界体験', description: `熱量が ${CRITICAL_HEAT} を越える「臨界」に達した`,
+  { id: 'feat-critical', category: 'feat', name: '臨界体験', description: `熱量が ${CRITICAL_HEAT} に届く「臨界」状態に入った`,
     hint: `熱量を ${CRITICAL_HEAT} まで上げて生き残る`, found: snapshotWhen(s => s.heat >= CRITICAL_HEAT) },
   { id: 'feat-brink', category: 'feat', name: '九死一生', description: `熱量が ${BRINK_HEAT} を越えたのに、まだ終わっていない`,
     hint: `熱量 ${BRINK_HEAT} を越えたら、超新星で下げて持ちこたえる`,
     found: snapshotWhen(s => s.phase === 'active' && s.heat >= BRINK_HEAT) },
+  { id: 'feat-tightrope', category: 'feat', name: '限界の綱渡し', description: '限界リングを越えた状態のまま、合計 10 秒間耐え続けた',
+    hint: '限界を越えたまま 10 秒間、熱量と戦い続ける',
+    found: overLimitDuration(OVER_LIMIT_TICKS) },
+  { id: 'feat-recover-3', category: 'feat', name: '再起の名手', description: `1 プレイで ${RECOVER_TIMES} 度、限界を越えてはリングの内側へ戻した`,
+    hint: `1 プレイで ${RECOVER_TIMES} 度、限界を越えては戻す`,
+    found: nthEventTick(e => e.kind === 'overLimitEnd', RECOVER_TIMES) },
   { id: 'feat-nova-chain', category: 'feat', name: '連鎖超新星', description: `連鎖の勢いのまま、「${TIER_NAMES[8]}」どうしが消えた`,
     hint: `連鎖の途中で「${TIER_NAMES[8]}」どうしを触れさせる`,
     found: firstEventTick(e => e.kind === 'supernova' && (e.chain ?? 0) >= NOVA_CHAIN) },

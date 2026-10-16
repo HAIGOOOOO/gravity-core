@@ -13,6 +13,9 @@ export type UnlockContext = Readonly<{
   officialDays: number;
 }>;
 
+/** 進捗の内訳。「2/3」「あと 1 回」のような表示に使う。current は 0〜target に収まる。 */
+export type UnlockMeasure = Readonly<{ current: number; target: number }>;
+
 export type UnlockEntry = Readonly<{
   id: string;
   name: string;
@@ -23,6 +26,8 @@ export type UnlockEntry = Readonly<{
   unlocked(ctx: UnlockContext): boolean;
   /** 0〜1。解放まであとどれくらいか（並べ替えと表示に使う） */
   progress(ctx: UnlockContext): number;
+  /** 進捗の内訳。current が target に届くと解放（unlocked と必ず一致する） */
+  measure(ctx: UnlockContext): UnlockMeasure;
 }>;
 
 /** 0〜1 に丸める。NaN は 0、∞ は 1 になる（unlocked() の結果と矛盾しない表示にする） */
@@ -30,6 +35,17 @@ const clamp01 = (n: number): number => (Number.isNaN(n) ? 0 : Math.min(1, Math.m
 
 const ratio = (now: number, target: number): number =>
   target <= 0 ? 1 : clamp01(now / target);
+
+const nonNegative = (n: number): number => (Number.isFinite(n) ? Math.max(0, n) : 0);
+
+/**
+ * measure の内訳。NaN は 0、目標を越えた分は target で止める（「3/3」の先を出さない）。
+ * current を target に収めるので「unlocked ⇔ current >= target」が∞を含む全入力で成り立つ。
+ */
+const measured = (now: number, target: number): UnlockMeasure => ({
+  current: Number.isNaN(now) ? 0 : Math.min(target, Math.max(0, now)),
+  target,
+});
 
 const SHARE_SCORE = 10_000;
 
@@ -40,6 +56,7 @@ const byRuns = (id: string, name: string, description: string, runs: number): Un
   requirement: `${runs} 回プレイする`,
   unlocked: ctx => ctx.runs >= runs,
   progress: ctx => ratio(ctx.runs, runs),
+  measure: ctx => measured(ctx.runs, runs),
 });
 
 const byCodex = (id: string, name: string, description: string, found: number): UnlockEntry => ({
@@ -49,6 +66,7 @@ const byCodex = (id: string, name: string, description: string, found: number): 
   requirement: `図鑑を ${found} 件見つける`,
   unlocked: ctx => ctx.codexFound >= found,
   progress: ctx => ratio(ctx.codexFound, found),
+  measure: ctx => measured(ctx.codexFound, found),
 });
 
 const byOfficialDays = (id: string, name: string, description: string, days: number): UnlockEntry => ({
@@ -58,6 +76,7 @@ const byOfficialDays = (id: string, name: string, description: string, days: num
   requirement: `日替わりの本番を ${days} 日ぶん済ませる`,
   unlocked: ctx => ctx.officialDays >= days,
   progress: ctx => ratio(ctx.officialDays, days),
+  measure: ctx => measured(ctx.officialDays, days),
 });
 
 export const UNLOCKS: readonly UnlockEntry[] = [
@@ -74,6 +93,7 @@ export const UNLOCKS: readonly UnlockEntry[] = [
     requirement: `1 プレイで ${SHARE_SCORE.toLocaleString('ja-JP')} 点を取る`,
     unlocked: ctx => ctx.bestScore >= SHARE_SCORE,
     progress: ctx => ratio(ctx.bestScore, SHARE_SCORE),
+    measure: ctx => measured(ctx.bestScore, SHARE_SCORE),
   },
   byRuns('growth', '記録の移り変わり', '自分の記録が上手くなっていくのを見る', 10),
   byOfficialDays('daily-history', '日替わりの履歴', '昨日の自分・先週の自分と並べて見られる', 2),
@@ -108,7 +128,6 @@ export function evaluateUnlocks(ctx: UnlockContext): UnlockSummary {
   return { unlocked, locked, unlockedCount: unlocked.length, total: UNLOCKS.length };
 }
 
-const nonNegative = (n: number): number => (Number.isFinite(n) ? Math.max(0, n) : 0);
 const nonNegativeInt = (n: number): number => Math.floor(nonNegative(n));
 
 /**

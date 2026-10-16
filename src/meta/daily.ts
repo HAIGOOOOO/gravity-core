@@ -28,6 +28,10 @@ export type DailyInfo = Readonly<{
   seed: number;
   /** 今日の本番を済ませたか */
   officialDone: boolean;
+  /** 今日の本番の記録。済ませていなければ null */
+  official: DailyRecord | null;
+  /** 次の日替わり（日本時間の 0 時）までの残り ms */
+  msUntilReset: number;
   /** 本番を連続して済ませた日数。今日まだでも、昨日まで続いていればその数 */
   streak: number;
 }>;
@@ -59,6 +63,8 @@ export interface DailyChallenge {
   begin(nowMs: number): DailyRun;
   /** 本番ランの結果を記録する。日付をまたいでも、ラン開始時の日付に記録される。2 度記録しない */
   completeOfficial(run: DailyRun, result: DailyResult): boolean;
+  /** その日付の本番の記録（履歴の 1 日を見る用）。記録が無ければ null */
+  recordAt(dateKey: string): DailyRecord | null;
   /** 本番の履歴（新しい日付順） */
   history(): readonly DailyRecord[];
 }
@@ -109,6 +115,18 @@ function mix32(n: number): number {
   h = Math.imul(h, 0xc2b2ae35);
   h ^= h >>> 16;
   return h >>> 0;
+}
+
+/**
+ * 次の日替わり（日本時間の 0 時）までの残り ms。「あと ○ 時間 △ 分」の表示に使う。
+ * ちょうど 0 時では丸 1 日ぶんを返す。Date が表せない時刻では日付キーが既定値へ
+ * 落ちるので、結果が負になることだけは clamp で防ぐ。
+ */
+export function msUntilNextJstDay(nowMs: number): number {
+  const ms = Number.isFinite(nowMs) ? nowMs : 0;
+  const day = dayNumberOf(jstDateKey(ms)) ?? 0;
+  const nextMidnight = (day + 1) * DAY_MS - JST_OFFSET_MS;
+  return Math.max(0, nextMidnight - ms);
 }
 
 /** 本番のシード。同じ日付ならどの端末でも同じ。 */
@@ -184,6 +202,8 @@ export function createDailyChallenge(storage: MetaStorage | null = null): DailyC
         dateKey,
         seed: dailySeed(dateKey),
         officialDone: Object.hasOwn(memory.official, dateKey),
+        official: api.recordAt(dateKey),
+        msUntilReset: msUntilNextJstDay(nowMs),
         streak: streakOf(doneDays(), dayNumberOf(dateKey) ?? 0),
       };
     },
@@ -220,6 +240,12 @@ export function createDailyChallenge(storage: MetaStorage | null = null): DailyC
       doneDaysCache = null;
       persist();
       return true;
+    },
+    recordAt(dateKey) {
+      // hasOwn で見るので '__proto__' のような継承された名前を拾わない
+      if (!Object.hasOwn(memory.official, dateKey)) return null;
+      const { score, playedAtMs } = memory.official[dateKey];
+      return { dateKey, score, playedAtMs };
     },
     history() {
       return Object.entries(memory.official)

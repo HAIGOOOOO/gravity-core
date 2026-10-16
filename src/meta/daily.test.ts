@@ -5,6 +5,7 @@ import {
   dayNumberOf,
   JST_OFFSET_MS,
   jstDateKey,
+  msUntilNextJstDay,
   practiceSeed,
 } from './daily';
 import type { MetaStorage } from './storage';
@@ -377,6 +378,60 @@ describe('info() の再評価と速さ', () => {
     const elapsed = performance.now() - t0;
     // 表示の更新ごとに呼んでも余る速さ（済ませた日の集合を使い回すので実測は 1ms 未満）
     expect(elapsed).toBeLessThan(50);
+  });
+});
+
+describe('次の日替わりまでの残り時間', () => {
+  it('0 時ちょうどでは丸 1 日、直前では残りわずか、直後ではその分だけ減る', () => {
+    const midnight = jstMidnight(2026, 10, 17);
+    expect(msUntilNextJstDay(midnight)).toBe(DAY_MS);
+    expect(msUntilNextJstDay(midnight - 1)).toBe(1);
+    expect(msUntilNextJstDay(midnight + 3_600_000)).toBe(DAY_MS - 3_600_000);
+    expect(msUntilNextJstDay(midnight + DAY_MS - 1)).toBe(1);
+  });
+
+  it('時刻が変でも負にならない。紀元前の実在の時刻では普通に計算できる', () => {
+    // 有限でない時刻は 0（= JST 1970-01-01 09:00）扱いになり、次の 0 時まで 15 時間
+    expect(msUntilNextJstDay(Number.NaN)).toBe(15 * 3_600_000);
+    expect(msUntilNextJstDay(Number.POSITIVE_INFINITY)).toBe(15 * 3_600_000);
+    // Date の表せる範囲外は日付キーが既定値へ落ち、残りは負ではなく 0
+    expect(msUntilNextJstDay(1e17)).toBe(0);
+    expect(msUntilNextJstDay(jstMidnight(1969, 12, 31))).toBe(DAY_MS);
+  });
+
+  it('info にも残り時間が出る', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    const t = jstMidnight(2026, 10, 16) + 6 * 3_600_000; // JST 06:00
+    expect(daily.info(t).msUntilReset).toBe(18 * 3_600_000);
+  });
+});
+
+describe('その日の記録の取り出し', () => {
+  const t = jstMidnight(2026, 10, 16) + 12 * 3_600_000; // JST 10-16 昼
+
+  it('recordAt は記録のある日だけ返し、未来・形の違う日付・危ない名前は null', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    expect(daily.recordAt('2026-10-16')).toBeNull();
+    const run = daily.beginOfficial(t)!;
+    daily.completeOfficial(run, { score: 4321, endedAtMs: t + 60_000 });
+    expect(daily.recordAt('2026-10-16')).toEqual({
+      dateKey: '2026-10-16',
+      score: 4321,
+      playedAtMs: t + 60_000,
+    });
+    expect(daily.recordAt('2026-10-15')).toBeNull();
+    expect(daily.recordAt('not-a-date')).toBeNull();
+    // 連想配列から '__proto__' のような継承された名前を拾わない
+    expect(daily.recordAt('__proto__')).toBeNull();
+  });
+
+  it('info にも今日の記録が出る（本番前は null）', () => {
+    const daily = createDailyChallenge(memoryStorage());
+    expect(daily.info(t).official).toBeNull();
+    daily.completeOfficial(daily.beginOfficial(t)!, { score: 800, endedAtMs: t });
+    const info = daily.info(t);
+    expect(info.officialDone).toBe(true);
+    expect(info.official).toEqual({ dateKey: '2026-10-16', score: 800, playedAtMs: t });
   });
 });
 

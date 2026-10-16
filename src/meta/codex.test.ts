@@ -248,6 +248,84 @@ describe('出来事だけで判定する項目', () => {
   });
 });
 
+// 出来事の列を取りこぼしても（feed が途中からでも）、盤面・統計に残る証拠で見つける
+describe('盤面側の証拠による発見', () => {
+  it('発射・合体・超新星は統計が証拠になる', () => {
+    const ids = foundIds({ stats: { launches: 2, merges: 1, supernovas: 1, maxChain: 0 } });
+    expect(ids).toContain('evt-launch');
+    expect(ids).toContain('evt-merge');
+    expect(ids).toContain('evt-supernova');
+  });
+
+  it('終了した盤面・限界の旗もそれぞれの証拠になる', () => {
+    expect(foundIds({ phase: 'over' })).toContain('evt-gameover');
+    expect(foundIds({ overLimit: true })).toContain('evt-overlimit');
+  });
+
+  it('連鎖は統計の最大連鎖が証拠になるが、連鎖した超新星は取れない', () => {
+    const ids = foundIds({ stats: { launches: 5, merges: 8, supernovas: 0, maxChain: 5 } });
+    expect(ids).toContain('feat-chain-5');
+    // 「超新星が連鎖した」証拠は盤面に残らないので、出来事限定のままにしている
+    expect(ids).not.toContain('feat-nova-chain');
+  });
+
+  it('着地は盤面から分からないので、出来事が無ければ見つからない', () => {
+    // 撃って積もった跡は統計にあるが、「触れた」事実そのものは統計に残らない
+    const ids = foundIds({ stats: { launches: 5, merges: 2, supernovas: 0, maxChain: 1 } });
+    expect(ids).not.toContain('evt-land');
+  });
+
+  it('出来事があればその tick を優先し、統計だけなら観測 tick を残す', () => {
+    const codex = createCodexStore(memoryStorage());
+    const stats = { launches: 1, merges: 3, supernovas: 0, maxChain: 1 };
+    codex.feed([{ ...sampleEvent('merge'), tick: 123 }], snapshot({ tick: 999, stats }), META);
+    expect(codex.discovery('evt-merge')!.tick).toBe(123); // 出来事の瞬間
+    expect(codex.discovery('evt-launch')!.tick).toBe(999); // 統計だけ → 観測点
+  });
+});
+
+describe('限界越えの時間と回数で判定する項目', () => {
+  const start = (tick: number): GameEvent => ({ ...sampleEvent('overLimitStart'), tick });
+  const end = (tick: number): GameEvent => ({ ...sampleEvent('overLimitEnd'), tick });
+  const LIMIT = 10 * 120;
+
+  it('越えた時間が合計 10 秒になると見つかる（分かれても合計でよい）', () => {
+    expect(foundIds({}, [start(100), end(100 + LIMIT)])).toContain('feat-tightrope');
+    const split = [start(0), end(6 * 120), start(1000), end(1000 + 6 * 120)];
+    expect(foundIds({}, split)).toContain('feat-tightrope');
+    expect(foundIds({}, [start(0), end(LIMIT - 1)])).not.toContain('feat-tightrope');
+  });
+
+  it('越えたまま終わっていないときは盤面の時計までを足し、足りなければ見つからない', () => {
+    expect(foundIds({ tick: 100 + LIMIT, overLimit: true }, [start(100)])).toContain(
+      'feat-tightrope',
+    );
+    expect(foundIds({ tick: 100 + LIMIT - 1, overLimit: true }, [start(100)])).not.toContain(
+      'feat-tightrope',
+    );
+    // 旗が降りているのに End だけ無い組は、証拠不足にする
+    expect(foundIds({ tick: 100 + LIMIT, overLimit: false }, [start(100)])).not.toContain(
+      'feat-tightrope',
+    );
+  });
+
+  it('発見 tick は合計が越えた瞬間を指す', () => {
+    const codex = createCodexStore(memoryStorage());
+    codex.feed([start(100)], snapshot({ tick: 100 + LIMIT + 50, overLimit: true }), META);
+    expect(codex.discovery('feat-tightrope')!.tick).toBe(100 + LIMIT);
+  });
+
+  it('3 度目の立て直しで見つかり、その瞬間の tick を指す', () => {
+    const twice = [start(0), end(10), start(20), end(30)];
+    expect(foundIds({}, twice)).not.toContain('feat-recover-3');
+    const thrice = [...twice, start(40), end(50)];
+    expect(foundIds({}, thrice)).toContain('feat-recover-3');
+    const codex = createCodexStore(memoryStorage());
+    codex.feed(thrice, snapshot({ tick: 9999 }), META);
+    expect(codex.discovery('feat-recover-3')!.tick).toBe(50);
+  });
+});
+
 describe('観測時刻で判定する項目', () => {
   /** JST のその日の hour 時に相当する UTC ms。 */
   const jstMs = (hour: number) => Date.UTC(2026, 9, 16, hour) - JST_OFFSET_MS;

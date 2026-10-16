@@ -6,6 +6,7 @@ export {
   dayNumberOf,
   JST_OFFSET_MS,
   jstDateKey,
+  msUntilNextJstDay,
   practiceSeed,
 } from './daily';
 export type {
@@ -27,4 +28,10 @@ export type {
   CodexStore,
 } from './codex';
 export { evaluateUnlocks, newlyUnlocked, unlockContextFrom, UNLOCKS } from './unlocks';
-export type { LockedView, UnlockContext, UnlockEntry, UnlockSummary } from './unlocks';
+export type {
+  LockedView,
+  UnlockContext,
+  UnlockEntry,
+  UnlockMeasure,
+  UnlockSummary,
+} from './unlocks';
