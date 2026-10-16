@@ -2,15 +2,16 @@
 
 ## いま / つぎ
 
-- いま: ボット 6 種・バッチ・分布・表・決定性・速さ・再現（replay）に加え、6 回目で「同じシードどうしの差」の比較（`compare.ts` の `diffRuns` と `report.ts` の `diffTable`）を足した。全部通っている。
-- 6 回目に足した物: ① `diffRuns`（シードで対を作り B−A の分布を出す。ばらつきを除けるので小さい差も見える）② `diffTable`（指標ごとに両側の中央値と差の 10%〜90%）③ FULL レポートに「ボットの差（random 基準）」と setup 差し替えの対比較 ④ 抜けていたテスト（待ち tick 中の終了、再現で過ぎた入力・stopTick が入力より前、幽霊 hitBodyId、ALL_BOTS 名の一意、seedStart 既定、curve の全 invalid 倒れ）。
-- つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す → 次は「予測どおり合体したか」の精度を測る道具（predict は盤面停止前提なので、当たり率が分かればボットの数字の信頼度が分かる）。
+- いま: 9 回目に「予測どおりにいったか」を測る道具（`accuracy.ts`）を足した。射出ごとに予測と実際の結末を追跡し、的中率・相手一致率・着地誤差を出す。ボットの数字が実力よりどれだけ低く出ているかが分かる。
+- 追加した物: ① `accuracy.ts`（`createAccuracyTracker` が射出とイベントを食わせて結末を記録、`summarizeAccuracy` が集計、`measureAccuracy` / `measureAccuracyBatch` が playOnce の観察用フックで実戦を計測）② `batch.ts` に `PlayHooks`（onLaunch = 受理された射出、onEvents = 各 tick のイベント）③ `report.ts` に `accuracyTable` と `formatPercent` ④ FULL レポートに「予測の的中率」の表（まわし直し不要。measureAccuracyBatch が結果と的中率を同時に取る）。
+- つぎ: 検査結果を見て直す → `VITE_BALANCE=1` の実測値をここに写す → 外れの多い射出（predictedMerge なのに landed）を seedTable 的に拾って原因を見る道具を考える。
 
 ## 構成（`src/tools/`）
 
 - `bots.ts`: ボット 6 種。`random`（無作為に直投げ）、`spiral`（黄金比で方角を回す）、`merge`（予測で同じ Tier に当たる方角を選ぶ）、`merge-safe`（加えて限界リングを越えそうな方角を避ける）、`near`（merge-safe + 同じ Tier の隣へ置く追加点）、`curve`（接線方向の `aimVelocity` で曲げて投げる）。全部、盤面と `predict` だけを見て決める。乱数は `createRng(seed)` だけなので決定的。方角の刻み・候補・着地への追加点は `Probe` にまとめた（対がずれないように）。
 - `batch.ts`: `playOnce`（1 回）と `runBatch`（N 回・シード順）。指標は秒数・得点・到達 Tier・合体数・合体効率・最大連鎖・熱量 75 超え回数・最高熱量・限界越え秒・射出数・超新星数。
 - `replay.ts`: `replayLaunches`（入力ログを同じ tick に撃ち直して完全再現。異常シードの検査・「同じ手順で条件だけ変えたら」用）。
+- `accuracy.ts`: `measureAccuracy` / `measureAccuracyBatch`（playOnce のフックで射出の予測と結末を記録）。結末は最初のイベントで決める: land 前に合体消費 = 'merged'、land のみ = 'landed'、land 後に合体消費 = 'landedThenMerged'、何も無し = 'noContact'。集計は的中率・外れ・予測外合体・相手一致率・着地誤差。
 - `stats.ts`: 平均・中央値・10%・90%（線形補間）。
 - `compare.ts`: `diffRuns`（シードで対を作り、指標ごとの「B − A」の分布を出す）。
 - `report.ts`: Markdown の表を作る純粋な関数（`balanceTable` 比較表・`statsTable` 指標別・`seedTable` シード別・`diffTable` 対比較）。
@@ -32,6 +33,8 @@
 - `peakHeat`: 熱量 75 超の「回数」や「越えていた秒」だけだと、一度も危なくならなかった回とギリギリだった回の区別が付かない。打ち切りが多い条件で特に効く。
 - `heat75Count` の数え方: 「越えていたエピソードの回数」。開始時にすで越えていれば 1 で始め、下がってまた越えたら +1（setup で熱量 80 開始・猶予時間に 75 を割って再上がり → 2 回、とテストで固定した）。
 - `diffRuns` の理由: setup の差し替え比較は `balanceTable` を並べるだけだとシードのばらつきで差が読めない。同じシードの対ごとの差を取れば、ばらつきが相殺されて小さい差も見える（ペア検定の考え方）。対にならないシード（片方だけ）は `onlyA` / `onlyB` に数えて外す。秒数の差は打ち切りの回で実際より小さく出るので、表の件名に打ち切り数も出す。
+- `accuracy.ts` の決め事: ① 予測は submitLaunch の「前」に取る（撃った後は自分が盤面にいて predict が自分に当たって壊れる。実際に試して確かめた）② 結末はイベントだけで決める（盤面を覗かない）。'merge' の bodyIds 末尾は生まれた子なので消費に含めない（2 件しか無ければ全部消費扱い）③ 「予測合体→未接触」も外れに数える（着地した時だけ外れだと、終了間際の未着が免れる）④ 相手一致は 'merged' の中で予測の相手が分かる物だけを母数にする（合体はしたが相手が違う = 狙いがずれた、を区別する）⑤ 着地誤差は landPoint と予測の最後の点の距離（land イベントはどの天体に触れたか持たないので、距離でずれを測る）。
+- `PlayHooks` は結果を変えない観察専用。呼び出し側が渡した hooks も measureAccuracy は最後に呼ぶ（取りこぼし防止）。
 
 ## リーダーへの依頼
 

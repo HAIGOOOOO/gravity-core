@@ -1,5 +1,6 @@
 // まわした結果を Markdown の表にする。文字列を作るだけ（ファイルには書かない）。
 
+import type { AccuracySummary } from './accuracy';
 import { RUN_METRICS, summarizeRuns, type PlayResult, type RunMetric } from './batch';
 import { diffRuns } from './compare';
 import type { Stats } from './stats';
@@ -29,6 +30,12 @@ export function formatNumber(v: number): string {
 /** 「中央値（10%〜90%）」の形。 */
 export function formatRange(s: Stats): string {
   return `${formatNumber(s.median)}（${formatNumber(s.p10)}〜${formatNumber(s.p90)}）`;
+}
+
+/** 割合の表示。0〜1 を % にする。NaN/無限は「—」。 */
+export function formatPercent(v: number): string {
+  if (!Number.isFinite(v)) return '—';
+  return `${Math.round(v * 100)}%`;
 }
 
 /** 汎用の Markdown 表。 */
@@ -106,6 +113,30 @@ export function diffTable(nameA: string, nameB: string, a: readonly PlayResult[]
     ]),
   );
   return `### ${nameA} → ${nameB}（${d.paired} 対・打ち切り ${timeoutsA}→${timeoutsB}）\n\n${table}`;
+}
+
+/**
+ * 「予測どおりにいったか」の表。ボット別に的中率を並べる。
+ * 的中率が低い = 予測が見ていない盤面の動きで狙いが外れる = そのボットの数字は実力より低く出ている。
+ * 相手一致 = 合体した時、相手が予測どおりだった率（外れて別の相手に当たった分を見分ける）。
+ * 着地誤差 = 着地した位置と予測の点の距離（px）の中央値。
+ */
+export function accuracyTable(entries: readonly { name: string; summary: AccuracySummary }[]): string {
+  return markdownTable(
+    ['ボット', '射出', '予測合体', '的中', '的中率', '外れ', '予測外合体', '着地後合体', '相手一致', '着地誤差px'],
+    entries.map(({ name, summary: s }) => [
+      name,
+      String(s.shots),
+      String(s.predictedMerges),
+      String(s.mergeHits),
+      formatPercent(s.mergeHitRate),
+      String(s.mergeMisses),
+      String(s.surpriseMerges),
+      String(s.landedThenMerged),
+      formatPercent(s.partnerMatchRate),
+      formatNumber(s.landError.median),
+    ]),
+  );
 }
 
 /** シードごとの一覧を、秒数の短い順に最大 count 行で出す。異常に早く終わるシードを見つける用。 */

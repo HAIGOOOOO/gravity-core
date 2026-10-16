@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { AccuracySummary } from './accuracy';
 import { RUN_METRICS, type PlayResult } from './batch';
 import {
+  accuracyTable,
   balanceTable,
   diffTable,
   formatNumber,
+  formatPercent,
   formatRange,
   markdownTable,
   seedTable,
@@ -43,6 +46,17 @@ describe('formatRange', () => {
   it('「中央値（10%〜90%）」の形になる', () => {
     // [1..5] → 中央値 3、10% = 1.4、90% = 4.6
     expect(formatRange(summarize([1, 2, 3, 4, 5]))).toBe('3（1.4〜4.6）');
+  });
+});
+
+describe('formatPercent', () => {
+  it('0〜1 を % にする。NaN や無限は「—」', () => {
+    expect(formatPercent(0.75)).toBe('75%');
+    expect(formatPercent(1)).toBe('100%');
+    expect(formatPercent(0)).toBe('0%');
+    expect(formatPercent(0.004)).toBe('0%');
+    expect(formatPercent(NaN)).toBe('—');
+    expect(formatPercent(Infinity)).toBe('—');
   });
 });
 
@@ -134,6 +148,40 @@ describe('diffTable', () => {
     const t = diffTable('a', 'b', [{ ...base, seed: 1 }], [{ ...base, seed: 2 }]);
     expect(t).toContain('0 対');
     expect(t).toContain('—');
+  });
+});
+
+describe('accuracyTable', () => {
+  const acc: AccuracySummary = {
+    shots: 10,
+    predictedMerges: 4,
+    mergeHits: 3,
+    mergeHitRate: 0.75,
+    mergeMisses: 1,
+    actualMerges: 4,
+    surpriseMerges: 1,
+    landedThenMerged: 2,
+    noContact: 0,
+    partnerMatchRate: 1,
+    landError: summarize([2, 4]),
+  };
+
+  it('的中率・外れ・相手一致・着地誤差を列に出す', () => {
+    const t = accuracyTable([{ name: 'a', summary: acc }]);
+    const lines = t.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('的中率');
+    expect(lines[0]).toContain('相手一致');
+    expect(lines[2]).toBe('| a | 10 | 4 | 3 | 75% | 1 | 1 | 2 | 100% | 3 |');
+  });
+
+  it('率や誤差が NaN なら「—」で埋める', () => {
+    const t = accuracyTable([
+      { name: 'empty', summary: { ...acc, shots: 0, mergeHitRate: NaN, partnerMatchRate: NaN, landError: summarize([]) } },
+    ]);
+    const line = t.split('\n')[2]!;
+    expect(line).toContain('empty');
+    expect(line).toContain('—');
   });
 });
 

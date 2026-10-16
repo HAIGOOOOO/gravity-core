@@ -1,7 +1,14 @@
 // シードを変えて何回も自動で遊ばせ、結果を分布にまとめる。
 // 「何分続いたか」「どこまで育ったか」を数字で見るための道具。全部決定的。
 
-import type { SimulationPort } from '../contracts/game';
+import type {
+  BodyId,
+  GameEvent,
+  LaunchCommand,
+  Prediction,
+  SimulationPort,
+  Tick,
+} from '../contracts/game';
 import { HEAT_STATE_LIMITS, TICK_HZ } from '../game/constants';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 import { summarize, type Stats } from './stats';
@@ -40,12 +47,29 @@ export type PlayResult = Readonly<{
   setup?: SimulationSetup;
 }>;
 
+/**
+ * プレイの途中を覗く口。結果を変えずに「どう進んだか」を記録する用。
+ * accuracy.ts（予測の的中率の計測）で使う。
+ */
+export type PlayHooks = Readonly<{
+  /**
+   * 受理された射出 1 回ごとに呼ぶ。
+   * prediction は撃つ直前の盤面で取ったもの（撃った後に predict すると、
+   * 撃った天体自身に衝突する予測が返るので使い物にならない）。
+   */
+  onLaunch?: (command: LaunchCommand, prediction: Prediction, bodyId: BodyId, tick: Tick) => void;
+  /** stepFixed が返したイベント（その tick に起きた分）。launch イベントもここに来る */
+  onEvents?: (events: readonly GameEvent[]) => void;
+}>;
+
 export type PlayOptions = Readonly<{
   seed: number;
   /** これだけ tick が経過したら打ち切る。既定は 10 分ぶん */
   maxTicks?: number;
   /** 盤面・熱量・キューの初期値（createSimulation にそのまま渡す） */
   setup?: SimulationSetup;
+  /** 観察用の口。省略すれば何も呼ばれない（予測も取らない） */
+  hooks?: PlayHooks;
 }>;
 
 export type PlayOutcome = Readonly<{
@@ -69,7 +93,8 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
   let heat75Count = wasHot ? 1 : 0;
 
   const step = (): void => {
-    sim.stepFixed();
+    const events = sim.stepFixed();
+    options.hooks?.onEvents?.(events);
     const s = sim.getSnapshot();
     if (s.overLimit) overLimitTicks++;
     if (s.heat > peakHeat) peakHeat = s.heat;
@@ -81,7 +106,11 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
     const snap = sim.getSnapshot();
     if (snap.phase !== 'active' || snap.tick >= maxTicks) break;
     if (snap.launchCooldownLeftSeconds <= 0) {
-      const res = sim.submitLaunch(bot.decide(snap, (c) => sim.predict(c)));
+      const command = bot.decide(snap, (c) => sim.predict(c));
+      const hook = options.hooks?.onLaunch;
+      // 撃つ前に予測を取る（撃った後だと盤面に自分がいて、予測が自分に当たって壊れる）
+      const predicted = hook === undefined ? undefined : sim.predict(command);
+      const res = sim.submitLaunch(command);
       if (!res.accepted) {
         // 射出点が塞がっていた等。少し進めてからやり直す
         for (let i = 0; i < RETRY_WAIT_TICKS; i++) {
@@ -90,6 +119,7 @@ export function playOnce(bot: Bot, options: PlayOptions): PlayOutcome {
         }
         continue;
       }
+      if (hook !== undefined && predicted !== undefined) hook(command, predicted, res.bodyId, snap.tick);
     }
     step();
   }

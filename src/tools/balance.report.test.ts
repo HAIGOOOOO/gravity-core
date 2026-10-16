@@ -6,10 +6,11 @@
 import { describe, expect, it } from 'vitest';
 import { setupAllTiers } from '../fixtures/index';
 import { TICK_HZ } from '../game/constants';
+import { measureAccuracyBatch, type AccuracySummary } from './accuracy';
 import { runBatch, summarizeRuns, type PlayResult } from './batch';
 import { ALL_BOTS, randomBot } from './bots';
 import { diffRuns } from './compare';
-import { balanceTable, diffTable, seedTable, statsTable } from './report';
+import { accuracyTable, balanceTable, diffTable, seedTable, statsTable } from './report';
 
 const FULL = import.meta.env.VITE_BALANCE === '1';
 const RUNS = FULL ? 100 : 3;
@@ -18,18 +19,21 @@ const TIMEOUT = FULL ? 600_000 : 30_000;
 
 describe('数値調整レポート', () => {
   const collected: { name: string; runs: PlayResult[] }[] = [];
+  const accuracies: { name: string; summary: AccuracySummary }[] = [];
 
   for (const make of ALL_BOTS) {
     const name = make(0).name;
     it(
       `ボット「${name}」を ${RUNS} 回まわせる`,
       () => {
-        const runs = runBatch(make, { runs: RUNS, seedStart: 100, maxTicks: MAX_TICKS });
-        expect(runs).toHaveLength(RUNS);
-        const s = summarizeRuns(runs);
+        // 結果と「予測どおりにいったか」を同じまわしで取る（まわし直しの分を増やさない）
+        const m = measureAccuracyBatch(make, { runs: RUNS, seedStart: 100, maxTicks: MAX_TICKS });
+        expect(m.runs).toHaveLength(RUNS);
+        const s = summarizeRuns(m.runs);
         expect(s.launches.mean).toBeGreaterThan(0);
         expect(s.seconds.mean).toBeGreaterThan(0);
-        collected.push({ name, runs });
+        collected.push({ name, runs: m.runs });
+        accuracies.push({ name, summary: m.summary });
       },
       TIMEOUT,
     );
@@ -52,6 +56,10 @@ describe('数値調整レポート', () => {
         // 異常に早く終わるシードは、調整で条件を絞る手がかりになる
         console.log(`\n${seedTable(name, runs, 8)}`);
       }
+
+      // 予測の的中率。低いボットほど「狙っているのに外れる」ので、出た数字は実力より低い
+      console.log('\n## 予測の的中率（ボット別）\n');
+      console.log(accuracyTable(accuracies));
 
       // random を基準に、同じシードどうしの差を出す（シードのばらつきを除いた強さの差）
       const baseline = collected.find((e) => e.name === 'random');
