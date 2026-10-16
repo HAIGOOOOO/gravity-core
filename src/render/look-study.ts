@@ -5,7 +5,7 @@ import type { LookPalette } from './look-palette';
 const TAU = Math.PI * 2;
 const MARKS = 48;
 const WARNING_WIDTH = 28;
-type StudyLabels = { launch: string; limit: string; aim: string; core: string };
+type StudyLabels = { launch: string; limit: string; aim: string; danger: string };
 
 function circle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
@@ -140,13 +140,34 @@ export function drawLookStudy(canvas: HTMLCanvasElement, snapshot: GameSnapshot,
     ctx.lineTo(Math.cos(angle) * (CORE_RADIUS + 32), Math.sin(angle) * (CORE_RADIUS + 32)); ctx.stroke();
   }
   for (const body of snapshot.bodies) drawLookBody(ctx, palette, body.tier, body.x, body.y, body.radius);
+  // 種類の輪郭を変えず、独立した共通の印で危険を示す。
+  for (const [index, body] of snapshot.bodies.filter(item => item.overLimit).entries()) {
+    const angle = Math.atan2(body.y, body.x);
+    ctx.strokeStyle = palette.danger; ctx.lineWidth = 16;
+    ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS, angle - 0.14, angle + 0.14); ctx.stroke();
+    const side = index % 2 === 0 ? -1 : 1;
+    const distance = body.radius + BOARD_SIZE / css * 15;
+    const x = body.x - Math.sin(angle) * distance * side;
+    const y = body.y + Math.cos(angle) * distance * side;
+    ctx.strokeStyle = palette.danger; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(body.x - Math.sin(angle) * body.radius * side, body.y + Math.cos(angle) * body.radius * side); ctx.lineTo(x, y); ctx.stroke();
+    ctx.fillStyle = palette.danger; circle(ctx, x, y, BOARD_SIZE / css * 9); ctx.fill();
+    ctx.fillStyle = palette.bg; ctx.font = `bold ${BOARD_SIZE / css * 13}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', x, y);
+  }
   // 同じ入力の予測を全案に使う。表示するのは実際の予測点だけ。
   drawLookBody(ctx, palette, snapshot.nextQueue[0], 0, -LAUNCH_RADIUS, 20);
   ctx.fillStyle = palette.ink;
   prediction.points.forEach((point, i) => { if (i % 2 === 0) { circle(ctx, point.x, point.y, 3); ctx.fill(); } });
   const end = prediction.points.at(-1);
-  if (end) { ctx.strokeStyle = palette.accent; ctx.lineWidth = 4; ctx.setLineDash([6,5]); circle(ctx, end.x, end.y, 21); ctx.stroke(); ctx.setLineDash([]); }
-  ctx.fillStyle = palette.ink; ctx.font = `${BOARD_SIZE / css * 12}px system-ui, sans-serif`;
+  if (end) {
+    ctx.strokeStyle = palette.accent; ctx.lineWidth = 4;
+    for (const dx of [-1, 1]) for (const dy of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(end.x + dx * 23, end.y + dy * 10);
+      ctx.lineTo(end.x + dx * 23, end.y + dy * 23); ctx.lineTo(end.x + dx * 10, end.y + dy * 23); ctx.stroke();
+    }
+  }
+  ctx.fillStyle = palette.ink; ctx.font = `${BOARD_SIZE / css * 13}px system-ui, sans-serif`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillText(labels.launch, 30, -LAUNCH_RADIUS);
   ctx.fillText(labels.aim, 30, -LAUNCH_RADIUS + BOARD_SIZE / css * 16);
@@ -155,6 +176,13 @@ export function drawLookStudy(canvas: HTMLCanvasElement, snapshot: GameSnapshot,
   ctx.beginPath(); ctx.moveTo(-corner, corner); ctx.lineTo(-LIMIT_RADIUS * 0.86, LIMIT_RADIUS * 0.95);
   ctx.lineTo(-LIMIT_RADIUS * 0.65, LIMIT_RADIUS * 0.95); ctx.stroke();
   ctx.fillText(labels.limit, -LIMIT_RADIUS * 0.65, LIMIT_RADIUS * 1.04);
+  const exceeded = snapshot.bodies.find(body => body.overLimit);
+  if (exceeded) {
+    const a = Math.atan2(exceeded.y, exceeded.x); const x = Math.cos(a) * LIMIT_RADIUS; const y = Math.sin(a) * LIMIT_RADIUS;
+    ctx.strokeStyle = palette.danger; ctx.fillStyle = palette.danger; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 70, y - 70); ctx.lineTo(x - 130, y - 70); ctx.stroke();
+    ctx.textAlign = 'right'; ctx.fillText(labels.danger, x - 70, y - 95);
+  }
   ctx.strokeStyle = snapshot.heat >= HEAT_STATE_LIMITS[2] ? palette.danger : palette.accent; ctx.lineWidth = print ? 6 : 5;
   ctx.beginPath(); ctx.arc(0, 0, CORE_RADIUS - 10, -Math.PI / 2, -Math.PI / 2 + TAU * snapshot.heat / HEAT_MAX); ctx.stroke();
   // 核だけに四角い抜きを持たせ、丸い天体とは別の物に見せる。

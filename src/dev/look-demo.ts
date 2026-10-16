@@ -1,6 +1,8 @@
 import '../styles/look-study.css';
+import type { GameSnapshot } from '../contracts/game';
 import { createAutoPlay, dropAt } from '../fixtures';
-import { HEAT_MAX, HEAT_STATE_LIMITS, TIER_NAMES } from '../game/constants';
+import { HEAT_MAX, HEAT_STATE_LIMITS, TICK_HZ, TIER_NAMES } from '../game/constants';
+import { createSimulation } from '../game/simulation';
 import { HEAT_STATE_LABEL, heatState } from '../shared/heat';
 import { contrastRatio, LOOK_PALETTES } from '../render/look-palette';
 import { drawLookBody, drawLookStudy } from '../render/look-study';
@@ -16,12 +18,27 @@ const labels = {
 };
 const sample = createAutoPlay(23, undefined, 75).sim;
 while (sample.getSnapshot().launchCooldownLeftSeconds > 0 && sample.getSnapshot().phase === 'active') sample.stepFixed();
-const snapshot = { ...sample.getSnapshot(), heat: HEAT_STATE_LIMITS[1] };
-const prediction = sample.predict(dropAt(-Math.PI / 2));
+const opening = createSimulation(3);
+const danger = createSimulation(3);
+// 本物の射出と計算から、限界を越えた場面を一度だけ作る。
+for (let tick = 0; tick < TICK_HZ * 30 && danger.getSnapshot().heat < HEAT_STATE_LIMITS[2]; tick++) {
+  if (danger.getSnapshot().launchCooldownLeftSeconds <= 0) danger.submitLaunch(dropAt(0));
+  danger.stepFixed();
+}
+while (danger.getSnapshot().launchCooldownLeftSeconds > 0 && danger.getSnapshot().phase === 'active') danger.stepFixed();
+const scenes = {
+  opening: { title: '最初の1投', snapshot: opening.getSnapshot(), prediction: opening.predict(dropAt(-Math.PI / 2)) },
+  cluster: { title: '密集する場面', snapshot: { ...sample.getSnapshot(), heat: HEAT_STATE_LIMITS[1] }, prediction: sample.predict(dropAt(-Math.PI / 2)) },
+  danger: { title: '限界を越えた場面', snapshot: danger.getSnapshot(), prediction: danger.predict(dropAt(-Math.PI / 2)) },
+};
+let scene: keyof typeof scenes = 'cluster';
+let snapshot: GameSnapshot = scenes[scene].snapshot;
+let prediction = scenes[scene].prediction;
 const root = document.getElementById('studies')!;
 const controls = document.getElementById('demo-controls')!;
 const status = document.getElementById('study-status')!;
 const drawings: (() => void)[] = [];
+const observers: ResizeObserver[] = [];
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
   const result = document.createElement(tag); result.className = className; result.textContent = text; return result;
@@ -29,8 +46,8 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', tex
 function choose(id: LookDirection | 'compare'): void {
   root.dataset.mode = id;
   root.querySelectorAll<HTMLElement>('.direction').forEach(section => { section.hidden = id !== 'compare' && section.dataset.direction !== id; });
-  controls.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.choice === id)));
-  status.textContent = id === 'compare' ? '3案を比較中。同じ時点の構成見本です。' : `${labels[id].title}を表示中。構成見本のため、盤面は操作できません。`;
+  controls.querySelectorAll<HTMLButtonElement>('button[data-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.choice === id)));
+  status.textContent = `${scenes[scene].title}：${id === 'compare' ? '3案を比較中。' : labels[id].title + 'を表示中。'}構成見本のため、盤面は操作できません。`;
   requestAnimationFrame(() => drawings.forEach(draw => draw()));
 }
 for (const [id, text] of [['compare','3案を並べる'], ...LOOK_PALETTES.map(p => [p.id, `${labels[p.id].letter} ${labels[p.id].title}`])] as const) {
@@ -47,6 +64,19 @@ blind.addEventListener('click', () => {
   const on = root.dataset.blind !== 'true'; root.dataset.blind = String(on);
   blind.setAttribute('aria-pressed', String(on)); blind.textContent = on ? '案名を表示する' : '案名を隠して比べる'; choose('compare');
 }); controls.append(blind);
+for (const [id, example] of Object.entries(scenes)) {
+  const button = node('button', 'scene-choice', example.title); button.type = 'button'; button.dataset.scene = id;
+  button.setAttribute('aria-pressed', String(id === scene));
+  button.addEventListener('click', () => {
+    scene = id as keyof typeof scenes; snapshot = scenes[scene].snapshot; prediction = scenes[scene].prediction;
+    controls.querySelectorAll<HTMLElement>('.scene-choice').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.scene === scene)));
+    const direction = root.dataset.mode as LookDirection | 'compare';
+    renderStudies(); choose(direction);
+  }); controls.append(button);
+}
+function renderStudies(): void {
+root.replaceChildren(); document.getElementById('contrast-results')!.replaceChildren(); drawings.length = 0;
+observers.forEach(observer => observer.disconnect()); observers.length = 0;
 for (const palette of LOOK_PALETTES) {
   const words = labels[palette.id];
   const section = node('section', 'direction'); section.dataset.direction = palette.id;
@@ -54,14 +84,15 @@ for (const palette of LOOK_PALETTES) {
   const title = node('header', 'direction-title');
   title.append(node('span', 'direction-letter', words.letter), node('h2', '', words.title));
   const scene = node('div', 'study-scene');
-  const masthead = node('div', 'scene-masthead'); masthead.append(node('span', '', 'GRAVITY CORE'), node('span', '', words.english));
+  const masthead = node('div', 'scene-masthead'); masthead.append(node('span', '', 'GRAVITY CORE · 構成見本'), node('span', '', words.english));
   const board = node('canvas', 'study-board'); board.setAttribute('role', 'img'); board.setAttribute('aria-label', `${words.title}：同じ場面の天体と核、限界リング`);
   const boardArea = node('div', 'study-board-area');
-  boardArea.append(board, node('p', 'board-instruction', '同じ天体を合体。外周を押して落とす。'));
+  boardArea.append(board, node('p', 'board-instruction', `${snapshot.overLimit ? '! 越えた天体を合体し、内側へ。' : '核が天体を引く。同じ天体を合体。'}\n盤面を押し、位置を選んで離す。`));
   const hud = node('div', 'study-hud');
   const score = node('div', 'study-score'); score.append(node('span', 'data-label', 'スコア'), node('strong', '', snapshot.score.toLocaleString('ja-JP')));
   const heat = node('div', 'study-heat');
-  heat.append(node('span', 'data-label', '核熱量'), node('strong', '', `${snapshot.heat} / ${HEAT_MAX}`), node('span', 'heat-state', HEAT_STATE_LABEL[heatState(snapshot.heat)]));
+  heat.dataset.critical = String(snapshot.heat >= HEAT_STATE_LIMITS[2]);
+  heat.append(node('span', 'data-label', '核熱量'), node('strong', '', `${Math.floor(snapshot.heat)} / ${HEAT_MAX}`), node('span', 'heat-state', HEAT_STATE_LABEL[heatState(snapshot.heat)]));
   const meter = node('div', 'study-meter'); const fill = node('span'); fill.style.width = `${snapshot.heat / HEAT_MAX * 100}%`; meter.append(fill); heat.append(meter);
   const breaks = node('div', 'heat-breaks');
   HEAT_STATE_LIMITS.forEach(value => {
@@ -69,15 +100,15 @@ for (const palette of LOOK_PALETTES) {
     mark.style.left = `${value / HEAT_MAX * 100}%`; breaks.append(mark);
   });
   heat.append(breaks, node('span', 'heat-rule', `限界越えで上昇\n${HEAT_MAX}で終了`));
-  const queue = node('div', 'study-queue'); queue.append(node('span', 'data-label', '次の天体'));
+  const queue = node('div', 'study-queue'); queue.append(node('span', 'data-label', '今回 → 次'));
   const icons = node('div', 'study-icons');
   snapshot.nextQueue.forEach((tier, index) => {
     const icon = node('canvas'); icon.width = 96; icon.height = 96;
     icon.setAttribute('role', 'img'); icon.setAttribute('aria-label', TIER_NAMES[tier]);
     drawLookBody(icon.getContext('2d')!, palette, tier, 48, 48, 30);
-    const item = node('div', 'queue-item'); item.append(node('span', '', `${index + 1}`), icon); icons.append(item);
+    const item = node('div', 'queue-item'); item.append(node('span', '', index === 0 ? '今' : `${index}`), icon); icons.append(item);
   }); queue.append(icons);
-  const pause = node('span', 'study-pause', palette.id === 'eclipse' ? 'Ⅱ' : 'Ⅱ 一時停止'); pause.setAttribute('aria-label', '一時停止の配置見本（操作できません）');
+  const pause = node('span', 'study-pause', 'Ⅱ 一時停止'); pause.setAttribute('aria-label', '一時停止の配置見本（操作できません）');
   hud.append(score, heat, queue, pause);
   scene.append(masthead, boardArea, hud);
   const key = node('details', 'tier-key'); key.append(node('summary', '', '9段階の天体を見比べる'));
@@ -89,9 +120,11 @@ for (const palette of LOOK_PALETTES) {
   }); key.append(tierList);
   const caption = node('div', 'direction-caption'); caption.append(node('h3', '', words.lead), node('p', '', words.main), node('p', '', words.omit));
   section.append(title, scene, key, caption); root.append(section);
-  const draw = () => { if (!section.hidden) drawLookStudy(board, snapshot, palette, prediction, { launch: '射出位置', limit: '限界リング', aim: '押して離す ↓', core: '核' }); }; drawings.push(draw);
-  new ResizeObserver(draw).observe(board);
+  const draw = () => { if (!section.hidden) drawLookStudy(board, snapshot, palette, prediction, { launch: '今回の天体', limit: '限界リング', aim: '離すと落ちる ↓', danger: '! 限界越え' }); }; drawings.push(draw);
+  const observer = new ResizeObserver(draw); observer.observe(board); observers.push(observer);
   const row = node('tr'); row.append(node('th', '', `${words.letter} ${words.title}`), node('td', '', contrastRatio(palette.ink, palette.bg).toFixed(2)), node('td', '', contrastRatio(palette.muted, palette.bg).toFixed(2)));
   row.querySelector('th')!.scope = 'row'; document.getElementById('contrast-results')!.append(row);
 }
+}
+renderStudies();
 choose('compare');
