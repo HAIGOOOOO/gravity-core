@@ -1,0 +1,1 @@
+import{w as e}from"./constants-C07CAO1y.js";function t(t,n,r,i,a,o={}){t.save(),t.globalAlpha*=o.alpha??1,t.fillStyle=e[n],t.beginPath(),t.arc(r,i,a,0,Math.PI*2),t.fill(),t.restore()}export{t};
