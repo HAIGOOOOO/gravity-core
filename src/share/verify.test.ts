@@ -21,6 +21,7 @@ describe('verifyPlay', () => {
       if (!v.ok) continue;
       expect(v.result.score).toBe(snap.score);
       expect(v.result.ticks).toBe(snap.tick);
+      expect(v.result.stats).toEqual(snap.stats); // 戦績も再生し直した値が入る
       expect(v.result.inputsApplied).toBe(v.result.inputsTotal);
       expect(v.result.inputsTotal).toBeGreaterThan(0);
     }
@@ -51,6 +52,7 @@ describe('verifyPlay', () => {
     expect(v.ok).toBe(true);
     if (v.ok) {
       expect(v.result.score).toBe(snap.score);
+      expect(v.result.stats).toEqual(snap.stats); // 合体・連鎖などの戦績も一致する
       expect(v.result.inputsApplied).toBe(3);
     }
   });
@@ -152,6 +154,23 @@ describe('verifyPlay', () => {
     if (v.ok) expect(v.result.score).toBe(snap.score);
     // 遅い検査環境でも落ちない程度の、ざっくりした上限
     expect(t3 - t0).toBeLessThan(90_000);
+  }, 120_000);
+
+  it('同じ文字列は何度再生しても同じ結果を返す（再生は決定的）', () => {
+    const seed = 4242;
+    const auto = createAutoPlay(seed);
+    for (let i = 0; i < 900; i++) auto.step();
+    const snap = auto.sim.getSnapshot();
+    const text = encodePlay({
+      rulesVersion: SHARE_RULES_VERSION,
+      seed,
+      inputs: auto.sim.getInputLog(),
+      endTick: snap.tick,
+    });
+    const a = verifyPlay(text);
+    const b = verifyPlay(text);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) expect(a.result).toEqual(b.result);
   }, 120_000);
 
   it('ルールの版が違う文字列は rulesMismatch で弾く', () => {

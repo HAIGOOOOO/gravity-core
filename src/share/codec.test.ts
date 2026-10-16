@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LaunchInput } from '../contracts/game';
 import { DROP_SPEED, TICK_HZ } from '../game/constants';
 import { createRng } from '../game/rng';
-import { decodePlay, encodePlay, SHARE_RULES_VERSION } from './codec';
+import { decodePlay, encodePlay, SHARE_RULES_VERSION, type EncodePlayArgs } from './codec';
 import { base64UrlToBytes, bytesToBase64Url, fnv1a } from './coding';
 
 const GRID_DENOM = 4294967296;
@@ -165,6 +165,16 @@ describe('encodePlay / decodePlay', () => {
     expect(encodePlay({ rulesVersion: 1, seed: 1, inputs: [], endTick: -1 })).toBe('');
     expect(encodePlay({ rulesVersion: 1, seed: 1, inputs: [], endTick: MAX_TICKS + 1 })).toBe('');
     expect(encodePlay({ rulesVersion: 1, seed: 1, inputs: [], endTick: 1.5 })).toBe('');
+    // 型を越えた要素（実行時に紛れうる null・数・文字列）でも落ちない
+    expect(encodePlay({ ...ok, inputs: [null as unknown as LaunchInput] })).toBe('');
+    expect(encodePlay({ ...ok, inputs: [42 as unknown as LaunchInput] })).toBe('');
+    expect(encodePlay({ ...ok, inputs: ['x' as unknown as LaunchInput] })).toBe('');
+    // endTick 指定済みで途中の要素が null でも落ちない
+    expect(encodePlay({ ...ok, endTick: 5, inputs: [drop(0, 0.5), null as unknown as LaunchInput] })).toBe('');
+    // inputs が配列でない・引数自体が null でも落ちない
+    expect(encodePlay({ ...ok, inputs: null as unknown as LaunchInput[] })).toBe('');
+    expect(encodePlay({ ...ok, inputs: 42 as unknown as LaunchInput[] })).toBe('');
+    expect(encodePlay(null as unknown as EncodePlayArgs)).toBe('');
   });
 
   it('上限を越える物は空文字列を返す', () => {

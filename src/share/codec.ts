@@ -115,12 +115,16 @@ export type EncodePlayArgs = {
  * 空文字列を返す（例外は投げない）。
  */
 export function encodePlay(args: EncodePlayArgs): string {
+  if (typeof args !== 'object' || args === null) return '';
   const { rulesVersion, seed, inputs } = args;
-  const endTick = args.endTick ?? (inputs.length ? inputs[inputs.length - 1]!.tick : 0);
+  if (!Array.isArray(inputs) || inputs.length > MAX_INPUTS) return '';
+  // endTick の省略時は最後の入力の tick を使う。要素が型を越えた物なら NaN になり、後の整数チェックで弾く
+  const last = inputs.length ? (inputs[inputs.length - 1] as LaunchInput | null | undefined) : undefined;
+  const lastTick = typeof last === 'object' && last !== null ? last.tick : Number.NaN;
+  const endTick = args.endTick ?? lastTick;
   if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) return '';
   if (!Number.isInteger(endTick) || endTick < 0 || endTick > MAX_TICKS) return '';
-  if (!Array.isArray(inputs) || inputs.length > MAX_INPUTS) return '';
 
   const bytes: number[] = [SHARE_FORMAT_VERSION];
   writeVarint(bytes, rulesVersion);
@@ -130,6 +134,8 @@ export function encodePlay(args: EncodePlayArgs): string {
 
   let prevTick = 0;
   for (const input of inputs) {
+    // 実行時には型を越えた物（null・数など）が紛れうるので、先に object かどうかで弾く
+    if (typeof input !== 'object' || input === null) return '';
     const { tick, originAngleRadians: angle, vx, vy } = input;
     if (!Number.isInteger(tick) || tick < prevTick || tick > endTick) return '';
     if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return '';
