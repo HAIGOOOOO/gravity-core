@@ -71,11 +71,23 @@ export function jstDateKey(nowMs: number): string {
   return `${d.getUTCFullYear()}-${month}-${day}`;
 }
 
-/** 日付キーを 1970-01-01 からの日数へ。形の違う文字列には null。 */
+/**
+ * 日付キーを 1970-01-01 からの日数へ。形・日付の違う文字列には null。
+ * Date.UTC は 13 月や 2/30 を翌月へ丸めるので、往復させて実在の日だけ通す。
+ * （丸めたまま通すと、違う日付キーが同じ日数＝同じシードへ化けてしまう）
+ */
 export function dayNumberOf(dateKey: string): number | null {
   const m = DATE_KEY_PATTERN.exec(dateKey);
   if (!m) return null;
-  return Math.floor(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / DAY_MS);
+  const y = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const ms = Date.UTC(y, month - 1, day);
+  const d = new Date(ms);
+  if (d.getUTCFullYear() !== y || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) {
+    return null;
+  }
+  return Math.floor(ms / DAY_MS);
 }
 
 /**

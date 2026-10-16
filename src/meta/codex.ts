@@ -1,5 +1,5 @@
 // 図鑑。見つけた天体・出来事・偉業を記録する。
-// 項目はすべて CODEX_ENTRIES の表 1 か所に書き、それぞれが「見つかったか」の判定関数を持つ。
+// 項目はすべて CODEX_ENTRIES の表 1 か所に書き、それぞれが「見つかった瞬間の tick」を返す判定関数を持つ。
 // 種類を足すときは表に 1 行足すだけで、エンジン・保存・一覧表示は変えなくてよい。
 
 import type { GameEvent, GameEventKind, GameSnapshot, Tier } from '../contracts/game';
@@ -19,8 +19,12 @@ const HIDDEN_NAME = '？？？';
 const SCORE_MARKS = [10_000, 50_000, 100_000] as const;
 const CROWD_BODIES = 20;
 const MERGES_IN_RUN = 25;
+const LAUNCHES_IN_RUN = 100;
+const NOVAS_IN_RUN = 3;
+const NOVA_CHAIN = 2;
 const SURVIVE_TICKS = 3 * 60 * TICK_HZ; // 3 分
 const CRITICAL_HEAT = HEAT_STATE_LIMITS[2]; // 臨界の境目 75
+const BRINK_HEAT = 90; // 終了（100）の寸前
 
 export type CodexCategory = 'body' | 'event' | 'feat';
 
@@ -40,8 +44,12 @@ export type CodexEntry = Readonly<{
   description: string;
   /** 未発見の人への手がかり（「次に何を狙うか」が言える文にする） */
   hint: string;
-  /** 見つかったかどうか */
-  found(context: CodexContext): boolean;
+  /**
+   * 見つかったかどうか。見つかっていれば「それが起きた tick」、なければ null。
+   * 再生へ飛ぶ場所になるので、出来事があればその tick・盤面の天体なら生まれた tick・
+   * それ以外は盤面の現在 tick を返す。
+   */
+  found(context: CodexContext): number | null;
 }>;
 
 /** 発見の記録。再生へ飛べるよう、どのプレイの何 tick 目かを残す。 */
@@ -51,7 +59,7 @@ export type CodexDiscovery = Readonly<{
   foundAtMs: number;
   /** 何回目のプレイか（1 始まり） */
   runIndex: number;
-  /** そのプレイの何 tick 目か */
+  /** 「それが起きた」tick（feed した時点ではない） */
   tick: number;
   /** そのプレイの記録 ID（再生へ飛ぶ用。あれば） */
   recordId?: string;
@@ -77,7 +85,9 @@ export type CodexItemView = Readonly<{
 export interface CodexStore {
   /**
    * そのプレイの出来事の列と最新の盤面を流し込み、今回新しく見つかった項目を返す（永続化済み）。
-   * tick を正確に残すため、出来事が起きたらすぐ（その tick のうちに）呼ぶこと。
+   * 出来事が起きたらすぐ（その tick のうちに）呼ぶこと。
+   * 盤面だけで判定する項目（得点・熱量・生存時間など）があるので、1 秒ごとなど定期的にも呼ぶと
+   * 発見 tick が実際の瞬間に近づく。
    */
   feed(
     events: readonly GameEvent[],
@@ -92,28 +102,52 @@ export interface CodexStore {
 
 // ── 判定の部品 ──
 
-const hasEvent =
-  (kind: GameEventKind) =>
-  (ctx: CodexContext): boolean =>
-    ctx.events.some(e => e.kind === kind);
+/** 条件に合う最初の出来事の tick。合う物が無ければ null。 */
+const firstEventTick =
+  (match: (e: GameEvent) => boolean) =>
+  (ctx: CodexContext): number | null => {
+    let tick: number | null = null;
+    for (const e of ctx.events) {
+      if (match(e) && (tick === null || e.tick < tick)) tick = e.tick;
+    }
+    return tick;
+  };
 
-/** Tier の天体が盤面に出たか（撃った・着地した・合体の材料・合体で生まれた・いま置いてある）。 */
+const hasEvent = (kind: GameEventKind) => firstEventTick(e => e.kind === kind);
+
+const chainAtLeast = (n: number) =>
+  firstEventTick(e => (e.kind === 'merge' || e.kind === 'supernova') && (e.chain ?? 0) >= n);
+
+/** 盤面だけで分かる項目。条件を満たせば現在の tick、満たさなければ null。 */
+const snapshotWhen =
+  (cond: (s: GameSnapshot) => boolean) =>
+  (ctx: CodexContext): number | null =>
+    cond(ctx.snapshot) ? ctx.snapshot.tick : null;
+
+const scoreAtLeast = (score: number) => snapshotWhen(s => s.score >= score);
+
+/**
+ * Tier の天体が盤面に出たか。
+ * 証拠は 3 つ: 撃った・着地した・合体の材料（sourceTier）、合体の産物（resultTier）、いま置いてある。
+ * 出た瞬間を残すため、出来事の tick と天体の生まれた tick の早い方を返す。
+ * どちらも無くても到達済み Tier より下なら出たとみなす（その場合は現在 tick）。
+ */
 const bodyAppeared =
   (tier: Tier) =>
-  (ctx: CodexContext): boolean =>
-    ctx.snapshot.bestTierThisRun >= tier ||
-    ctx.snapshot.bodies.some(b => b.tier === tier) ||
-    ctx.events.some(e => e.sourceTier === tier || e.resultTier === tier);
-
-const chainAtLeast =
-  (n: number) =>
-  (ctx: CodexContext): boolean =>
-    ctx.events.some(e => (e.kind === 'merge' || e.kind === 'supernova') && (e.chain ?? 0) >= n);
-
-const scoreAtLeast =
-  (score: number) =>
-  (ctx: CodexContext): boolean =>
-    ctx.snapshot.score >= score;
+  (ctx: CodexContext): number | null => {
+    let tick: number | null = null;
+    const consider = (t: number): void => {
+      if (Number.isFinite(t) && (tick === null || t < tick)) tick = t;
+    };
+    for (const e of ctx.events) {
+      if (e.sourceTier === tier || e.resultTier === tier) consider(e.tick);
+    }
+    for (const b of ctx.snapshot.bodies) {
+      if (b.tier === tier) consider(b.bornTick);
+    }
+    if (tick !== null) return tick;
+    return ctx.snapshot.bestTierThisRun >= tier ? ctx.snapshot.tick : null;
+  };
 
 // ── 図鑑の表（ここにだけ項目を書く） ──
 
@@ -183,13 +217,23 @@ const FEAT_ENTRIES: CodexEntry[] = [
     }),
   ),
   { id: 'feat-crowd', category: 'feat', name: '満員御礼', description: `${CROWD_BODIES} 体の天体が同時に盤面に並んだ`,
-    hint: `天体を ${CROWD_BODIES} 体同時に盤面へ置く`, found: ctx => ctx.snapshot.bodies.length >= CROWD_BODIES },
+    hint: `天体を ${CROWD_BODIES} 体同時に盤面へ置く`, found: snapshotWhen(s => s.bodies.length >= CROWD_BODIES) },
   { id: 'feat-merges', category: 'feat', name: '量産体制', description: `1 プレイで ${MERGES_IN_RUN} 回合体させた`,
-    hint: `1 プレイで ${MERGES_IN_RUN} 回合体させる`, found: ctx => ctx.snapshot.stats.merges >= MERGES_IN_RUN },
+    hint: `1 プレイで ${MERGES_IN_RUN} 回合体させる`, found: snapshotWhen(s => s.stats.merges >= MERGES_IN_RUN) },
+  { id: 'feat-launches', category: 'feat', name: '百発運用', description: `1 プレイで ${LAUNCHES_IN_RUN} 回、天体を撃ち続けた`,
+    hint: `1 プレイで ${LAUNCHES_IN_RUN} 回撃つ`, found: snapshotWhen(s => s.stats.launches >= LAUNCHES_IN_RUN) },
   { id: 'feat-survive', category: 'feat', name: '長距離運行', description: '1 プレイで 3 分間生き残った',
-    hint: '1 プレイで 3 分間、終わらずに遊ぶ', found: ctx => ctx.snapshot.tick >= SURVIVE_TICKS },
+    hint: '1 プレイで 3 分間、終わらずに遊ぶ', found: snapshotWhen(s => s.tick >= SURVIVE_TICKS) },
   { id: 'feat-critical', category: 'feat', name: '臨界体験', description: `熱量が ${CRITICAL_HEAT} を越える「臨界」に達した`,
-    hint: `熱量を ${CRITICAL_HEAT} まで上げて生き残る`, found: ctx => ctx.snapshot.heat >= CRITICAL_HEAT },
+    hint: `熱量を ${CRITICAL_HEAT} まで上げて生き残る`, found: snapshotWhen(s => s.heat >= CRITICAL_HEAT) },
+  { id: 'feat-brink', category: 'feat', name: '九死一生', description: `熱量が ${BRINK_HEAT} を越えたのに、まだ終わっていない`,
+    hint: `熱量 ${BRINK_HEAT} を越えても終わらずに持ちこたえる`,
+    found: snapshotWhen(s => s.phase === 'active' && s.heat >= BRINK_HEAT) },
+  { id: 'feat-nova-chain', category: 'feat', name: '連鎖超新星', description: '連鎖の勢いのまま、恒星級天体どうしが消えた',
+    hint: '連鎖の中で超新星を起こす',
+    found: firstEventTick(e => e.kind === 'supernova' && (e.chain ?? 0) >= NOVA_CHAIN) },
+  { id: 'feat-triple-nova', category: 'feat', name: '超新星三昧', description: `1 プレイで ${NOVAS_IN_RUN} 度の超新星を起こした`,
+    hint: `1 プレイで超新星を ${NOVAS_IN_RUN} 回起こす`, found: snapshotWhen(s => s.stats.supernovas >= NOVAS_IN_RUN) },
 ];
 
 export const CODEX_ENTRIES: readonly CodexEntry[] = [
@@ -205,7 +249,13 @@ export function evaluateCodex(
   context: CodexContext,
   entries: readonly CodexEntry[] = CODEX_ENTRIES,
 ): readonly CodexEntry[] {
-  return entries.filter(entry => entry.found(context));
+  return entries.filter(entry => entry.found(context) !== null);
+}
+
+/** 発見 tick の後始末。出来事から取れなければ盤面の tick、それも駄目なら 0。 */
+function discoveryTick(tick: number | null, snapshot: GameSnapshot): number {
+  if (typeof tick === 'number' && Number.isFinite(tick) && tick >= 0) return tick;
+  return Number.isFinite(snapshot.tick) && snapshot.tick >= 0 ? snapshot.tick : 0;
 }
 
 function restoreDiscoveries(value: unknown): Map<string, CodexDiscovery> {
@@ -239,14 +289,17 @@ export function createCodexStore(
 
   return {
     feed(events, snapshot, meta) {
+      const ctx: CodexContext = { events, snapshot };
       const found: CodexEntry[] = [];
       for (const entry of entries) {
-        if (discoveries.has(entry.id) || !entry.found({ events, snapshot })) continue;
+        if (discoveries.has(entry.id)) continue;
+        const tick = entry.found(ctx);
+        if (tick === null) continue;
         discoveries.set(entry.id, {
           id: entry.id,
           foundAtMs: Number.isFinite(meta.nowMs) ? meta.nowMs : 0,
           runIndex: Number.isInteger(meta.runIndex) && meta.runIndex >= 1 ? meta.runIndex : 1,
-          tick: Number.isFinite(snapshot.tick) ? snapshot.tick : 0,
+          tick: discoveryTick(tick, snapshot),
           recordId: typeof meta.recordId === 'string' ? meta.recordId : undefined,
         });
         found.push(entry);

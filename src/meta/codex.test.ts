@@ -65,11 +65,12 @@ describe('図鑑の発見', () => {
 
   it('発見にはいつ・何回目のプレイの・何 tick 目かが残る', () => {
     const codex = createCodexStore(memoryStorage());
-    codex.feed([sampleEvent('merge', 0, 0, 0, 1)], snapshot({ tick: 4321 }), {
+    codex.feed([{ ...sampleEvent('merge'), tick: 4321 }], snapshot({ tick: 5000 }), {
       runIndex: 7,
       nowMs: 123456,
       recordId: 'rec-abc',
     });
+    // feed した時点の tick（5000）ではなく、出来事が起きた tick を残す（再生へ飛ぶため）
     expect(codex.discovery('evt-merge')).toEqual({
       id: 'evt-merge',
       foundAtMs: 123456,
@@ -77,6 +78,17 @@ describe('図鑑の発見', () => {
       tick: 4321,
       recordId: 'rec-abc',
     });
+  });
+
+  it('盤面の天体は「生まれた tick」を、出来事の無い項目は「いまの tick」を残す', () => {
+    const codex = createCodexStore(memoryStorage());
+    const body = {
+      id: 9, tier: 3 as Tier, x: 0, y: 100, vx: 0, vy: 0, radius: 32,
+      bornTick: 777, chain: 0, chainUntilTick: 0, overLimit: false,
+    };
+    codex.feed([], snapshot({ tick: 9000, score: 20_000, bodies: [body] }), META);
+    expect(codex.discovery('body-t3')!.tick).toBe(777); // 生まれた瞬間へ飛べる
+    expect(codex.discovery('feat-score-10000')!.tick).toBe(9000); // 条件を満たした観測点
   });
 
   it('同じ項目は一度だけ返し、発見は保存をまたぐ', () => {
@@ -146,7 +158,7 @@ describe('図鑑の拡張（種類を足す）', () => {
       name: 'テスト項目',
       description: 'd',
       hint: 'h',
-      found: ctx => ctx.events.some(e => e.kind === 'land'),
+      found: ctx => ctx.events.find(e => e.kind === 'land')?.tick ?? null,
     };
     const ctx: CodexContext = { events: [sampleEvent('land')], snapshot: snapshot() };
     // 表をそのまま評価する関数に渡すだけで判定できる

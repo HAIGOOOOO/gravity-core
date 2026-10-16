@@ -46,6 +46,15 @@ const byCodex = (id: string, name: string, description: string, found: number): 
   progress: ctx => ratio(ctx.codexFound, found),
 });
 
+const byOfficialDays = (id: string, name: string, description: string, days: number): UnlockEntry => ({
+  id,
+  name,
+  description,
+  requirement: `日替わりの本番を ${days} 日ぶん済ませる`,
+  unlocked: ctx => ctx.officialDays >= days,
+  progress: ctx => ratio(ctx.officialDays, days),
+});
+
 export const UNLOCKS: readonly UnlockEntry[] = [
   byRuns('records', 'プレイの記録', '終わったプレイの記録を見返せる', 1),
   byCodex('codex', '図鑑', '見つけた天体と出来事のコレクション', 1),
@@ -62,15 +71,10 @@ export const UNLOCKS: readonly UnlockEntry[] = [
     progress: ctx => ratio(ctx.bestScore, 10_000),
   },
   byRuns('growth', '記録の移り変わり', '自分の記録が上手くなっていくのを見る', 10),
-  {
-    id: 'daily-history',
-    name: '日替わりの履歴',
-    description: '昨日の自分・先週の自分と並べて見られる',
-    requirement: '日替わりの本番を 2 日ぶん済ませる',
-    unlocked: ctx => ctx.officialDays >= 2,
-    progress: ctx => ratio(ctx.officialDays, 2),
-  },
+  byOfficialDays('daily-history', '日替わりの履歴', '昨日の自分・先週の自分と並べて見られる', 2),
+  byOfficialDays('daily-regular', '日替わりの常連', '毎日の本番を欠かさない人の証', 7),
   byCodex('observatory', '天文台', '見つけた物が一堂に並ぶ、集めた人の場所', 15),
+  byCodex('stargazer', '星の博士', '図鑑の大半を集めた。残りももう少し', 25),
 ];
 
 export type LockedView = Readonly<{
