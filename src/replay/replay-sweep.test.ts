@@ -71,6 +71,27 @@ describe('見どころ（続き）', () => {
     expect([...ticks].sort((a, b) => a - b)).toEqual(ticks);
   });
 
+  it('最高 Tier の誕生は「開始時点の最高」を越えた時だけ立つ', { timeout: 30_000 }, () => {
+    // 開始時点で既に Tier 5 到達済みの記録。Tier 4 どうしの合体で Tier 5 が
+    // 生まれても「そのプレイの最高が初めて生まれた」ではないので拾わない。
+    // （距離 82 < 41+41+0.6 なので、置いた瞬間に接していて最初のステップで合体する）
+    const flat: SimulationSetup = { bodies: [at(4, 150, 0), at(4, 232, 0)], bestTier: 5 };
+    const r1 = recordSetup(1, flat, 60);
+    expect(r1.stats.merges).toBe(1);
+    const h1 = findHighlights(r1);
+    expect(h1.ok).toBe(true);
+    if (h1.ok) expect(h1.highlights.some((x) => x.kind === 'bestTier')).toBe(false);
+
+    // Tier 5 どうしが合体して Tier 6 が生まれる = 開始時の最高を越えた → 拾う
+    const over: SimulationSetup = { bodies: [at(5, 150, 0), at(5, 254, 0)], bestTier: 5 };
+    const h2 = findHighlights(recordSetup(1, over, 60));
+    expect(h2.ok).toBe(true);
+    if (!h2.ok) return;
+    const best = h2.highlights.find((x) => x.kind === 'bestTier');
+    expect(best?.value).toBe(6);
+    expect(best?.tick).toBe(1);
+  });
+
   it('動きの無い記録には見どころが無く、生きている記録に beforeGameOver は無い', { timeout: 30_000 }, () => {
     const h = findHighlights(createReplayRecord(createSimulation(8)));
     expect(h.ok).toBe(true);

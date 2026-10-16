@@ -7,7 +7,13 @@ import { TICK_HZ } from '../game/constants';
 import { at, createAutoPlay, dropAt } from '../fixtures/index';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 import { createReplayPlayer } from './player';
-import { createReplayRecord, parseReplay, serializeReplay, type ReplayRecord } from './record';
+import {
+  createReplayRecord,
+  parseReplay,
+  serializeReplay,
+  snapshotHash,
+  type ReplayRecord,
+} from './record';
 import { launchAnyhow, recordAutoPlay, recordSetup, UP } from './testkit';
 
 describe('記録の端と抜け', () => {
@@ -40,6 +46,24 @@ describe('記録の端と抜け', () => {
     if (!start.ok) return;
     // 撃った天体が最終盤面にいる（開始の 1 体 + 射出 = 2 体）
     expect(start.player.seek(record.endTick).bodies).toHaveLength(2);
+  });
+
+  it('tick 0 に撃って終わった記録（endTick 0）は、最初の表示・seek・peek が一致する', () => {
+    const sim = createSimulation(7);
+    expect(sim.submitLaunch(dropAt(UP)).accepted).toBe(true);
+    const record = createReplayRecord(sim); // 撃って 1 回も進めずに記録（endTick 0・入力 1 件）
+    expect(record.endTick).toBe(0);
+    expect(record.inputs).toHaveLength(1);
+    const start = createReplayPlayer(record);
+    expect(start.ok).toBe(true);
+    if (!start.ok) return;
+    const p = start.player;
+    // 「最後の盤面」は tick 0 の入力を反映した状態。どの窓口から見ても同じ絵で、
+    // 記録の finalHash（撃ったあとの盤面の指紋）と一致する
+    expect(p.snapshot().bodies).toHaveLength(2);
+    expect(p.seek(0).bodies).toHaveLength(2);
+    expect(p.peek(0).bodies).toHaveLength(2);
+    expect(snapshotHash(p.snapshot())).toBe(record.finalHash);
   });
 
   it('範囲外・小数・NaN の tick は決まった場所へ収まる', { timeout: 30_000 }, () => {
@@ -146,6 +170,12 @@ describe('記録の文字列化（続き）', () => {
       { ...record, inputs: [{ tick: 0, originAngleRadians: 0, vx: 0 }] }, // vy 欠損
       { ...record, endTick: 1.5 },
       { ...record, stats: { launches: 1, merges: 0, supernovas: 0 } }, // maxChain 欠損
+      { ...record, phase: 'paused' }, // phase は active / over だけ
+      { ...record, rulesVersion: 7 }, // 文字列以外の指紋
+      { ...record, initialHash: 12 },
+      { ...record, finalHash: null },
+      { ...record, seed: 'seed' },
+      { ...record, setup: { heat: 'warm' } },
     ];
     for (const b of bads) {
       expect(parseReplay(JSON.stringify(b)), JSON.stringify(b)).toBeNull();

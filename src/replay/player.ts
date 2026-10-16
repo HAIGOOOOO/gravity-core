@@ -40,7 +40,8 @@ const KEYFRAME_CAP = 720;
  * cap は小さく渡せる（テストが短い記録のまま「長い記録の振る舞い」を再現するため）。
  */
 export function keyframeInterval(endTick: Tick, cap: number = KEYFRAME_CAP): Tick {
-  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / cap));
+  // cap が 0 以下だと間隔が Infinity になって peek の割り算が壊れるので、1 未満は 1 に丸める
+  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / Math.max(1, cap)));
 }
 
 /** 同時に持つシミュレーションの本数。増やすと戻り seek が速くなる代わりにメモリを使う */
@@ -216,7 +217,11 @@ export function createReplayPlayer(record: ReplayRecord, options: { keyframeCap?
   };
 
   let currentTick: Tick = 0;
-  let currentSnap: GameSnapshot = firstSnap;
+  // 最初の盤面はキーフレーム経由で取る。
+  // endTick が 0 の記録（撃った直後に記録）では keyframes[0] が
+  // 「tick 0 の入力も反映した」最終盤面に置き換わっているため、
+  // firstSnap（入力反映前）を使うと snapshot()/seek(0) と peek(0) が食い違う。
+  let currentSnap: GameSnapshot = keyframes.get(0) ?? firstSnap;
   let currentEvents: readonly GameEvent[] = [];
 
   // 範囲外は端に、小数は切り捨てに収める。

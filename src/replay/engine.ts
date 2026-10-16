@@ -80,13 +80,14 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   // 原因を追える文を返す（問題なければ null）。
   const applyInputs = (tick: Tick): string | null => {
     while (nextInput < inputs.length && inputs[nextInput]!.tick === tick) {
-      const input = inputs[nextInput]!;
+      const idx = nextInput;
+      const input = inputs[idx]!;
       nextInput++;
       const res = sim.submitLaunch(input);
-      if (!res.accepted) return `input rejected (${res.reason}) at tick ${tick}`;
+      if (!res.accepted) return `input #${idx} (tick ${tick}) rejected: ${res.reason}`;
     }
     if (nextInput < inputs.length && inputs[nextInput]!.tick < tick) {
-      return `input order broken: tick ${inputs[nextInput]!.tick} came after tick ${tick}`;
+      return `input order broken: input #${nextInput} has tick ${inputs[nextInput]!.tick}, already past tick ${tick}`;
     }
     return null;
   };
@@ -116,8 +117,15 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
 
   const final = sim.getSnapshot();
   const diverged = (detail: string): ReplayFailure => ({ ok: false, reason: 'diverged', detail });
-  if (nextInput < inputs.length) return diverged(`${inputs.length - nextInput} inputs were never applied`);
-  if (final.tick !== record.endTick) return diverged(`reached tick ${final.tick}, expected ${record.endTick}`);
+  if (nextInput < inputs.length) {
+    return diverged(
+      `${inputs.length - nextInput} inputs were never applied ` +
+        `(first leftover: #${nextInput} at tick ${inputs[nextInput]!.tick}, replay reached tick ${final.tick})`,
+    );
+  }
+  if (final.tick !== record.endTick) {
+    return diverged(`reached tick ${final.tick} (phase ${final.phase}), expected tick ${record.endTick}`);
+  }
   if (final.phase !== record.phase) return diverged(`phase ${final.phase}, expected ${record.phase}`);
   if (final.score !== record.finalScore) return diverged(`score ${final.score}, expected ${record.finalScore}`);
   if (final.bodies.length !== record.finalBodyCount) {

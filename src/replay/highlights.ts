@@ -43,7 +43,10 @@ export function findHighlights(record: ReplayRecord): HighlightsResult {
   const highlights: ReplayHighlight[] = [];
   let maxChain = 0;
   let maxChainTick: Tick | null = null;
-  let bestTier = -1;
+  // 「最高 Tier が初めて生まれた瞬間」だけを拾うため、開始時点で既に届いていた
+  // 最高 Tier を下限にする。setup で高 Tier から始まる記録で、途中の合体を
+  // 「最高 Tier 誕生」と誤って拾わないため（checkpoints[0] は tick 0 の盤面）。
+  let bestTier: number = run.checkpoints[0]?.bestTierThisRun ?? -1;
   let bestTierTick: Tick | null = null;
   let supernovaCount = 0;
   let gameOverTick: Tick | null = null;
