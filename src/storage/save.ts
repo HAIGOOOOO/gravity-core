@@ -4,7 +4,7 @@ import { defaultSaveData, restoreData } from './data';
 export const SAVE_KEY = 'gravity-core:v1';
 export const BACKUP_KEY = 'gravity-core:backup';
 export type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
-function browserStorage(): StoragePort | null {
+export function browserStorage(): StoragePort | null {
   // 開発中だけ、ゲーム本体で保存拒否後の流れを再現できるようにする。
   if (import.meta.env.DEV && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('storage') === 'denied') {

@@ -15,12 +15,14 @@ const FORBIDDEN = [
   'src/main.ts',
   'index.html',
   'src/audio/',
+  'src/tools/', // 調整の道具（リーダー用）
   // 決まり
   'package.json',
   'package-lock.json',
   'tsconfig.json',
   'vite.config.ts',
   'vite.preview.config.ts',
+  'vite.slow.config.ts',
   '.github/',
   'scripts/',
   'AGENTS.md',

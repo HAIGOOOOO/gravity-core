@@ -286,3 +286,15 @@ describe('予測', () => {
     expect(sim.predict(drop(Math.PI)).end).toBe('core');
   });
 });
+
+describe('射出の値の確かめ', () => {
+  it('NaN や無限大の射出は断る（共有の文字列から来ても素通りさせない）', () => {
+    const sim = createSimulation(1, { bodies: [], queue: [0, 0, 0] });
+    const bad: LaunchCommand[] = [
+      { originAngleRadians: -Math.PI / 2, vx: Number.NaN, vy: 300 },
+      { originAngleRadians: -Math.PI / 2, vx: 0, vy: Number.POSITIVE_INFINITY },
+      { originAngleRadians: Number.NaN, vx: 0, vy: 300 },
+    ];
+    for (const command of bad) expect(sim.submitLaunch(command)).toEqual({ accepted: false, reason: 'speed' });
+  });
+});

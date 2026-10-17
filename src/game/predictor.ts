@@ -21,6 +21,8 @@ const OUTWARD_TOLERANCE = 1;
 /** 射出を受け付けられない理由。受け付けられるなら null。 */
 export function launchRejectReason(snapshot: GameSnapshot, command: LaunchCommand): LaunchRejectReason | null {
   if (snapshot.phase === 'over') return 'gameOver';
+  // 共有の文字列などから来た NaN・無限大は、下の比べ方を全部すり抜けるので先に断る
+  if (![command.vx, command.vy, command.originAngleRadians].every(Number.isFinite)) return 'speed';
   const speed = Math.hypot(command.vx, command.vy);
   if (speed < SPEED_MIN - SPEED_TOLERANCE || speed > SPEED_MAX + SPEED_TOLERANCE) return 'speed';
   const cos = Math.cos(command.originAngleRadians);
