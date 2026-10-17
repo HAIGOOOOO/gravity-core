@@ -15,5 +15,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // 重い試験（1 本 10 秒を超える物）は *.slow.test.ts にして、普段の test から外す。npm run test:slow で回す
+    exclude: ['src/**/*.slow.test.ts'],
   },
 });
