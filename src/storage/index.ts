@@ -1,3 +1,12 @@
 export { defaultSaveData } from './data';
 export { createSaveStore } from './save';
 export { createRankingStore } from './ranking';
+export { STATS_BACKUP_KEY, STATS_KEY, createStatsStore } from './history';
+export type { StatsStore } from './history';
+export { createRunRecorder } from './recorder';
+export type { RunRecorder } from './recorder';
+export { MAX_STATS_RUNS, STATS_VERSION, buildRunDetail } from './stats';
+export type { RunDetailMeta, RunDetailV1, StatsArchive } from './stats';
+export { defaultStatsArchive, detailFromRecord, migrateStatsArchive, readRunDetail } from './archive';
+export { summarizeTrend } from './trend';
+export type { MetricTrend, RunTrend } from './trend';
