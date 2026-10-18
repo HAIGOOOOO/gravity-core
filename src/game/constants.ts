@@ -94,6 +94,11 @@ export const HEAT_STATE_LIMITS = [25, 50, 75] as const;
 // 連鎖
 /** 合体で生まれた天体が、この時間内にまた合体すると連鎖 */
 export const CHAIN_WINDOW_SECONDS = 2.5;
+/**
+ * 連鎖の見えない猶予（秒）。期限（chainUntilTick）を少し過ぎた合体も連鎖に数える。
+ * 画面の期限は変えない。「ぎりぎり間に合った」と感じる側に倒すため（docs/手応え.md 4 章）
+ */
+export const CHAIN_GRACE_SECONDS = 0.085;
 export const CHAIN_STEP = 0.5;
 export const CHAIN_MULT_MAX = 3.0;
 

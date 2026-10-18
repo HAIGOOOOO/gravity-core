@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameEvent, LaunchCommand } from '../contracts/game';
 import { aimVelocity } from '../shared/launch';
 import { decodePlay, encodeSimulation } from '../share/codec';
-import { SPEED_MAX, TICK_HZ } from './constants';
+import { CHAIN_GRACE_SECONDS, SPEED_MAX, TICK_HZ } from './constants';
 import { predictLaunch, quantizeLaunch } from './predictor';
 import { createRng } from './rng';
 import { createSimulation, restoreSimulation, type Simulation } from './simulation';
@@ -148,5 +148,27 @@ describe('共有の文字列の長さ（人の入力に近い射出）', () => {
     if (decoded.ok) expect(decoded.play.inputs).toEqual(sim.getInputLog());
     const perLaunch = text.length / sim.getInputLog().length;
     expect(perLaunch * 152).toBeLessThan(2000);
+  });
+});
+
+describe('連鎖の見えない猶予', () => {
+  /** 連鎖 1 を持つ天体と、同じ Tier の天体が次の tick で触れる盤面を、期限からのずれ late（tick）で作る。 */
+  function mergeChainAt(late: number): number | undefined {
+    const base = createSimulation(1, { bodies: [{ tier: 2, x: 0, y: -69 }, { tier: 2, x: 0, y: -119 }], queue: [0, 0, 0] });
+    const saved = base.exportState();
+    const tick = saved.tick;
+    const bodies = saved.bodies.map((b, i) => (i === 0 ? { ...b, chain: 1, chainUntilTick: tick + 1 - late } : b));
+    const sim = restoreSimulation({ ...saved, bodies });
+    const merge = sim.stepFixed().find((e) => e.kind === 'merge');
+    return merge?.chain;
+  }
+
+  it('期限ちょうどと、猶予の中は連鎖に数える', () => {
+    expect(mergeChainAt(0)).toBe(2);
+    expect(mergeChainAt(Math.round(CHAIN_GRACE_SECONDS * TICK_HZ))).toBe(2);
+  });
+
+  it('猶予を過ぎたら数えない', () => {
+    expect(mergeChainAt(Math.round(CHAIN_GRACE_SECONDS * TICK_HZ) + 1)).toBe(1);
   });
 });

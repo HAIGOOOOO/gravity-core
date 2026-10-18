@@ -20,6 +20,7 @@ import type {
 import {
   CHAIN_MULT_MAX,
   CHAIN_STEP,
+  CHAIN_GRACE_SECONDS,
   CHAIN_WINDOW_SECONDS,
   CONTACT_DAMPING,
   CONTACT_SLOP,
@@ -119,6 +120,7 @@ function copyEvent(e: GameEvent): GameEvent {
 }
 
 const CHAIN_WINDOW_TICKS = Math.round(CHAIN_WINDOW_SECONDS * TICK_HZ);
+const CHAIN_GRACE_TICKS = Math.round(CHAIN_GRACE_SECONDS * TICK_HZ);
 const LIMIT_GRACE_TICKS = Math.round(LIMIT_GRACE_SECONDS * TICK_HZ);
 const MAX_SPEED = 1600;
 
@@ -279,8 +281,8 @@ function build(
     const x = (a.px * ma + b.px * mb) / total;
     const y = (a.py * ma + b.py * mb) / total;
 
-    const chainA = tick <= a.chainUntilTick ? a.chain : 0;
-    const chainB = tick <= b.chainUntilTick ? b.chain : 0;
+    const chainA = tick <= a.chainUntilTick + CHAIN_GRACE_TICKS ? a.chain : 0;
+    const chainB = tick <= b.chainUntilTick + CHAIN_GRACE_TICKS ? b.chain : 0;
     const chain = Math.max(chainA, chainB) + 1;
     gravity?.onMerge();
     stats.maxChain = Math.max(stats.maxChain, chain);
