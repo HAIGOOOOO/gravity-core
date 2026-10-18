@@ -15,8 +15,27 @@ import {
 } from './constants';
 import { stepFree, type Mover } from './physics';
 
-const SPEED_TOLERANCE = 0.5;
+// 丸め（quantizeLaunch）で速さは最大 √2/2 ≈ 0.71 ずれるので、それを越える余裕を持たせる
+const SPEED_TOLERANCE = 1;
 const OUTWARD_TOLERANCE = 1;
+
+/** 角度の格子の目の数。共有の文字列（src/share/codec.ts）は角度をこの格子の番号（u32）で持つ。 */
+export const ANGLE_GRID = 4294967296;
+
+/**
+ * 射出の値を丸める。シミュレーションは受け取った射出を必ずこれで丸めてから使い、入力ログにも丸めた値を残す。
+ * 角度は 2π/2^32 の格子（0 以上 2π 未満）、速度は整数（px/秒）。
+ * こうすると、共有の文字列は 1 投を数バイトで、誤差 0 で持てる。手触りへの影響は無い（速さ 200〜620 に対して 0.5 以下）。
+ * 角度の式は createRng の値から角度を作る式（rng() * π * 2）と同じ計算順にしてある。
+ */
+export function quantizeLaunch(command: LaunchCommand): LaunchCommand {
+  const { originAngleRadians: a, vx, vy } = command;
+  if (![a, vx, vy].every(Number.isFinite)) return command; // 弾くのは launchRejectReason の仕事
+  let k = Math.round((a / (Math.PI * 2)) * ANGLE_GRID) % ANGLE_GRID;
+  if (k < 0) k += ANGLE_GRID;
+  // + 0 で -0 を 0 にそろえる（入力ログと共有の文字列で 0 の符号がずれないように）
+  return { originAngleRadians: (k / ANGLE_GRID) * Math.PI * 2 + 0, vx: Math.round(vx) + 0, vy: Math.round(vy) + 0 };
+}
 
 /** 射出を受け付けられない理由。受け付けられるなら null。 */
 export function launchRejectReason(snapshot: GameSnapshot, command: LaunchCommand): LaunchRejectReason | null {

@@ -18,7 +18,8 @@ function gridAngle(k: number): number {
 
 /** 「押して離す」で出る入力（dropAt と同じ式）。 */
 function drop(tick: number, angle: number): LaunchInput {
-  return { tick, originAngleRadians: angle, vx: -Math.cos(angle) * DROP_SPEED, vy: -Math.sin(angle) * DROP_SPEED };
+  // シミュレーションと同じく速度を整数に丸める（src/game/predictor.ts の quantizeLaunch）
+  return { tick, originAngleRadians: angle, vx: Math.round(-Math.cos(angle) * DROP_SPEED) + 0, vy: Math.round(-Math.sin(angle) * DROP_SPEED) + 0 };
 }
 
 /** 生の body に検査値（FNV-1a）を付けて文字列にする。codec.ts と同じ手順の、テスト用の手組みエンコーダ。 */
@@ -47,8 +48,18 @@ function forge(base: string, mutate: (body: number[]) => void): string {
 const SAMPLE = encodePlay({ rulesVersion: 1, seed: 0, endTick: 100, inputs: [drop(0, gridAngle(5))] });
 
 describe('decodePlay: 検査値を付け直した細工', () => {
-  it('知らない入力タグは弾く', () => {
-    const d = decodePlay(forge(SAMPLE, (b) => { b[5] = 3; })); // 入力の頭をタグ 3 に
+  it('タグ 3（整数の速度）なのに速度のバイトが無い物は途中切れとして弾く', () => {
+    const d = decodePlay(forge(SAMPLE, (b) => { b[5] = 3; })); // 入力の頭をタグ 3 に（後ろは角度の 4 バイトだけ）
+    expect(d.ok).toBe(false);
+    if (!d.ok) expect(d.reason).toBe('truncated');
+  });
+
+  it('タグ 3 の速度が大きすぎる物は弾く', () => {
+    // 角度の後ろに、zigzag で 2,000,001 と 0 を足す
+    const big: number[] = [];
+    writeVarint(big, 2_000_001);
+    writeVarint(big, 0);
+    const d = decodePlay(forge(SAMPLE, (b) => { b[5] = 3; b.splice(10, 0, ...big); }));
     expect(d.ok).toBe(false);
     if (!d.ok) expect(d.reason).toBe('badData');
   });
@@ -169,13 +180,16 @@ describe('decodePlay: 検査値を付け直した細工', () => {
   });
 
   it('大きい経路で入れた格子の入力は、読み戻すと小さい正規形に直る', () => {
-    // 格子上の角度をあえて「角度だけ」形（8 バイト）で手組みする
+    // 格子上の角度と丸めた落とす速度を、あえて「値そのまま」形（24 バイト）で手組みする
+    const sample = drop(0, gridAngle(5));
     const body: number[] = [SHARE_FORMAT_VERSION, 1];
     writeVarint(body, 0); // seed
     writeVarint(body, 100); // endTick
     writeVarint(body, 1); // 個数
-    writeVarint(body, 1); // 入力の頭 = tick 差 0 ×4 + タグ 1（角度だけ）
-    writeF64(body, gridAngle(5));
+    writeVarint(body, 2); // 入力の頭 = tick 差 0 ×4 + タグ 2（値そのまま）
+    writeF64(body, sample.originAngleRadians);
+    writeF64(body, sample.vx);
+    writeF64(body, sample.vy);
     const text = pack(body);
     const d = decodePlay(text);
     expect(d.ok).toBe(true);

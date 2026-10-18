@@ -9,7 +9,7 @@ import * as RULE_CONSTANTS from '../game/constants';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 2;
+export const REPLAY_FORMAT = 3; // 3: 射出の値を丸める（2026-10-18）。丸める前の記録は再生しない
 
 export type ReplayRecord = Readonly<{
   format: typeof REPLAY_FORMAT;

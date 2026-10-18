@@ -23,7 +23,8 @@ function gridAngle(k: number): number {
 
 /** 「押して離す」で出る入力（dropAt と同じ式）。 */
 function drop(tick: number, angle: number): LaunchInput {
-  return { tick, originAngleRadians: angle, vx: -Math.cos(angle) * DROP_SPEED, vy: -Math.sin(angle) * DROP_SPEED };
+  // シミュレーションと同じく速度を整数に丸める（src/game/predictor.ts の quantizeLaunch）
+  return { tick, originAngleRadians: angle, vx: Math.round(-Math.cos(angle) * DROP_SPEED) + 0, vy: Math.round(-Math.sin(angle) * DROP_SPEED) + 0 };
 }
 
 /**

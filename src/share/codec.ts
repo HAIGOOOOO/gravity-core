@@ -8,9 +8,12 @@
 //   [varint] endTick（ここまで再生する。未終了のプレイも共有できるようにするため）
 //   [varint] 入力の数
 //   入力ごと: [varint（前の入力からの tick 差 ×4 + 種別）] + 中身
-//     種別 0: u32le の k → 角度 = (k / 2^32) * π * 2。速度は「まっすぐ落とす」で計算し直す
+//     種別 0: u32le の k → 角度 = (k / 2^32) * π * 2。速度は「まっすぐ落とす」を整数に丸めて計算し直す
+//             （シミュレーションが丸めた「押して離す」はほぼ全部これ。形式の版 2 から）
 //     種別 1: f64 の角度。速度は同上で計算し直す
 //     種別 2: f64 の角度・vx・vy をそのまま
+//     種別 3: u32le の k（角度は種別 0 と同じ）+ zigzag varint の vx・vy（整数）。
+//             シミュレーションが丸めた射出（src/game/predictor.ts の quantizeLaunch）は全部これに乗る（1 投 7〜9 バイト）
 //   [u32le]  ここまで全部の FNV-1a（壊れを見つける検査値）
 // 文字は URL に入れても壊れない base64url（padding なし）。
 //
@@ -36,9 +39,9 @@ import {
 } from './coding';
 
 /** この文字列形式の版。形を変えたら +1 する。 */
-export const SHARE_FORMAT_VERSION = 1;
+export const SHARE_FORMAT_VERSION = 2;
 /** いまのルールの版。RULES.md のルールが変わったら +1 する（リーダー管理）。 */
-export const SHARE_RULES_VERSION = 1;
+export const SHARE_RULES_VERSION = 2; // 2: 射出の値を丸める（2026-10-18）
 
 /**
  * 文字列の長さの上限。4 時間ぶんの「まっすぐ落とし」連打（約 2.9 万入力）でも十分入る大きさ。
@@ -55,6 +58,9 @@ export const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
 const TAG_DROP_GRID = 0;
 const TAG_DROP = 1;
 const TAG_RAW = 2;
+const TAG_GRID_INT = 3;
+/** 種別 3 で持てる速度の大きさ。ゲームの速さの上限よりずっと大きく、zigzag が安全に計算できる範囲 */
+const INT_LIMIT = 1_000_000;
 /** 2^32。createRng が返す値の分母で、自動プレイの角度は必ずこの格子に乗る。 */
 const GRID_DENOM = 4294967296;
 
@@ -99,6 +105,19 @@ function gridIndex(angle: number): number | null {
   return gridAngle(k) === angle ? k : null;
 }
 
+/** 丸めた「まっすぐ落とす」の速度（シミュレーションの quantizeLaunch と同じ丸め）。 */
+function roundedDrop(angle: number): { vx: number; vy: number } {
+  return { vx: Math.round(-Math.cos(angle) * DROP_SPEED) + 0, vy: Math.round(-Math.sin(angle) * DROP_SPEED) + 0 };
+}
+
+/** 格子の上の角度で、速度が丸めた「まっすぐ落とす」とビット一致するか。一致すれば格子の番号、しなければ null。 */
+function roundedDropIndex(input: LaunchInput): number | null {
+  const k = gridIndex(input.originAngleRadians);
+  if (k === null) return null;
+  const v = roundedDrop(input.originAngleRadians);
+  return Object.is(input.vx, v.vx) && Object.is(input.vy, v.vy) ? k : null;
+}
+
 /** 「押して離す」で出る速度（核へまっすぐ、速さ DROP_SPEED）とビット一致するか。値で見るので出自を問わない。 */
 function isStraightDrop(input: LaunchInput): boolean {
   const a = input.originAngleRadians;
@@ -108,6 +127,19 @@ function isStraightDrop(input: LaunchInput): boolean {
     Object.is(input.vx, -Math.cos(a) * DROP_SPEED) &&
     Object.is(input.vy, -Math.sin(a) * DROP_SPEED)
   );
+}
+
+/** 整数で、-0 でなく、範囲内か（種別 3 で誤差 0 で持てるか） */
+function isPlainInt(v: number): boolean {
+  return Number.isInteger(v) && !Object.is(v, -0) && Math.abs(v) <= INT_LIMIT;
+}
+
+function zigzag(v: number): number {
+  return v >= 0 ? v * 2 : -v * 2 - 1;
+}
+
+function unzigzag(z: number): number {
+  return z % 2 === 0 ? z / 2 : -(z + 1) / 2;
 }
 
 // ───────── 公開関数 ─────────
@@ -162,15 +194,18 @@ function encodeInner(args: EncodePlayArgs): string {
     if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return '';
     const head = (tick - prevTick) * 4;
     prevTick = tick;
-    if (isStraightDrop(input)) {
-      const k = gridIndex(angle);
-      if (k !== null) {
-        writeVarint(bytes, head + TAG_DROP_GRID);
-        writeU32(bytes, k);
-      } else {
-        writeVarint(bytes, head + TAG_DROP);
-        writeF64(bytes, angle);
-      }
+    const dropK = roundedDropIndex(input);
+    if (dropK !== null) {
+      writeVarint(bytes, head + TAG_DROP_GRID);
+      writeU32(bytes, dropK);
+    } else if (isStraightDrop(input)) {
+      writeVarint(bytes, head + TAG_DROP);
+      writeF64(bytes, angle);
+    } else if (gridIndex(angle) !== null && isPlainInt(vx) && isPlainInt(vy)) {
+      writeVarint(bytes, head + TAG_GRID_INT);
+      writeU32(bytes, gridIndex(angle)!);
+      writeVarint(bytes, zigzag(vx));
+      writeVarint(bytes, zigzag(vy));
     } else {
       writeVarint(bytes, head + TAG_RAW);
       writeF64(bytes, angle);
@@ -260,8 +295,7 @@ export function decodePlay(text: string): DecodePlayResult {
         const k = readU32(body, pos);
         if (k === null) return fail('truncated');
         angle = gridAngle(k);
-        vx = -Math.cos(angle) * DROP_SPEED;
-        vy = -Math.sin(angle) * DROP_SPEED;
+        ({ vx, vy } = roundedDrop(angle));
       } else if (tag === TAG_DROP) {
         const a = readF64(body, pos);
         if (a === null) return fail('truncated');
@@ -277,7 +311,14 @@ export function decodePlay(text: string): DecodePlayResult {
         vx = x;
         vy = y;
       } else {
-        return fail('badData');
+        const k = readU32(body, pos);
+        const zx = readVarint(body, pos);
+        const zy = readVarint(body, pos);
+        if (k === null || zx === null || zy === null) return fail('truncated');
+        if (zx > INT_LIMIT * 2 || zy > INT_LIMIT * 2) return fail('badData');
+        angle = gridAngle(k);
+        vx = unzigzag(zx);
+        vy = unzigzag(zy);
       }
       if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return fail('badData');
       inputs.push({ tick, originAngleRadians: angle, vx, vy });

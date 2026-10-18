@@ -41,8 +41,8 @@ import {
   TIER_RADIUS,
 } from './constants';
 import { applyGravity } from './physics';
-import { launchRejectReason, predictLaunch } from './predictor';
-import { createRng } from './rng';
+import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
+import { createRng, createRngFromState } from './rng';
 import { drawTier } from './spawner';
 
 type Body = {
@@ -76,6 +76,42 @@ export type SimulationSetup = {
   bestTier?: Tier;
 };
 
+/**
+ * 途中の盤面を丸ごと書き出した物（再生で後ろへ飛ぶ時に、途中から計算し直すため）。
+ * restoreSimulation に渡すと、書き出した時と全く同じ続きになる。
+ * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
+ */
+export type SimulationState = Readonly<{
+  format: 1;
+  seed: number;
+  rngState: number;
+  tick: number;
+  nextId: number;
+  sequence: number;
+  heat: number;
+  score: number;
+  bestTier: Tier;
+  over: boolean;
+  overLimit: boolean;
+  cooldown: number;
+  pendingEvents: readonly GameEvent[];
+  bodies: readonly Readonly<Body>[];
+  queue: readonly [Tier, Tier, Tier];
+  inputLog: readonly LaunchInput[];
+  stats: Readonly<GameSnapshot['stats']>;
+}>;
+
+/** createSimulation が返す物。SimulationPort に、途中の盤面の書き出しを足した物。 */
+export type Simulation = SimulationPort & {
+  /** 今の状態を書き出す。書き出した後に本体を進めても、書き出した物は変わらない */
+  exportState(): SimulationState;
+};
+
+/** イベントを中の配列ごと写す（書き出した物と動いている盤面が配列を共有しないように） */
+function copyEvent(e: GameEvent): GameEvent {
+  return e.bodyIds ? { ...e, bodyIds: [...e.bodyIds] } : { ...e };
+}
+
 const CHAIN_WINDOW_TICKS = Math.round(CHAIN_WINDOW_SECONDS * TICK_HZ);
 const LIMIT_GRACE_TICKS = Math.round(LIMIT_GRACE_SECONDS * TICK_HZ);
 const MAX_SPEED = 1600;
@@ -85,23 +121,37 @@ export function chainMultiplier(chain: number): number {
   return Math.min(CHAIN_MULT_MAX, 1 + CHAIN_STEP * (chain - 1));
 }
 
-export function createSimulation(seed: number, setup?: SimulationSetup): SimulationPort {
-  const rng = createRng(seed);
-  let tick = 0;
-  let nextId = 1;
-  let sequence = 0;
-  let heat = setup?.heat ?? HEAT_START;
-  let score = 0;
-  let bestTier: Tier = setup?.bestTier ?? 0;
-  let over = false;
-  let overLimit = false;
-  let cooldown = 0;
-  let pendingEvents: GameEvent[] = [];
+export function createSimulation(seed: number, setup?: SimulationSetup): Simulation {
+  return build(seed, setup, null);
+}
+
+/** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
+export function restoreSimulation(state: SimulationState): Simulation {
+  if (state.format !== 1) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
+  return build(state.seed, undefined, state);
+}
+
+function build(seed: number, setup: SimulationSetup | undefined, saved: SimulationState | null): Simulation {
+  const rng = saved ? createRngFromState(saved.rngState) : createRng(seed);
+  let tick = saved?.tick ?? 0;
+  let nextId = saved?.nextId ?? 1;
+  let sequence = saved?.sequence ?? 0;
+  let heat = saved?.heat ?? setup?.heat ?? HEAT_START;
+  let score = saved?.score ?? 0;
+  let bestTier: Tier = saved?.bestTier ?? setup?.bestTier ?? 0;
+  let over = saved?.over ?? false;
+  let overLimit = saved?.overLimit ?? false;
+  let cooldown = saved?.cooldown ?? 0;
+  let pendingEvents: GameEvent[] = saved ? saved.pendingEvents.map(copyEvent) : [];
   let snapshotCache: GameSnapshot | null = null;
-  const bodies: Body[] = [];
-  const queue: [Tier, Tier, Tier] = setup?.queue ? [...setup.queue] : [0, 0, drawTier(0, rng)];
-  const inputLog: LaunchInput[] = [];
-  const stats = { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
+  const bodies: Body[] = saved ? saved.bodies.map((b) => ({ ...b })) : [];
+  const queue: [Tier, Tier, Tier] = saved
+    ? [saved.queue[0], saved.queue[1], saved.queue[2]]
+    : setup?.queue
+      ? [...setup.queue]
+      : [0, 0, drawTier(0, rng)];
+  const inputLog: LaunchInput[] = saved ? saved.inputLog.map((i) => ({ ...i })) : [];
+  const stats = saved ? { ...saved.stats } : { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
 
   function addBody(tier: Tier, x: number, y: number, vx: number, vy: number, landed: boolean): Body {
     const body: Body = {
@@ -132,7 +182,9 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
     pendingEvents.push({ sequence: sequence++, tick, ...event });
   }
 
-  if (setup?.bodies) {
+  if (saved) {
+    // 天体は書き出した物をそのまま使う
+  } else if (setup?.bodies) {
     for (const b of setup.bodies) addBody(b.tier, b.x, b.y, b.vx ?? 0, b.vy ?? 0, true);
   } else {
     const r = CORE_RADIUS + TIER_RADIUS[START_BODY.tier];
@@ -169,7 +221,8 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
     return snapshotCache;
   }
 
-  function submitLaunch(command: LaunchCommand): LaunchResult {
+  function submitLaunch(raw: LaunchCommand): LaunchResult {
+    const command = quantizeLaunch(raw);
     const reason = launchRejectReason(getSnapshot(), command);
     if (reason !== null) return { accepted: false, reason };
 
@@ -380,8 +433,31 @@ export function createSimulation(seed: number, setup?: SimulationSetup): Simulat
   }
 
   function predict(command: LaunchCommand): Prediction {
-    return predictLaunch(getSnapshot(), command);
+    // 照準の線と実際の射出が食い違わないよう、同じ丸めを通す
+    return predictLaunch(getSnapshot(), quantizeLaunch(command));
   }
 
-  return { getSnapshot, submitLaunch, stepFixed, predict, getInputLog: () => inputLog };
+  function exportState(): SimulationState {
+    return {
+      format: 1,
+      seed,
+      rngState: rng.state(),
+      tick,
+      nextId,
+      sequence,
+      heat,
+      score,
+      bestTier,
+      over,
+      overLimit,
+      cooldown,
+      pendingEvents: pendingEvents.map(copyEvent),
+      bodies: bodies.map((b) => ({ ...b })),
+      queue: [queue[0], queue[1], queue[2]],
+      inputLog: inputLog.map((i) => ({ ...i })),
+      stats: { ...stats },
+    };
+  }
+
+  return { getSnapshot, submitLaunch, stepFixed, predict, getInputLog: () => inputLog, exportState };
 }
