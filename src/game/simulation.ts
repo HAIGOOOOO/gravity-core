@@ -8,6 +8,8 @@ import type {
   BodyId,
   GameEvent,
   GameSnapshot,
+  GravityCommand,
+  GravityResult,
   LaunchCommand,
   LaunchInput,
   LaunchResult,
@@ -32,6 +34,7 @@ import {
   LAUNCH_COOLDOWN,
   LAUNCH_RADIUS,
   LIMIT_GRACE_SECONDS,
+  LIMIT_HYSTERESIS,
   LIMIT_RADIUS,
   SLEEP_SPEED,
   SOLVER_ITERATIONS,
@@ -40,6 +43,7 @@ import {
   TIER_BASE_SCORE,
   TIER_RADIUS,
 } from './constants';
+import { createGravity, type GravityState, type GravityTuning } from './gravity';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
 import { createRng, createRngFromState } from './rng';
@@ -99,6 +103,8 @@ export type SimulationState = Readonly<{
   queue: readonly [Tier, Tier, Tier];
   inputLog: readonly LaunchInput[];
   stats: Readonly<GameSnapshot['stats']>;
+  /** 重力操作（試作）の状態。重力操作が無効の計算では null */
+  gravity: GravityState | null;
 }>;
 
 /** createSimulation が返す物。SimulationPort に、途中の盤面の書き出しを足した物。 */
@@ -121,18 +127,34 @@ export function chainMultiplier(chain: number): number {
   return Math.min(CHAIN_MULT_MAX, 1 + CHAIN_STEP * (chain - 1));
 }
 
-export function createSimulation(seed: number, setup?: SimulationSetup): Simulation {
-  return build(seed, setup, null);
+/**
+ * @param gravityTuning 重力操作（試作）の数値。渡したときだけ submitGravity が効く。
+ *   渡さなければ、今までとまったく同じ計算になる。
+ */
+export function createSimulation(seed: number, setup?: SimulationSetup, gravityTuning?: GravityTuning): Simulation {
+  return build(seed, setup, null, gravityTuning);
 }
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
 export function restoreSimulation(state: SimulationState): Simulation {
   if (state.format !== 1) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
-  return build(state.seed, undefined, state);
+  return build(state.seed, undefined, state, undefined);
 }
 
-function build(seed: number, setup: SimulationSetup | undefined, saved: SimulationState | null): Simulation {
+function build(
+  seed: number,
+  setup: SimulationSetup | undefined,
+  saved: SimulationState | null,
+  gravityTuning: GravityTuning | undefined,
+): Simulation {
   const rng = saved ? createRngFromState(saved.rngState) : createRng(seed);
+  const gravity = saved
+    ? saved.gravity
+      ? createGravity({ ...saved.gravity.tuning }, saved.gravity)
+      : null
+    : gravityTuning
+      ? createGravity(gravityTuning)
+      : null;
   let tick = saved?.tick ?? 0;
   let nextId = saved?.nextId ?? 1;
   let sequence = saved?.sequence ?? 0;
@@ -217,6 +239,7 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
       launchCooldownLeftSeconds: Math.max(0, cooldown),
       seed,
       stats: { ...stats },
+      ...(gravity ? { gravity: gravity.view() } : {}),
     };
     return snapshotCache;
   }
@@ -259,6 +282,7 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
     const chainA = tick <= a.chainUntilTick ? a.chain : 0;
     const chainB = tick <= b.chainUntilTick ? b.chain : 0;
     const chain = Math.max(chainA, chainB) + 1;
+    gravity?.onMerge();
     stats.maxChain = Math.max(stats.maxChain, chain);
     const gained = Math.round(TIER_BASE_SCORE[a.tier] * chainMultiplier(chain));
     score += gained;
@@ -305,6 +329,9 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
     // 1. 時間を進める
     tick++;
     if (cooldown > 0) cooldown -= DT;
+    gravity?.advance();
+    // 重力操作が何も効いていない tick は、元の計算をそのまま通す
+    const bent = gravity !== null && gravity.active();
 
     // 2. 生まれたばかりの天体を育て、全天体の「進めたい位置」を出す
     for (const b of bodies) {
@@ -313,7 +340,10 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
         const target = TIER_RADIUS[b.tier];
         b.radius = target - (target - b.growFrom) * (b.growLeft / GROW_SECONDS);
       }
-      applyGravity(b);
+    }
+    if (gravity && bent) gravity.applyForces(bodies);
+    else for (const b of bodies) applyGravity(b);
+    for (const b of bodies) {
       b.px = b.x + b.vx * DT;
       b.py = b.y + b.vy * DT;
       b.touching = false;
@@ -382,6 +412,7 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
     }
 
     // 5. 動いた結果から速度を求め直す
+    const pileCap = gravity && bent ? gravity.pileSpeedCap(MAX_SPEED) : MAX_SPEED;
     for (const b of bodies) {
       const before = Math.hypot(b.vx, b.vy);
       b.vx = (b.px - b.x) / DT;
@@ -402,23 +433,32 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
         }
       }
       const speed = Math.hypot(b.vx, b.vy);
-      if (speed > MAX_SPEED) {
-        b.vx *= MAX_SPEED / speed;
-        b.vy *= MAX_SPEED / speed;
+      const cap = b.landed ? pileCap : MAX_SPEED;
+      if (speed > cap) {
+        b.vx *= cap / speed;
+        b.vy *= cap / speed;
       }
     }
 
     // 6. 限界リングと熱量
+    // 重力操作で山が動いている間だけ、すでに越えている天体には少し幅を持たせる（判定のちらつき防止）
+    const slack = bent ? LIMIT_HYSTERESIS : 0;
     let anyOver = false;
     for (const b of bodies) {
-      b.overLimit = tick - b.bornTick >= LIMIT_GRACE_TICKS && Math.hypot(b.x, b.y) + b.radius > LIMIT_RADIUS;
+      const limit = b.overLimit ? LIMIT_RADIUS - slack : LIMIT_RADIUS;
+      b.overLimit = tick - b.bornTick >= LIMIT_GRACE_TICKS && Math.hypot(b.x, b.y) + b.radius > limit;
       if (b.overLimit) anyOver = true;
     }
     if (anyOver !== overLimit) {
       overLimit = anyOver;
       emit({ kind: anyOver ? 'overLimitStart' : 'overLimitEnd' });
     }
-    const rate = anyOver ? HEAT_RISE_PER_SECOND : -HEAT_COOL_PER_SECOND;
+    let rate = anyOver ? HEAT_RISE_PER_SECOND : -HEAT_COOL_PER_SECOND;
+    if (gravity && bent) {
+      // 重力操作の代償: 効いている間は冷めず、操作ごとの熱量が足される
+      if (!anyOver && gravity.coolingBlocked()) rate = 0;
+      rate += gravity.heatPerSecond();
+    }
     heat = Math.min(HEAT_MAX, Math.max(0, heat + rate * DT));
 
     // 7. 終了判定
@@ -434,7 +474,16 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
 
   function predict(command: LaunchCommand): Prediction {
     // 照準の線と実際の射出が食い違わないよう、同じ丸めを通す
-    return predictLaunch(getSnapshot(), quantizeLaunch(command));
+    const q = quantizeLaunch(command);
+    if (gravity && gravity.active()) return predictLaunch(getSnapshot(), q, gravity.flight());
+    return predictLaunch(getSnapshot(), q);
+  }
+
+  function submitGravity(command: GravityCommand): GravityResult {
+    if (!gravity) return { accepted: false, reason: 'disabled' };
+    const result = gravity.submit(command, tick, over);
+    if (result.accepted) snapshotCache = null;
+    return result;
   }
 
   function exportState(): SimulationState {
@@ -456,8 +505,18 @@ function build(seed: number, setup: SimulationSetup | undefined, saved: Simulati
       queue: [queue[0], queue[1], queue[2]],
       inputLog: inputLog.map((i) => ({ ...i })),
       stats: { ...stats },
+      gravity: gravity ? gravity.exportState() : null,
     };
   }
 
-  return { getSnapshot, submitLaunch, stepFixed, predict, getInputLog: () => inputLog, exportState };
+  return {
+    getSnapshot,
+    submitLaunch,
+    stepFixed,
+    predict,
+    getInputLog: () => inputLog,
+    submitGravity,
+    getGravityLog: () => gravity?.log ?? [],
+    exportState,
+  };
 }

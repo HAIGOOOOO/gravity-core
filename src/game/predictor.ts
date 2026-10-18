@@ -13,6 +13,7 @@ import {
   SPEED_MIN,
   TIER_RADIUS,
 } from './constants';
+import type { FlightModel } from './gravity';
 import { stepFree, type Mover } from './physics';
 
 // 丸め（quantizeLaunch）で速さは最大 √2/2 ≈ 0.71 ずれるので、それを越える余裕を持たせる
@@ -61,8 +62,11 @@ export function launchRejectReason(snapshot: GameSnapshot, command: LaunchComman
 /**
  * 今の盤面でこの射出をした場合の予測を返す。
  * 待ち時間中（cooldown）でも線は返す。照準は待ち時間中に始められるため。
+ *
+ * @param flight 重力操作が効いているときの進め方。井戸と渦で曲がる道すじを出す。
+ *   山が動いている（uncertain）ときも道すじは全長出す（撃った天体の動きは計算できる）。当たり先だけ答えない。
  */
-export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): Prediction {
+export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand, flight?: FlightModel): Prediction {
   const reason = launchRejectReason(snapshot, command);
   if (reason !== null && reason !== 'cooldown') {
     return { valid: false, rejectReason: reason, points: [], end: 'timeLimit', hitBodyId: null, willMerge: false };
@@ -76,6 +80,7 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): P
     vx: command.vx,
     vy: command.vy,
   };
+  const uncertain = flight?.uncertain === true;
   const ticks = Math.round(PREDICT_SECONDS / DT);
   const sampleEvery = Math.max(1, Math.round(PREDICT_SAMPLE_SECONDS / DT));
   const points: PathPoint[] = [{ x: shot.x, y: shot.y, t: 0 }];
@@ -84,7 +89,8 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): P
   let willMerge = false;
 
   for (let i = 1; i <= ticks && end === 'timeLimit'; i++) {
-    stepFree(shot);
+    if (flight) flight.step(shot);
+    else stepFree(shot);
     for (const b of snapshot.bodies) {
       const reach = b.radius + radius;
       const dx = b.x - shot.x;
@@ -100,5 +106,8 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand): P
     if (i % sampleEvery === 0 || end !== 'timeLimit') points.push({ x: shot.x, y: shot.y, t: i * DT });
   }
 
-  return { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points, end, hitBodyId, willMerge };
+  const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points };
+  // 山が動いているときは、線と終わり方は出すが「何に当たるか」は答えない（終点は「不確か」の見た目で描く）
+  if (uncertain) return { ...base, end, hitBodyId: null, willMerge: false, uncertain: true };
+  return { ...base, end, hitBodyId, willMerge };
 }
