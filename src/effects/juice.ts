@@ -1,29 +1,31 @@
-import type { GameEvent } from '../contracts/game';
+import type { GameEvent, GameSnapshot } from '../contracts/game';
 import { LIMIT_RADIUS } from '../game/constants';
 import { createJuiceInk } from './juice-ink';
 import { drawLocalLayer } from './juice-local';
 import { drawWideLayer } from './juice-wide';
 import { blankBurst, burstFromEvent, burstLife, JUICE_CAP, juiceRandom, juiceTimeScale, layerCount, LAYER_ENDS, pulse } from './juice-model';
 import type { EffectTheme } from './theme';
+import { createChainOrigins } from './juice-chain';
 
 // 空間→物体→破片→数字。文字を光と煙の下へ埋めない。
-const DRAW_ORDER = [28, 29, 33, 34, 38, 41, 3, 2, 1, 4, 5, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 22,
-  23, 25, 26, 27, 30, 31, 32, 35, 36, 37, 39, 42, 19, 20, 21, 24, 40];
+const DRAW_ORDER = [28, 29, 33, 34, 38, 41, 3, 2, 1, 4, 5, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 22,
+  23, 25, 26, 27, 30, 31, 32, 35, 36, 37, 39, 42, 17, 18, 19, 20, 21, 24, 40];
 
 export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
   const bursts = Array.from({ length: JUICE_CAP }, blankBurst);
   const ink = createJuiceInk(theme);
   let reduced = false, original: string | null = null;
-  let previous = { x: 0, y: 0 };
+  const origins = createChainOrigins();
   const restore = () => { if (original !== null) target.style.transform = original; original = null; };
   return {
     get count(): number { return bursts.filter(b => b.active).length; },
     get layers(): number { return bursts.reduce((n, b) => b.active ? Math.max(n, layerCount(b.chain, b.nova)) : n, 0); },
-    handle(event: GameEvent): void {
+    handle(event: GameEvent, snapshot: GameSnapshot): void {
       if (event.kind !== 'merge' && event.kind !== 'supernova') return;
       // 固定枠が埋まったら古い余韻を譲り、新しい出来事の瞬間を残す。
       const slot = bursts.find(b => !b.active) ?? bursts.reduce((a, b) => a.age > b.age ? a : b);
-      Object.assign(slot, burstFromEvent(event, previous)); previous = { x: slot.x, y: slot.y };
+      Object.assign(slot, burstFromEvent(event, origins.receive(event)));
+      slot.neighbors = snapshot.bodies.filter(body => !event.bodyIds?.includes(body.id)).slice(0, 16);
       if (original === null && !reduced) original = target.style.transform;
     },
     update(seconds: number): void {
@@ -62,7 +64,7 @@ export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
         for (const id of DRAW_ORDER) {
           if (id > count || b.age > LAYER_ENDS[id - 1]) continue;
           ctx.save();
-          if (id < 19 || id > 21) { ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS - 12, 0, Math.PI * 2); ctx.clip(); }
+          if (![19, 20, 21, 24, 40].includes(id)) { ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS - 12, 0, Math.PI * 2); ctx.clip(); }
           ctx.translate(b.x, b.y);
           if (id <= 22) drawLocalLayer(id, ctx, b, ink); else drawWideLayer(id, ctx, b, ink);
           ctx.restore();
@@ -72,6 +74,6 @@ export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
     },
     timeScale(): number { return bursts.reduce((scale, b) => Math.min(scale, juiceTimeScale(b, reduced)), 1); },
     setReduced(on: boolean): void { reduced = on; if (on) restore(); },
-    clear(): void { bursts.forEach(b => { b.active = false; }); previous = { x: 0, y: 0 }; restore(); },
+    clear(): void { bursts.forEach(b => { b.active = false; }); origins.clear(); restore(); },
   };
 }

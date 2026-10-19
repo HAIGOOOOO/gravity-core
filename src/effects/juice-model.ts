@@ -1,4 +1,4 @@
-import type { GameEvent, Tier } from '../contracts/game';
+import type { BodyView, GameEvent, Tier } from '../contracts/game';
 import { TIER_RADIUS } from '../game/constants';
 
 export const JUICE_CAP = 8;
@@ -11,21 +11,22 @@ export const LAYER_NAMES = [
   '得点の到着反動', '核のコロナへの応答',
   '合体間を結ぶ放電', '連鎖倍率の分裂と着地', '接続線を走る光点', '色のずれた衝撃の影',
   '局所空間のひだ', '背景を落とす窓', '核へ巻き込む星', '限界リング手前の波',
-  '連鎖の鋸歯の王冠', '残光を留める軌道結び', '回転する光の扇', '背景の重力の波紋',
+  '連鎖の鋸歯の王冠', '残光を留める軌道結び', '回転する光の扇', '周囲の天体へ伝わる重力波',
   '衝撃方向の稲妻', '縦に裂ける放射柱', '破片の破裂光', '盤面の縁の反射',
   '反転する明暗の輪郭', '最大連鎖の巨大な倍率', '核から伸びる引力の糸', '爆心へ戻る尾',
   '向きのあるカメラ反動', '溜めとヒットストップと解放',
 ] as const;
 // 見えない時期の図形まで描かず、短い層を次の層へ渡す。
 export const LAYER_ENDS = [.11, .19, .22, .23, .195, .195, .39, .775, .51, .435, .775, .775, .775, 1.05, .98, .40, .42, .64, .32, .97, 1.24, .63,
-  .48, .82, .775, .30, .53, .465, .775, .77, .56, 1.1, .7, .86, .29, .39, .45, .53, .25, 1, .69, 1.15] as const;
+  .48, .82, .775, .30, .53, .465, .775, .77, .56, 1.1, .7, 1.04, .29, .39, .45, .68, .25, 1, .69, 1.15] as const;
 
 export type JuiceBurst = {
   active: boolean; age: number; x: number; y: number; px: number; py: number;
   tier: Tier; result: Tier; chain: number; nova: boolean; seed: number; score: number;
+  neighbors: readonly BodyView[];
 };
 export function blankBurst(): JuiceBurst {
-  return { active: false, age: 0, x: 0, y: 0, px: 0, py: 0, tier: 0, result: 1, chain: 1, nova: false, seed: 0, score: 0 };
+  return { active: false, age: 0, x: 0, y: 0, px: 0, py: 0, tier: 0, result: 1, chain: 1, nova: false, seed: 0, score: 0, neighbors: [] };
 }
 export function juiceRandom(seed: number, index: number): number {
   let n = Math.imul(seed ^ (index * 374761393), 668265263);
@@ -41,7 +42,7 @@ export function burstFromEvent(event: GameEvent, previous: { x: number; y: numbe
   return { active: true, age: 0, x: event.x ?? 0, y: event.y ?? 0, px: previous.x, py: previous.y,
     tier: event.sourceTier ?? 0, result: event.resultTier ?? event.sourceTier ?? 0,
     chain: Math.max(1, Math.min(5, event.chain ?? 1)), nova: event.kind === 'supernova',
-    seed: event.sequence, score: event.scoreDelta ?? 0 };
+    seed: event.sequence, score: event.scoreDelta ?? 0, neighbors: [] };
 }
 export function pulse(t: number, start: number, duration: number): number {
   const p = (t - start) / duration;

@@ -11,7 +11,7 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
       ctx.globalAlpha = pulse(t, 0.03, 0.45) * 0.8; ctx.strokeStyle = '#79eaff'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(b.px - b.x, b.py - b.y); ctx.quadraticCurveTo(-b.x * 0.35, -b.y * 0.35, 0, 0); ctx.stroke(); break;
     case 24: {
-      ctx.globalAlpha = pulse(t, 0.12, 0.7); ctx.translate(b.chain >= 5 ? -r * 1.5 : 0, r + 55); ctx.font = `900 ${b.chain >= 5 ? 32 : 42 + b.chain * 4}px ${ink.theme.font}`;
+      ctx.globalAlpha = pulse(t, 0.12, 0.7); ctx.translate(-b.x - (b.chain >= 5 ? 210 : 0), -b.y - 354); ctx.font = `900 ${b.chain >= 5 ? 32 : 42 + b.chain * 4}px ${ink.theme.font}`;
       ctx.textAlign = 'center'; ctx.fillStyle = '#ffbc68'; ctx.strokeStyle = '#060a15'; ctx.lineWidth = 6;
       const label = b.chain >= 5 ? `${b.chain}連鎖` : `×${Math.min(CHAIN_MULT_MAX, 1 + (b.chain - 1) * CHAIN_STEP).toFixed(1)}`;
       const offset = Math.max(0, 1 - (t - 0.12) / 0.12) * 18; ctx.save(); ctx.beginPath(); ctx.rect(-200, -100, 400, 90); ctx.clip(); ctx.strokeText(label, -offset, 0); ctx.fillText(label, -offset, 0); ctx.restore();
@@ -25,24 +25,43 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
       ctx.globalAlpha = pulse(t, 0.03, 0.5) * 0.45; ctx.rotate(angle); ctx.strokeStyle = color; ctx.lineWidth = 1;
       for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(-spread, i * 16); ctx.quadraticCurveTo(0, i * 5 - 28 * (1 - p), spread, i * 16); ctx.stroke(); } break;
     case 28:
-      ctx.globalAlpha = pulse(t, 0.015, 0.45) * 0.23; ink.glow(ctx, 0, 0, spread * 2, '#060a15'); break;
+      // 大きい連鎖ほど周囲の明度を一度落とし、解放の明るさとの差を作る。
+      ctx.globalAlpha = pulse(t, 0.015, 0.26) * (b.chain >= 5 || b.nova ? 0.48 : 0.2);
+      ctx.fillStyle = '#060a15'; ctx.beginPath(); ctx.arc(-b.x, -b.y, LIMIT_RADIUS, 0, TURN); ctx.fill(); break;
     case 29:
       ctx.translate(-b.x, -b.y);
       for (let i = 0; i < 22; i++) { const a = random(i) * TURN, d = 90 + random(i + 30) * 210, q = Math.max(0, 1 - p * 1.8); line(ctx, Math.cos(a) * d * q, Math.sin(a) * d * q, Math.cos(a) * (d * q + 14), Math.sin(a) * (d * q + 14), 1, color); } break;
-    case 30:
-      ctx.translate(-b.x, -b.y); ctx.globalAlpha = pulse(t, 0.12, 0.65) * 0.7;
-      for (let i = 0; i < 8; i++) { const a = angle + i * 0.7, d = LIMIT_RADIUS - 25 - Math.sin(i + t * 15) * 5; arc(ctx, d, 2, '#79eaff', a, a + 0.15); } break;
+    case 30: {
+      const q = releaseProgress(t, 0.24, 0.46); if (t < 0.24 || q >= 1) break;
+      ctx.globalAlpha = Math.sin(q * Math.PI) * 0.7;
+      const distance = Math.hypot(b.x, b.y) + LIMIT_RADIUS;
+      arc(ctx, r + q * distance, 18 * (1 - q) + 2, '#79eaff', angle, angle + 5.6);
+      break;
+    }
     case 31:
       ctx.globalAlpha = pulse(t, 0.08, 0.48) * 0.7; ctx.rotate(angle - p); ctx.fillStyle = '#ffbc68';
       for (let i = 0; i < 9; i++) { const a = i / 9 * TURN, d = spread * 0.9; ctx.beginPath(); ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d); ctx.lineTo(Math.cos(a + 0.04) * (d + r * 0.3), Math.sin(a + 0.04) * (d + r * 0.3)); ctx.lineTo(Math.cos(a + 0.1) * d, Math.sin(a + 0.1) * d); ctx.fill(); } break;
     case 32:
       ctx.globalAlpha = pulse(t, 0.4, 0.7) * 0.65; ctx.rotate(angle); ctx.scale(1, 0.5); arc(ctx, r * (1.5 - p * 0.7), 3, color, t * 2, t * 2 + 4.7); break;
-    case 33:
-      ctx.globalAlpha = pulse(t, 0.1, 0.6) * 0.17; ctx.fillStyle = color; ctx.rotate(angle + p * 2);
-      for (let i = 0; i < 4; i++) { ctx.rotate(1.63); ctx.beginPath(); ctx.moveTo(r * 0.3, 0); ctx.lineTo(spread * 1.7, -spread * 0.35); ctx.lineTo(spread * 1.6, spread * 0.12); ctx.fill(); } break;
+    case 33: {
+      const q = releaseProgress(t, 0.18, 0.46); if (t < 0.18 || q >= 1) break;
+      ctx.globalAlpha = Math.sin(q * Math.PI) * (b.chain >= 5 || b.nova ? 0.28 : 0.16);
+      ctx.fillStyle = b.chain >= 5 || b.nova ? '#ffbc68' : color; ctx.rotate(Math.atan2(-b.y, -b.x) + q * 0.6);
+      // 四段目は一方向の太い扇。最大段では盤面を横断する膜へ広がる。
+      const reach = b.chain >= 5 || b.nova ? LIMIT_RADIUS * 2 : LIMIT_RADIUS * 1.25;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, reach * Math.sin(q * Math.PI / 2), -0.75, 0.75); ctx.closePath(); ctx.fill();
+      break;
+    }
     case 34:
-      ctx.translate(-b.x, -b.y); ctx.globalAlpha = pulse(t, 0.16, 0.7) * 0.2;
-      for (let i = 0; i < 3; i++) { ctx.save(); ctx.scale(1, 0.8); arc(ctx, 90 + i * 45 + p * 80, 1.5, color, angle, angle + 4.2); ctx.restore(); } break;
+      ctx.translate(-b.x, -b.y);
+      for (const body of b.neighbors) {
+        const arrival = 0.2 + Math.hypot(body.x - b.x, body.y - b.y) / 1100;
+        const strength = pulse(t, arrival, 0.26); if (!strength) continue;
+        ctx.save(); ctx.translate(body.x, body.y); ctx.globalAlpha = strength * 0.8;
+        arc(ctx, body.radius + 4 + strength * 5, 3 + strength * 4, '#ffbc68', angle, angle + 5.3);
+        ctx.globalAlpha = strength * 0.18; ink.glow(ctx, 0, 0, body.radius * 1.6, color); ctx.restore();
+      }
+      break;
     case 35:
       ctx.globalAlpha = pulse(t, 0.07, 0.22); ctx.strokeStyle = white; ctx.lineWidth = 2;
       for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.moveTo(0, 0); const a = angle + j * 2.2; for (let i = 1; i <= 5; i++) { const d = i * spread / 4, offset = (random(i + j * 8) - 0.5) * r; ctx.lineTo(Math.cos(a) * d - Math.sin(a) * offset, Math.sin(a) * d + Math.cos(a) * offset); } ctx.stroke(); } break;
@@ -51,14 +70,18 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
       ctx.rotate(Math.atan2(-b.y, -b.x) + Math.PI / 2); ctx.scale(0.16 + p * 0.2, 3.5); ink.glow(ctx, 0, 0, spread, white); break;
     case 37:
       for (let i = 0; i < 9; i++) { const a = random(i) * TURN; ctx.globalAlpha = pulse(t, 0.13 + random(i + 10) * 0.2, 0.12) * 0.9; ink.glow(ctx, Math.cos(a) * spread, Math.sin(a) * spread, 8 + random(i + 20) * 16, '#ffbc68'); } break;
-    case 38:
-      ctx.translate(-b.x, -b.y); ctx.globalAlpha = pulse(t, 0.11, 0.42) * 0.5;
-      for (let i = 0; i < 4; i++) { const a = angle + i * 1.6; ctx.save(); ctx.translate(Math.cos(a) * 290, Math.sin(a) * 290); ctx.rotate(a); line(ctx, -10, -30, 0, 30, 6, color); ctx.restore(); } break;
+    case 38: {
+      const q = releaseProgress(t, 0.3, 0.38); if (t < 0.3 || q >= 1) break;
+      ctx.translate(-b.x, -b.y); ctx.globalAlpha = Math.sin(q * Math.PI) * 0.75;
+      // 最大段の波が外周へ達した後だけ、太い反射が周回する。
+      arc(ctx, LIMIT_RADIUS - 20 - q * 8, 15 * (1 - q) + 3, '#ffbc68', angle + q * 2, angle + q * 2 + 5.8);
+      break;
+    }
     case 39:
       ctx.globalAlpha = pulse(t, 0.06, 0.19); arc(ctx, r * (0.8 + p), 8, '#060a15'); arc(ctx, r * (0.83 + p), 2, white); break;
     case 40: {
       const q = releaseProgress(t, 0.2, 0.8); if (t < 0.2 || q >= 1) break;
-      ctx.globalAlpha = (1 - q) * 0.9; ctx.translate(-b.x * 0.3, 110 - b.y * 0.3); ctx.rotate(-0.06 + Math.sin(q * 20) * 0.015 * (1 - q)); ctx.font = `900 ${90 + Math.sin(q * Math.PI) * 18}px ${ink.theme.font}`; ctx.textAlign = 'center'; ctx.lineWidth = 8; ctx.strokeStyle = '#060a15'; ctx.fillStyle = '#ffbc68'; ctx.strokeText(`×${CHAIN_MULT_MAX.toFixed(1)}`, 0, 0); ctx.fillText(`×${CHAIN_MULT_MAX.toFixed(1)}`, 0, 0); break;
+      ctx.globalAlpha = (1 - q) * 0.9; ctx.translate(-b.x + 30, -b.y - 350); ctx.rotate(-0.04 + Math.sin(q * 20) * 0.015 * (1 - q)); ctx.font = `900 ${72 + Math.sin(q * Math.PI) * 12}px ${ink.theme.font}`; ctx.textAlign = 'center'; ctx.lineWidth = 8; ctx.strokeStyle = '#060a15'; ctx.fillStyle = '#ffbc68'; ctx.strokeText(`×${CHAIN_MULT_MAX.toFixed(1)}`, 0, 0); ctx.fillText(`×${CHAIN_MULT_MAX.toFixed(1)}`, 0, 0); break;
     }
     case 41:
       ctx.globalAlpha = pulse(t, 0.04, 0.65) * 0.45; ctx.strokeStyle = '#79eaff'; ctx.lineWidth = 1;

@@ -53,7 +53,7 @@ export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: Jui
       ctx.rotate(angle + p * 2); ctx.globalAlpha *= 0.75;
       for (let i = 0; i < 3; i++) { ctx.save(); ctx.rotate(i * 2.1); ctx.strokeStyle = color; ctx.lineWidth = 3 - i * 0.6; ctx.beginPath(); ctx.moveTo(r, 0); ctx.bezierCurveTo(spread, -r, spread * 0.3, r * 2, -r * 0.4, spread * 0.5); ctx.stroke(); ctx.restore(); } break;
     case 14:
-      ctx.globalAlpha = pulse(t, 0.15, 0.9) * 0.35;
+      ctx.globalAlpha = pulse(t, 0.15, 0.9) * 0.14;
       for (let i = 0; i < 6; i++) { const a = random(i) * TURN; ink.glow(ctx, Math.cos(a) * spread * 0.45, Math.sin(a) * spread * 0.45, r * (0.6 + p), '#060a15'); } break;
     case 15:
       ctx.globalAlpha = pulse(t, 0.18, 0.8) * 0.5; ctx.rotate(angle + p); ctx.scale(1, 0.38); arc(ctx, spread * 0.8, 2, color, p * 4, p * 4 + 3.5); break;
@@ -77,7 +77,9 @@ export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: Jui
       line(ctx, x - q * 24, y + 10, x, y, 3, color); ctx.translate(x, y); ctx.scale(1 - q * 0.55, 1 - q * 0.55); ctx.globalAlpha = 1 - q * q; ctx.font = `900 ${30 + b.chain * 4}px ${ink.theme.font}`; ctx.textAlign = 'center'; ctx.fillStyle = white; ctx.strokeStyle = '#060a15'; ctx.lineWidth = 4; ctx.strokeText(signedNumber(b.score), 0, 0); ctx.fillText(signedNumber(b.score), 0, 0); break;
     }
     case 21:
-      ctx.globalAlpha = pulse(t, 0.94, 0.3) * 0.65; ink.glow(ctx, 360 - b.x, -400 - b.y, r * 1.1, color); break;
+      ctx.globalAlpha = pulse(t, 0.94, 0.18) * 0.8;
+      ctx.translate(360 - b.x, -400 - b.y); arc(ctx, 12 + releaseProgress(t, 0.94, 0.18) * 15, 3, color);
+      line(ctx, -16, 0, 16, 0, 2, white); break;
     case 22:
       ctx.translate(-b.x, -b.y); ctx.globalAlpha = pulse(t, 0.13, 0.5) * 0.5; arc(ctx, 53 + p * 12, 3, color, angle - 0.4, angle + 0.8); break;
   }

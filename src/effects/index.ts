@@ -40,10 +40,9 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       Object.assign(theme, readTheme(canvas));
     },
     handleEvents(batch, snapshot) {
-      void snapshot;
       for (const event of batch) {
         if (event.kind === 'merge' || event.kind === 'supernova') {
-          juice.handle(event);
+          juice.handle(event, snapshot);
         } else events.handle(event);
       }
     },
