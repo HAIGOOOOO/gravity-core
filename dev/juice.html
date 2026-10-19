@@ -9,12 +9,14 @@
   <button data-chain="1">連鎖1</button><button data-chain="2">連鎖2</button><button data-chain="3">連鎖3</button><button data-chain="4">連鎖4</button><button data-chain="5">連鎖5</button>
   <button id="giant">巨大惑星の合体</button><button id="nova">超新星</button><button id="ladder">1→5を続ける</button>
   <button id="record">比較動画を作る</button><button id="filmstrip">1コマごとの画像</button><button id="stress">毎秒10回を測る</button><button id="stop">停止</button>
+  <label><input type="checkbox" id="sound" checked>効果音</label><button id="verify-sound">効果音を測る・保存する</button>
   <label><input type="checkbox" id="reduced">動きを減らす</label><label><input type="checkbox" id="compare" checked>前回と並べる</label>
 </div>
 <p id="readout" role="status">同じ盤面で、左は前回・右は今回。ボタンで出来事を起こします。</p>
+<pre id="sound-report" role="status"></pre><nav id="sound-files"></nav>
 <canvas id="view" width="1120" height="600" role="img" aria-label="同じ盤面の前回と今回の演出"></canvas>
 <p><label>時刻 <input id="timeline" type="range" min="0" max="160" value="0"><output id="time">0.000秒</output></label>　<a id="download" hidden>比較動画を保存</a></p>
 <div id="frames"></div>
 <details><summary>重ねている層</summary><ol id="layers"></ol></details>
-<p>合体の前後は本物のゲーム計算で作り、連鎖の段だけ選んで比較します。ゲーム本体も同じ演出を使います。時間の停止・スローは本番の進行役に依頼します。照準と限界リングを見ながら確認してください。</p>
+<p>合体の前後は本物のゲーム計算で作り、連鎖の段だけ選んで比較します。ゲーム本体も同じ演出と効果音を使います。時間の停止・スローは本番の進行役に依頼します。比較動画は音なし、効果音はWAVで保存できます。</p>
 <script type="module" src="../src/dev/juice-demo.ts"></script></body></html>

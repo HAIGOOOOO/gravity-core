@@ -73,12 +73,15 @@ export function createEventEffects(pool: EffectPool, theme: EffectTheme) {
       const color = TIER_COLOR[source];
       switch (event.kind) {
         case 'launch':
-          ring(x, y, TIER_RADIUS[source], TIER_RADIUS[source] + VISUAL.launchSpread, 5, color, VISUAL.launchSeconds);
+          for (let i = 0; i < 3; i++) ring(x, y, TIER_RADIUS[source] + i * 5,
+            TIER_RADIUS[source] + VISUAL.launchSpread * (3 - i * 0.55), 9 - i * 2, i ? color : theme.text, VISUAL.launchSeconds + i * 0.04);
+          sparks(x, y, 24, 480, color, 0.32);
           break;
         case 'land': {
           const strength = impactStrength(event.impactSpeed ?? 0);
-          ring(x, y, 4, 18 + strength * 34, 2 + strength * 3, color, 0.18 + strength * 0.08);
-          sparks(x, y, Math.round(5 + strength * 15), 150 + strength * 350, color, 0.25);
+          ring(x, y, 4, 30 + strength * 90, 5 + strength * 7, theme.text, 0.18 + strength * 0.1);
+          ring(x, y, 8, 25 + strength * 65, 3 + strength * 5, color, 0.25 + strength * 0.15);
+          sparks(x, y, Math.round(12 + strength * 36), 250 + strength * 550, color, 0.35);
           break;
         }
         case 'merge':

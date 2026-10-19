@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blankBurst, burstFromEvent, juiceRandom, juiceTimeScale, layerCount } from './juice-model';
+import { blankBurst, burstFromEvent, juiceRandom, juiceTimeScale, layerCount, releaseTime, visualAge } from './juice-model';
 
 describe('多層の合体の構成', () => {
   it('連鎖で構成が増え、最小22層・最大44層になる', () => {
@@ -15,11 +15,29 @@ describe('多層の合体の構成', () => {
   it('小合体は止めず、大合体も止める長さを足し合わせない形で返す', () => {
     const b = { ...blankBurst(), active: true, age: 0.07 };
     expect(juiceTimeScale(b)).toBe(1);
-    b.chain = 5;
+    b.chain = 5; b.age = 0.13;
     expect(juiceTimeScale(b)).toBe(0);
     expect(juiceTimeScale(b, true)).toBe(1);
-    b.age = 0.3;
+    b.age = 0.4;
     expect(juiceTimeScale(b)).toBe(1);
+  });
+  it('段が上がると溜めが伸び、解放の瞬間を同じ描画位相へそろえる', () => {
+    const b = blankBurst();
+    const releases = [1, 2, 3, 4, 5].map(chain => releaseTime({ ...b, chain }));
+    expect(releases).toEqual([0.065, 0.075, 0.1, 0.125, 0.16]);
+    for (const chain of [1, 3, 5]) {
+      const age = releaseTime({ ...b, chain });
+      expect(visualAge({ ...b, chain, age })).toBeCloseTo(0.075);
+      expect(visualAge({ ...b, chain, age: age + 0.2 })).toBeCloseTo(0.275);
+    }
+  });
+  it('最大段・超新星の停止を67ms以内とし、解放後は必ず通常時間へ戻す', () => {
+    for (const nova of [false, true]) {
+      const b = { ...blankBurst(), active: true, chain: 5, nova };
+      const stopped = Array.from({ length: 1000 }, (_, i) => juiceTimeScale({ ...b, age: i / 1000 })).filter(n => n === 0).length;
+      expect(stopped).toBeLessThanOrEqual(67); expect(stopped).toBeGreaterThanOrEqual(49);
+      expect(juiceTimeScale({ ...b, age: 0.5 })).toBe(1);
+    }
   });
   it('得点と合体の階級は受け取ったイベントだけから作る', () => {
     const b = burstFromEvent({ kind: 'merge', sequence: 100, tick: 3, x: 42, y: -50,

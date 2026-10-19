@@ -1,6 +1,6 @@
 import type { EffectTheme } from './theme';
 import type { JuiceBurst } from './juice-model';
-import { burstRadius, juiceRandom, releaseProgress } from './juice-model';
+import { burstRadius, juiceRandom, releaseProgress, visualAge } from './juice-model';
 import { TIER_COLOR } from '../game/constants';
 
 export const TURN = Math.PI * 2;
@@ -30,7 +30,7 @@ export function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: 
   ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
 }
 export function burstValues(b: JuiceBurst) {
-  const p = releaseProgress(b.age), r = burstRadius(b);
-  return { t: b.age, p, r, spread: r * (0.8 + 3.4 * (1 - (1 - p) ** 3)),
+  const t = visualAge(b), p = releaseProgress(t), r = burstRadius(b);
+  return { t, p, r, spread: r * (0.8 + 3.4 * (1 - (1 - p) ** 3)),
     color: TIER_COLOR[b.result], angle: juiceRandom(b.seed, 1) * TURN, white: '#f7f7e8' };
 }

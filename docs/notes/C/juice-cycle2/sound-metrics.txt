@@ -1,0 +1,9 @@
+launch: 6層 / peak 0.210 / RMS 0.0102 / 割れ 0
+land: 3層 / peak 0.155 / RMS 0.0063 / 割れ 0
+merge: 9層 / peak 0.409 / RMS 0.0220 / 割れ 0
+supernova: 8層 / peak 0.484 / RMS 0.0460 / 割れ 0
+overLimitStart: 2層 / peak 0.111 / RMS 0.0067 / 割れ 0
+overLimitEnd: 2層 / peak 0.090 / RMS 0.0082 / 割れ 0
+gameOver: 3層 / peak 0.079 / RMS 0.0107 / 割れ 0
+混在30回/秒×2秒: 最大12/12音 / 成分欠け0 / 再利用358 / 全ch peak 0.492 / 割れ0 / 終了後0音
+音量0: peak 0

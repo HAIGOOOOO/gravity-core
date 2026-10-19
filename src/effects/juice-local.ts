@@ -12,7 +12,10 @@ export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: Jui
   switch (id) {
     case 1:
       if (t > 0.11) break;
-      for (const side of [-1, 1]) { ctx.globalAlpha = 1 - t / 0.11; drawBody(ctx, b.tier, side * r * (1 - t / 0.11), side * r * 0.2, TIER_RADIUS[b.tier] * (1 - t / 0.14)); }
+      for (const side of [-1, 1]) {
+        ctx.save(); ctx.translate(side * r * 0.45 * (1 - t / 0.11), 0); ctx.rotate(side < 0 ? Math.PI : 0);
+        ctx.globalAlpha = 1 - t / 0.11; arc(ctx, TIER_RADIUS[b.tier] * (1 - t / 0.14), 4, color, -1.3, 1.3); ctx.restore();
+      }
       break;
     case 2:
       ctx.globalAlpha = pulse(t, 0, 0.19);
@@ -39,10 +42,10 @@ export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: Jui
       for (let i = 0; i <= 30; i++) { const a = i / 30 * TURN, d = spread * (0.9 + 0.12 * Math.sin(a * 5 + angle)); ctx.lineTo(Math.cos(a) * d, Math.sin(a) * d); } ctx.stroke(); break;
     case 10:
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = pulse(t, 0.075, 0.36);
-      for (let i = 0; i < 7; i++) { ctx.save(); ctx.rotate(random(i) * TURN); ctx.fillStyle = i % 2 ? white : color; ctx.beginPath(); ctx.moveTo(r * 0.4, -5); ctx.lineTo(spread * (1.3 + random(i + 8)), 0); ctx.lineTo(r, 7); ctx.fill(); ctx.restore(); } break;
+      for (let i = 0; i < 7; i++) { ctx.save(); ctx.rotate(angle + i * 0.9 + random(i) * 0.15); ctx.fillStyle = i === 0 && b.chain > 1 ? white : color; ctx.beginPath(); ctx.moveTo(r * 0.4, -4 - b.chain * 2); ctx.lineTo(spread * (1.1 + b.chain * 0.12 + random(i + 8) * 0.3), 0); ctx.lineTo(r, 6 + b.chain * 2); ctx.fill(); ctx.restore(); } break;
     case 11:
       if (t < 0.07) break;
-      for (let i = 0; i < 18; i++) { const a = random(i) * TURN, d = spread * (0.35 + random(i + 30) * 0.9), s = 3 + random(i + 60) * 10;
+      for (let i = 0; i < 18; i++) { const a = random(i) * TURN, d = spread * (0.35 + random(i + 30) * 0.9), s = 5 + random(i + 60) * 14;
         ctx.save(); ctx.translate(Math.cos(a) * d, Math.sin(a) * d); ctx.rotate(a + p * 9); ctx.fillStyle = i % 3 ? color : white; ctx.beginPath(); ctx.moveTo(-s, -s * 0.3); ctx.lineTo(s * 0.7, -s * 0.6); ctx.lineTo(s * 0.2, s * 0.8); ctx.closePath(); ctx.fill(); ctx.restore(); } break;
     case 12:
       if (t < 0.07) break;
@@ -51,7 +54,7 @@ export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: Jui
     case 13:
       ctx.globalCompositeOperation = 'lighter';
       ctx.rotate(angle + p * 2); ctx.globalAlpha *= 0.75;
-      for (let i = 0; i < 3; i++) { ctx.save(); ctx.rotate(i * 2.1); ctx.strokeStyle = color; ctx.lineWidth = 3 - i * 0.6; ctx.beginPath(); ctx.moveTo(r, 0); ctx.bezierCurveTo(spread, -r, spread * 0.3, r * 2, -r * 0.4, spread * 0.5); ctx.stroke(); ctx.restore(); } break;
+      for (let i = 0; i < 3; i++) { ctx.save(); ctx.rotate(i * 2.1); ctx.strokeStyle = color; ctx.lineWidth = 8 + b.chain - i * 1.5; ctx.beginPath(); ctx.moveTo(r, 0); ctx.bezierCurveTo(spread, -r, spread * 0.3, r * 2, -r * 0.4, spread * 0.5); ctx.stroke(); ctx.restore(); } break;
     case 14:
       ctx.globalAlpha = pulse(t, 0.15, 0.9) * 0.14;
       for (let i = 0; i < 6; i++) { const a = random(i) * TURN; ink.glow(ctx, Math.cos(a) * spread * 0.45, Math.sin(a) * spread * 0.45, r * (0.6 + p), '#060a15'); } break;

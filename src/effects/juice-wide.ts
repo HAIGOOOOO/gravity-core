@@ -39,8 +39,14 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
       break;
     }
     case 31:
-      ctx.globalAlpha = pulse(t, 0.08, 0.48) * 0.7; ctx.rotate(angle - p); ctx.fillStyle = '#ffbc68';
-      for (let i = 0; i < 9; i++) { const a = i / 9 * TURN, d = spread * 0.9; ctx.beginPath(); ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d); ctx.lineTo(Math.cos(a + 0.04) * (d + r * 0.3), Math.sin(a + 0.04) * (d + r * 0.3)); ctx.lineTo(Math.cos(a + 0.1) * d, Math.sin(a + 0.1) * d); ctx.fill(); } break;
+      ctx.globalAlpha = pulse(t, 0.08, 0.48) * 0.8; ctx.rotate(angle - p * 0.35); ctx.fillStyle = '#ffbc68';
+      // 均等な細い王冠ではなく、間に暗い空間を残す厚い殻を割る。
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * TURN + random(i) * 0.2, width = 0.18 + random(i + 10) * 0.37;
+        const d = r * (1.1 + p * (2.5 + random(i + 20))), thick = r * (0.1 + random(i + 30) * 0.22) * (1 - p);
+        ctx.beginPath(); ctx.arc(0, 0, d + thick, a, a + width); ctx.arc(0, 0, d, a + width, a, true); ctx.closePath(); ctx.fill();
+      }
+      break;
     case 32:
       ctx.globalAlpha = pulse(t, 0.4, 0.7) * 0.65; ctx.rotate(angle); ctx.scale(1, 0.5); arc(ctx, r * (1.5 - p * 0.7), 3, color, t * 2, t * 2 + 4.7); break;
     case 33: {
@@ -58,7 +64,8 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
         const arrival = 0.2 + Math.hypot(body.x - b.x, body.y - b.y) / 1100;
         const strength = pulse(t, arrival, 0.26); if (!strength) continue;
         ctx.save(); ctx.translate(body.x, body.y); ctx.globalAlpha = strength * 0.8;
-        arc(ctx, body.radius + 4 + strength * 5, 3 + strength * 4, '#ffbc68', angle, angle + 5.3);
+        const facing = Math.atan2(b.y - body.y, b.x - body.x);
+        arc(ctx, body.radius + 1, 3 + strength * 3, '#ffbc68', facing - 0.6, facing + 0.6);
         ctx.globalAlpha = strength * 0.18; ink.glow(ctx, 0, 0, body.radius * 1.6, color); ctx.restore();
       }
       break;
@@ -74,7 +81,10 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
       const q = releaseProgress(t, 0.3, 0.38); if (t < 0.3 || q >= 1) break;
       ctx.translate(-b.x, -b.y); ctx.globalAlpha = Math.sin(q * Math.PI) * 0.75;
       // 最大段の波が外周へ達した後だけ、太い反射が周回する。
-      arc(ctx, LIMIT_RADIUS - 20 - q * 8, 15 * (1 - q) + 3, '#ffbc68', angle + q * 2, angle + q * 2 + 5.8);
+      for (let i = 0; i < 6; i++) {
+        const a = angle + i * 1.03 + q * 0.4;
+        arc(ctx, LIMIT_RADIUS - 65 - Math.sin(i + q * 3) * 10, 18 * (1 - q) + 3, '#ffbc68', a, a + 0.44);
+      }
       break;
     }
     case 39:
@@ -84,8 +94,13 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
       ctx.globalAlpha = (1 - q) * 0.9; ctx.translate(-b.x + 30, -b.y - 350); ctx.rotate(-0.04 + Math.sin(q * 20) * 0.015 * (1 - q)); ctx.font = `900 ${72 + Math.sin(q * Math.PI) * 12}px ${ink.theme.font}`; ctx.textAlign = 'center'; ctx.lineWidth = 8; ctx.strokeStyle = '#060a15'; ctx.fillStyle = '#ffbc68'; ctx.strokeText(`×${CHAIN_MULT_MAX.toFixed(1)}`, 0, 0); ctx.fillText(`×${CHAIN_MULT_MAX.toFixed(1)}`, 0, 0); break;
     }
     case 41:
-      ctx.globalAlpha = pulse(t, 0.04, 0.65) * 0.45; ctx.strokeStyle = '#79eaff'; ctx.lineWidth = 1;
-      for (let i = 0; i < 6; i++) { const a = random(i) * TURN; ctx.beginPath(); ctx.moveTo(-b.x, -b.y); ctx.quadraticCurveTo(-b.x * 0.5 + Math.cos(a) * spread, -b.y * 0.5 + Math.sin(a) * spread, Math.cos(a) * r, Math.sin(a) * r); ctx.stroke(); } break;
+      ctx.globalAlpha = pulse(t, 0.17, 0.45) * 0.3; ctx.fillStyle = '#79eaff';
+      for (let i = 0; i < 3; i++) {
+        const offset = (i - 1) * 45, width = 10 + random(i) * 18;
+        ctx.beginPath(); ctx.moveTo(-b.x, -b.y); ctx.quadraticCurveTo(-b.x * 0.5 + offset, -b.y * 0.5 - spread * 0.3, r * 0.5, 0);
+        ctx.quadraticCurveTo(-b.x * 0.5 + offset + width, -b.y * 0.5 - spread * 0.3, -b.x, -b.y); ctx.fill();
+      }
+      break;
     case 42:
       ctx.globalAlpha = pulse(t, 0.55, 0.6) * 0.75;
       for (let i = 0; i < 12; i++) { const a = random(i) * TURN, d = r * (5 - releaseProgress(t, 0.55, 0.65) * 4); line(ctx, Math.cos(a) * d, Math.sin(a) * d, Math.cos(a - 0.07) * (d + 15), Math.sin(a - 0.07) * (d + 15), 1.5, color); } break;
