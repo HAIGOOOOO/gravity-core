@@ -2,10 +2,8 @@
 
 「作業を続けて」と打たなくても、3 時間おきに Codex が自分で作業します。
 
-1. main を取り込む（`git pull origin main` か、自分の枝に main を merge）
-2. `tools\auto-codex\setup.cmd` をダブルクリック（1 回だけ。管理者は要らない）
-3. 止める時は `stop.cmd`
-
+- 作り方: Codex に「作業を続けて」と 1 回打つだけ。方針の版 8 を読んだ Codex が、この予約を自分で作ります（`setup.ps1 -Quiet`）。許可を聞かれたら「はい」。
+- 手で作る時: `setup.cmd` をダブルクリック。止める時: `stop.cmd`。
 - PC がついていてログインしている間だけ動きます（スリープ中は起きた時に 1 回）。
 - 前の回が終わっていなければ重ねません。記録は `tools\auto-codex\run_*.log`。
 - Codex の利用枠を使います。
