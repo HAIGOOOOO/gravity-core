@@ -71,6 +71,8 @@ type Body = {
   landed: boolean;
   overLimit: boolean;
   dead: boolean;
+  /** 重力弾（ゲージ成功）で撃たれ、まだ何にも触れていない */
+  charged?: boolean;
 };
 
 /** テストと開発用。通常のプレイでは渡さない。 */
@@ -264,9 +266,17 @@ function build(
       command.vy,
       false,
     );
+    // 重力弾は、重力操作が有効の計算だけで効く
+    if (command.charged && gravity) body.charged = true;
     cooldown = LAUNCH_COOLDOWN;
     stats.launches++;
-    inputLog.push({ tick, originAngleRadians: command.originAngleRadians, vx: command.vx, vy: command.vy });
+    inputLog.push({
+      tick,
+      originAngleRadians: command.originAngleRadians,
+      vx: command.vx,
+      vy: command.vy,
+      ...(body.charged ? { charged: true } : {}),
+    });
     emit({ kind: 'launch', x: body.x, y: body.y, bodyIds: [body.id], sourceTier: tier });
     snapshotCache = null;
     return { accepted: true, bodyId: body.id };
@@ -284,7 +294,7 @@ function build(
     const chainA = tick <= a.chainUntilTick + CHAIN_GRACE_TICKS ? a.chain : 0;
     const chainB = tick <= b.chainUntilTick + CHAIN_GRACE_TICKS ? b.chain : 0;
     const chain = Math.max(chainA, chainB) + 1;
-    gravity?.onMerge();
+    gravity?.onMerge(chain);
     stats.maxChain = Math.max(stats.maxChain, chain);
     const gained = Math.round(TIER_BASE_SCORE[a.tier] * chainMultiplier(chain));
     score += gained;
@@ -424,6 +434,10 @@ function build(
       if (b.touching) {
         if (!b.landed) {
           b.landed = true;
+          if (b.charged) {
+            b.charged = false;
+            gravity?.onChargedTouch(b.id, b.tier);
+          }
           emit({ kind: 'land', x: b.x, y: b.y, bodyIds: [b.id], sourceTier: b.tier, impactSpeed: before });
         }
         const keep = 1 - CONTACT_DAMPING * DT;

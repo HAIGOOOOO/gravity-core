@@ -12,10 +12,11 @@ import {
 import { defaultGravityTuning, type GravityTuning } from '../game/gravity';
 import { HEAT_STATE_COLOR, HEAT_STATE_LABEL, heatState } from '../shared/heat';
 
-export type LabMode = 'none' | 'grip' | 'well' | 'vortex';
+export type LabMode = 'none' | 'tap' | 'grip' | 'well' | 'vortex';
 
 export const MODE_LABEL: Record<LabMode, string> = {
   none: '今のまま（比較用）',
+  tap: '0. ワンポチ',
   grip: '1. 握る',
   well: '2. 井戸を置く',
   vortex: '3. 渦',
@@ -25,6 +26,7 @@ type SliderDef = { key: keyof GravityTuning; label: string; min: number; max: nu
 
 const SLIDERS: Record<LabMode, readonly SliderDef[]> = {
   none: [],
+  tap: [],
   grip: [
     { key: 'gripHeatPerSecond', label: '代償: 握っている間の熱量（毎秒）', min: 0, max: 60, step: 1 },
     { key: 'gripMaxHoldSeconds', label: '握れる最長の秒数', min: 0.3, max: 4, step: 0.1 },
@@ -59,6 +61,11 @@ function helpText(mode: LabMode, t: GravityTuning): string {
   switch (mode) {
     case 'none':
       return '重力操作なし。今のルールのまま遊べる（比べるため）。\n盤面を押して離すと落とす。押したまま引いて離すと投げる。';
+    case 'tap':
+      return (
+        '押している間、撃つ天体のまわりの輪が満ちては引く。満ちた瞬間に離すと「重力弾」。着いた所の近くの同じ天体を引き寄せる。\n' +
+        '合体するたびに力がたまる（連鎖ほど多く）。たまると核が光る。核を押すと「崩壊」: 山が締まり、同じ天体が寄り、熱量が下がる。キーは Space。'
+      );
     case 'grip':
       return (
         `「握る」ボタン（キーは Space）を押している間、山がゆるんでふくらむ。その間、熱量が毎秒 ${t.gripHeatPerSecond} 上がる。\n` +
@@ -90,6 +97,7 @@ export type PanelHandlers = {
   onVortex(dir: -1 | 0 | 1): void;
   onArmWell(): void;
   onAimGuide(on: boolean): void;
+  onCollapse(): void;
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
@@ -133,7 +141,7 @@ export function createPanel(tuning: GravityTuning, handlers: PanelHandlers) {
 
   // 上の列: 方式の切り替えと、盤面の用意
   const tabs = new Map<LabMode, HTMLButtonElement>();
-  for (const m of ['grip', 'well', 'vortex', 'none'] as const) {
+  for (const m of ['tap', 'grip', 'well', 'vortex', 'none'] as const) {
     const b = el('button', 'tab', MODE_LABEL[m]);
     b.type = 'button';
     b.addEventListener('click', () => handlers.onMode(m));
@@ -184,6 +192,12 @@ export function createPanel(tuning: GravityTuning, handlers: PanelHandlers) {
   wellButton.type = 'button';
   wellButton.style.touchAction = 'manipulation';
   wellButton.addEventListener('click', handlers.onArmWell);
+  const collapseButton = el('button', '', '崩壊');
+  collapseButton.type = 'button';
+  collapseButton.style.touchAction = 'manipulation';
+  collapseButton.addEventListener('click', handlers.onCollapse);
+  const burstGauge = el('span', 'gauge');
+  collapseButton.append(burstGauge);
   const leftButton = holdButton('⟲ 左へ回す', (on) => handlers.onVortex(on ? -1 : 0));
   const rightButton = holdButton('右へ回す ⟳', (on) => handlers.onVortex(on ? 1 : 0));
 
@@ -226,7 +240,7 @@ export function createPanel(tuning: GravityTuning, handlers: PanelHandlers) {
     for (const [m, b] of tabs) b.setAttribute('aria-pressed', String(m === mode));
     help.textContent = helpText(mode, tuning);
     actions.replaceChildren(
-      ...(mode === 'grip' ? [gripButton] : mode === 'well' ? [wellButton] : mode === 'vortex' ? [leftButton, rightButton] : []),
+      ...(mode === 'tap' ? [collapseButton] : mode === 'grip' ? [gripButton] : mode === 'well' ? [wellButton] : mode === 'vortex' ? [leftButton, rightButton] : []),
     );
     buildSliders();
   }
@@ -274,6 +288,17 @@ export function createPanel(tuning: GravityTuning, handlers: PanelHandlers) {
         : g.grip.squeezeLeftSeconds > 0
           ? `締まっている（あと ${g.grip.squeezeLeftSeconds.toFixed(1)} 秒）`
           : '握っていない';
+    } else if (mode === 'tap') {
+      const ready = g.burst.ready && g.collapseLeftSeconds === 0;
+      collapseButton.classList.toggle('on', ready);
+      collapseButton.classList.toggle('busy', !ready);
+      burstGauge.style.width = `${Math.round((g.burst.value / g.burst.max) * 100)}%`;
+      stateRow.textContent =
+        g.collapseLeftSeconds > 0
+          ? `崩壊している（あと ${g.collapseLeftSeconds.toFixed(1)} 秒）`
+          : ready
+            ? '崩壊できる（核を押す）'
+            : `崩壊の力 ${g.burst.value} / ${g.burst.max}`;
     } else if (mode === 'well') {
       wellButton.classList.toggle('on', armed);
       wellButton.disabled = g.well !== null || g.wellCharges <= 0;

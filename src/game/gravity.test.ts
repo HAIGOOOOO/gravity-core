@@ -160,3 +160,43 @@ describe('重力操作の途中の書き出しと復元', () => {
     }
   });
 });
+
+describe('ワンポチ（重力弾と崩壊）', () => {
+  it('重力弾は着いた所で、離れた同じ Tier を引き寄せて合体させる。ふつうの弾では合体しない', () => {
+    const merged = (charged: boolean) => {
+      // 核の真上に Tier 3、斜め下の核の表面に Tier 0。真上から Tier 0 を落とすと Tier 3 の上に乗る（触れない）
+      const sim = createSimulation(1, {
+        bodies: [{ tier: 3, x: 0, y: -76 }, { tier: 0, x: 47.9, y: -32.7 }],
+        queue: [0, 1, 1],
+      }, defaultGravityTuning());
+      sim.submitLaunch({ ...dropAt(-Math.PI / 2), charged });
+      let merges = 0;
+      for (let i = 0; i < 4 * TICK_HZ; i++) merges += sim.stepFixed().filter((e) => e.kind === 'merge').length;
+      return { merges, log: sim.getInputLog() };
+    };
+    const plain = merged(false);
+    const heavy = merged(true);
+    expect(heavy.log[0]?.charged).toBe(true);
+    expect(plain.log[0]?.charged).toBeUndefined();
+    expect(plain.merges).toBe(0);
+    expect(heavy.merges).toBe(1);
+  });
+
+  it('崩壊は、合体でためるまで使えず、使うと熱量が下がり、また 0 からためる', () => {
+    const sim = createSimulation(3, undefined, defaultGravityTuning());
+    expect(sim.submitGravity({ kind: 'collapse' })).toEqual({ accepted: false, reason: 'noCharge' });
+    const rng = createRng(4);
+    for (let t = 0; t < 120 * TICK_HZ && !sim.getSnapshot().gravity!.burst.ready; t++) {
+      if (t % 70 === 10) sim.submitLaunch(dropAt(rng() * Math.PI * 2));
+      sim.stepFixed();
+    }
+    const before = sim.getSnapshot();
+    expect(before.gravity!.burst.ready).toBe(true);
+    expect(sim.submitGravity({ kind: 'collapse' }).accepted).toBe(true);
+    for (let i = 0; i < TICK_HZ; i++) sim.stepFixed();
+    const after = sim.getSnapshot();
+    expect(after.gravity!.burst.value).toBe(0);
+    expect(after.heat).toBeLessThanOrEqual(Math.max(0, before.heat));
+    expect(sim.submitGravity({ kind: 'collapse' }).accepted).toBe(false);
+  });
+});

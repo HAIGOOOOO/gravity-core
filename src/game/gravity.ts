@@ -4,9 +4,17 @@
 // 何も操作していない間は active() が false を返し、simulation.ts は元の計算をそのまま使う。
 // そのため、重力操作を使わない限り、結果は今までと 1 tick も変わらない。
 
-import type { GravityCommand, GravityInput, GravityResult, GravityView, Tick, Tier } from '../contracts/game';
+import type { BodyId, GravityCommand, GravityInput, GravityResult, GravityView, Tick, Tier } from '../contracts/game';
 import {
   AIR_DAMPING,
+  BURST_MAX,
+  CHARGED_PULL_ACCEL,
+  CHARGED_PULL_RANGE,
+  CHARGED_PULL_SECONDS,
+  COLLAPSE_COOL_PER_SECOND,
+  COLLAPSE_GRAVITY,
+  COLLAPSE_PULL_RANGE,
+  COLLAPSE_SECONDS,
   CORE_RADIUS,
   DT,
   GRAVITY,
@@ -104,7 +112,10 @@ export function defaultGravityTuning(): GravityTuning {
 }
 
 /** 力を受ける天体。landed が false の物は「撃ってまだ何にも触れていない天体」。 */
-export type GravityBody = Mover & { tier: Tier; radius: number; landed: boolean };
+export type GravityBody = Mover & { id: BodyId; tier: Tier; radius: number; landed: boolean };
+
+/** 重力弾が着いた所。その天体へ、同じ Tier を引き寄せる */
+type Pulse = { bodyId: BodyId; tier: Tier; leftTicks: number };
 
 /** 予測用: 撃った天体を、今の重力操作のもとで 1 tick ずつ進める。 */
 export type FlightModel = {
@@ -202,6 +213,9 @@ export type GravityState = Readonly<{
   mergeProgress: number;
   dir: Dir;
   spin: number;
+  burst: number;
+  collapseLeft: number;
+  pulses: readonly Readonly<Pulse>[];
   log: readonly GravityInput[];
 }>;
 
@@ -215,6 +229,9 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
   let mergeProgress = saved?.mergeProgress ?? 0;
   let dir: Dir = saved?.dir ?? 0;
   let spin = saved?.spin ?? 0;
+  let burst = saved?.burst ?? 0;
+  let collapseLeft = saved?.collapseLeft ?? 0;
+  let pulses: Pulse[] = saved ? saved.pulses.map((p) => ({ ...p })) : [];
   const log: GravityInput[] = saved ? saved.log.map((i) => ({ ...i })) : [];
   // 締まっている間、各天体が引かれる相手（いちばん近い同じ Tier）を探すための作業用
   const partner: number[] = [];
@@ -253,6 +270,10 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
       case 'vortex':
         if (command.dir === dir) return { accepted: false, reason: 'noChange' };
         return { accepted: true };
+      case 'collapse':
+        if (collapseLeft > 0 || gripHeld) return { accepted: false, reason: 'busy' };
+        if (burst < BURST_MAX) return { accepted: false, reason: 'noCharge' };
+        return { accepted: true };
     }
   }
 
@@ -273,6 +294,13 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
       case 'vortex':
         dir = command.dir;
         break;
+      case 'collapse':
+        burst = 0;
+        collapseLeft = ticksOf(COLLAPSE_SECONDS);
+        // 締まりの仕組みを、最大の溜めで使う（範囲と重力は崩壊の値に差し替える）
+        squeezeCharge = 1;
+        squeezeLeft = collapseLeft;
+        break;
     }
     log.push({ tick, command });
     return result;
@@ -288,17 +316,19 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
     // 見本ページで持ち数の上限を下げた時に、上限を越えて持ったままにしない
     if (charges > tuning.wellMaxCharges) charges = Math.max(0, tuning.wellMaxCharges);
     if (well && --well.leftTicks <= 0) well = null;
+    if (collapseLeft > 0) collapseLeft--;
+    if (pulses.length) pulses = pulses.filter((p) => --p.leftTicks > 0);
     if (dir !== 0 || spin !== 0) spin = nextSpin(spin, dir, tuning);
   }
 
   /** 何かの効果が効いている。false の間は元の計算をそのまま使う。 */
   function active(): boolean {
-    return gripHeld || squeezeLeft > 0 || well !== null || spin !== 0 || dir !== 0;
+    return gripHeld || squeezeLeft > 0 || well !== null || spin !== 0 || dir !== 0 || pulses.length > 0;
   }
 
   /** 締まっている間、同じ Tier のいちばん近い相手へ引き寄せる。 */
   function applyPull(bodies: readonly GravityBody[]): void {
-    const range = tuning.gripPullRange * squeezeCharge;
+    const range = collapseLeft > 0 ? COLLAPSE_PULL_RANGE : tuning.gripPullRange * squeezeCharge;
     if (range <= 0) return;
     const n = bodies.length;
     for (let i = 0; i < n; i++) {
@@ -351,7 +381,8 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
         // 外へ押す。端が上限を越えた物はそれ以上押さない（盤面の外まで広がらないように）
         g = gripCharge() < 1 && r + b.radius < GRIP_SWELL_LIMIT_RADIUS ? -tuning.gripSwellAccel : 0;
         drag = tuning.gripDrag;
-      } else if (squeezeLeft > 0) g = GRAVITY * (1 + (tuning.gripSqueezeGravity - 1) * squeezeCharge); // 溜めた分だけ強く締まる
+      } else if (collapseLeft > 0) g = GRAVITY * COLLAPSE_GRAVITY;
+      else if (squeezeLeft > 0) g = GRAVITY * (1 + (tuning.gripSqueezeGravity - 1) * squeezeCharge); // 溜めた分だけ強く締まる
       if (r > 1e-6) {
         b.vx -= (g * b.x * DT) / r;
         b.vy -= (g * b.y * DT) / r;
@@ -363,10 +394,33 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
       b.vy *= keep;
     }
     if (squeezeLeft > 0 && !gripHeld) applyPull(bodies);
+    for (const p of pulses) applyPulse(bodies, p);
+  }
+
+  /** 重力弾: 着いた天体へ、近くの同じ Tier を引き寄せる。 */
+  function applyPulse(bodies: readonly GravityBody[], p: Pulse): void {
+    const t = bodies.find((b) => b.id === p.bodyId);
+    if (!t || t.tier !== p.tier) return; // もう合体した・消えた
+    for (const b of bodies) {
+      if (b === t || !b.landed || b.tier !== p.tier) continue;
+      const dx = t.x - b.x;
+      const dy = t.y - b.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= 1e-6 || d - t.radius - b.radius > CHARGED_PULL_RANGE) continue;
+      b.vx += (CHARGED_PULL_ACCEL * dx * DT) / d;
+      b.vy += (CHARGED_PULL_ACCEL * dy * DT) / d;
+    }
+  }
+
+  /** 重力弾が最初に何かへ触れた（着地した時）。 */
+  function onChargedTouch(bodyId: BodyId, tier: Tier): void {
+    pulses.push({ bodyId, tier, leftTicks: ticksOf(CHARGED_PULL_SECONDS) });
   }
 
   /** 合体のたびに呼ぶ。井戸の持ち数をためる。 */
-  function onMerge(): void {
+  function onMerge(chain = 1): void {
+    // 崩壊の力をためる（崩壊の最中の合体はためない。崩壊から崩壊へ続けて撃てないように）
+    if (collapseLeft === 0) burst = Math.min(BURST_MAX, burst + Math.max(1, chain));
     if (charges >= tuning.wellMaxCharges) return;
     mergeProgress++;
     if (mergeProgress >= tuning.wellMergesPerCharge) {
@@ -385,18 +439,20 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
     return (
       (gripHeld ? tuning.gripHeatPerSecond : 0) +
       Math.abs(spin) * tuning.vortexHeatPerSecond +
-      (well ? tuning.wellHeatPerSecond : 0)
+      (well ? tuning.wellHeatPerSecond : 0) -
+      (collapseLeft > 0 ? COLLAPSE_COOL_PER_SECOND : 0)
     );
   }
 
   /** 重力操作の間は熱量が冷めない。 */
   function coolingBlocked(): boolean {
-    return gripHeld || squeezeLeft > 0 || well !== null || spin !== 0;
+    // 崩壊の間は、下の heatPerSecond が熱量を下げる
+    return gripHeld || (squeezeLeft > 0 && collapseLeft === 0) || well !== null || spin !== 0;
   }
 
   /** 山が動いている（握り・締まり・渦・井戸）。この間、予測は当たり先を言い切らない。 */
   function unstable(): boolean {
-    return gripHeld || squeezeLeft > 0 || spin !== 0 || dir !== 0 || well !== null;
+    return gripHeld || squeezeLeft > 0 || spin !== 0 || dir !== 0 || well !== null || pulses.length > 0;
   }
 
   /**
@@ -430,6 +486,9 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
       well: well ? { x: well.x, y: well.y, leftSeconds: well.leftTicks / TICK_HZ, radius: tuning.wellRadius } : null,
       wellCharges: charges,
       wellMergeProgress: mergeProgress,
+      burst: { value: burst, max: BURST_MAX, ready: burst >= BURST_MAX },
+      collapseLeftSeconds: collapseLeft / TICK_HZ,
+      pulses: pulses.map((p) => ({ bodyId: p.bodyId, leftSeconds: p.leftTicks / TICK_HZ, range: CHARGED_PULL_RANGE })),
       vortex: { dir, spin },
       unstable: unstable(),
       coolingBlocked: coolingBlocked(),
@@ -449,9 +508,12 @@ export function createGravity(tuning: GravityTuning, saved?: GravityState) {
       mergeProgress,
       dir,
       spin,
+      burst,
+      collapseLeft,
+      pulses: pulses.map((p) => ({ ...p })),
       log: log.map((i) => ({ ...i })),
     };
   }
 
-  return { exportState, submit, advance, active, applyForces, onMerge, pileSpeedCap, heatPerSecond, coolingBlocked, unstable, flight, view, log };
+  return { exportState, onChargedTouch, submit, advance, active, applyForces, onMerge, pileSpeedCap, heatPerSecond, coolingBlocked, unstable, flight, view, log };
 }

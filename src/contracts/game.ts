@@ -51,6 +51,8 @@ export type LaunchCommand = Readonly<{
   /** 論理 px/秒 */
   vx: number;
   vy: number;
+  /** ゲージが満タンの瞬間に離した「重力弾」（試作。重力操作が有効の計算だけで効く） */
+  charged?: boolean;
 }>;
 
 export type LaunchRejectReason = 'cooldown' | 'overlap' | 'speed' | 'gameOver';
@@ -112,6 +114,8 @@ export type LaunchInput = Readonly<{
   originAngleRadians: number;
   vx: number;
   vy: number;
+  /** 重力弾（試作）。共有の文字列にはまだ入らない */
+  charged?: boolean;
 }>;
 
 // ───────── 重力操作（試作）─────────
@@ -123,7 +127,9 @@ export type GravityCommand =
   /** 井戸を置く: 論理座標 (x, y) */
   | Readonly<{ kind: 'well'; x: number; y: number }>
   /** 渦: 1 = 時計回り、-1 = 反時計回り、0 = 手を離す */
-  | Readonly<{ kind: 'vortex'; dir: -1 | 0 | 1 }>;
+  | Readonly<{ kind: 'vortex'; dir: -1 | 0 | 1 }>
+  /** 崩壊（ワンポチの大技）: 合体でためた力で、山全体を締めて同じ天体を寄せる */
+  | Readonly<{ kind: 'collapse' }>;
 
 export type GravityRejectReason =
   /** 重力操作が無効の計算 */
@@ -157,6 +163,12 @@ export type GravityView = Readonly<{
   /** 次の井戸がたまるまでに済んだ合体の数 */
   wellMergeProgress: number;
   vortex: Readonly<{ dir: -1 | 0 | 1; /** 今の回転の強さ（-1〜1） */ spin: number }>;
+  /** 崩壊の力のたまり具合。value が max に届くと ready */
+  burst: Readonly<{ value: number; max: number; ready: boolean }>;
+  /** 崩壊の残り秒数（0 なら起きていない） */
+  collapseLeftSeconds: number;
+  /** 重力弾が着いた所で、同じ天体を引き寄せている天体と、その残り秒数 */
+  pulses: readonly Readonly<{ bodyId: BodyId; leftSeconds: number; range: number }>[];
   /** 重力操作で山が動いている（予測の当たり先は言い切れない） */
   unstable: boolean;
   /** 重力操作のせいで熱量が冷めない */

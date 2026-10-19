@@ -218,5 +218,24 @@ export const VORTEX_SPIN_DOWN_SECONDS = 0.9;
 /** 回転が最大のときに上がる熱量（毎秒）。回転の強さに比例する。渦の代償 */
 export const VORTEX_HEAT_PER_SECOND = 18;
 
+// ワンポチの 2 つ（10/19 持ち主「追加ギミックはワンポチで」「特定のタイミングで離すと演出」）
+// 重力弾: 押している間に満ち引きするゲージが満タンの瞬間に離すと、着いた所で同じ天体を引き寄せる。
+/** 重力弾が同じ天体を引き寄せる隙間の上限 */
+export const CHARGED_PULL_RANGE = 200;
+/** 重力弾が引き寄せる加速度 */
+export const CHARGED_PULL_ACCEL = 3000;
+/** 重力弾が引き寄せ続ける秒数 */
+export const CHARGED_PULL_SECONDS = 0.9;
+// 崩壊: 合体でためて、満タンなら核をタップ。山全体が締まり、同じ天体が寄り、熱量が下がる。
+/** 崩壊がたまる量。合体 1 回で 1、連鎖 n の合体で n たまる */
+export const BURST_MAX = 12;
+export const COLLAPSE_SECONDS = 1.2;
+/** 崩壊の間、同じ天体が引き合う隙間の上限 */
+export const COLLAPSE_PULL_RANGE = 160;
+/** 崩壊の間の、核への重力の倍率 */
+export const COLLAPSE_GRAVITY = 1.8;
+/** 崩壊の間に熱量が下がる速さ（毎秒） */
+export const COLLAPSE_COOL_PER_SECOND = 30;
+
 /** 重力操作で山が動いている間、限界の判定に持たせる幅（判定がちらつかないように） */
 export const LIMIT_HYSTERESIS = 5;

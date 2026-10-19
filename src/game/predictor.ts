@@ -35,7 +35,12 @@ export function quantizeLaunch(command: LaunchCommand): LaunchCommand {
   let k = Math.round((a / (Math.PI * 2)) * ANGLE_GRID) % ANGLE_GRID;
   if (k < 0) k += ANGLE_GRID;
   // + 0 で -0 を 0 にそろえる（入力ログと共有の文字列で 0 の符号がずれないように）
-  return { originAngleRadians: (k / ANGLE_GRID) * Math.PI * 2 + 0, vx: Math.round(vx) + 0, vy: Math.round(vy) + 0 };
+  return {
+    originAngleRadians: (k / ANGLE_GRID) * Math.PI * 2 + 0,
+    vx: Math.round(vx) + 0,
+    vy: Math.round(vy) + 0,
+    ...(command.charged ? { charged: true } : {}),
+  };
 }
 
 /** 射出を受け付けられない理由。受け付けられるなら null。 */

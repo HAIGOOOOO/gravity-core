@@ -41,16 +41,54 @@ let acc = 0;
 let last = performance.now();
 let timeSeconds = 0;
 let shownOver = false;
+// ワンポチ: ゲージ（押している間に満ち引きする輪）と、成功の知らせ
+const GAUGE_DELAY = 0.18;
+const GAUGE_PERIOD = 0.9;
+const GAUGE_OK = 0.86;
+let aimStart = -1;
+let justAt = -10;
+let collapseAt = -10;
+
+/** 押してからの時間で、ゲージの今の値（0〜1）。押していなければ 0。 */
+function gaugeValue(): number {
+  if (aimStart < 0) return 0;
+  const e = timeSeconds - aimStart - GAUGE_DELAY;
+  if (e < 0) return 0;
+  const phase = (e % GAUGE_PERIOD) / GAUGE_PERIOD;
+  return phase < 0.5 ? phase * 2 : 2 - phase * 2;
+}
+
+function collapse(): void {
+  if (mode !== 'tap') return;
+  if (gravity({ kind: 'collapse' })) collapseAt = timeSeconds;
+}
 
 function gravity(command: GravityCommand): boolean {
   return sim.submitGravity(command).accepted;
 }
 
+// ワンポチ: 崩壊できる時に核を押したら、撃たずに崩壊する（照準より先に受け取るので、ここで先に登録する）
+boardCanvas.addEventListener('pointerdown', (e) => {
+  if (mode !== 'tap' || !sim.getSnapshot().gravity?.burst.ready) return;
+  const p = clientToLogical(boardCanvas, e.clientX, e.clientY);
+  if (Math.hypot(p.x, p.y) > CORE_RADIUS + 26) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  collapse();
+});
+
 const input = createPointerInput(boardCanvas, {
   getSnapshot: () => sim.getSnapshot(),
   predict: (c) => sim.predict(c),
-  onAim: (a) => (aim = a),
-  onLaunch(command) {
+  onAim: (a) => {
+    if (a && !aim) aimStart = timeSeconds;
+    if (!a) aimStart = -1;
+    aim = a;
+  },
+  onLaunch(raw) {
+    const charged = mode === 'tap' && gaugeValue() >= GAUGE_OK;
+    if (charged) justAt = timeSeconds;
+    const command = charged ? { ...raw, charged } : raw;
     const res = sim.submitLaunch(command);
     // 待ち時間中に離したら、明けた瞬間に撃つ（本番のアプリと同じ）
     if (!res.accepted && res.reason === 'cooldown') pendingLaunch = command;
@@ -136,6 +174,7 @@ const panel = createPanel(tuning, {
   onVortex: (dir) => void gravity({ kind: 'vortex', dir }),
   onArmWell: () => setArmed(!armed),
   onAimGuide: (on) => (aimGuide = on),
+  onCollapse: collapse,
 });
 
 // 井戸: 場所を選んでいる間の盤面の押下と、右クリックでの直接設置
@@ -155,6 +194,9 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     setArmed(false);
     input.cancel();
+  } else if (mode === 'tap' && e.key === ' ') {
+    e.preventDefault();
+    collapse();
   } else if (mode === 'grip' && e.key === ' ') {
     e.preventDefault();
     gravity({ kind: 'grip', on: true });
@@ -203,7 +245,9 @@ function frame(now: number): void {
   const delta = Math.min((now - last) / 1000, MAX_FRAME_SECONDS);
   last = now;
   timeSeconds += delta;
-  acc += delta;
+  // 崩壊の間は時間をゆっくりにする（見本ページだけの演出。本番は EffectsLayer.timeScale が受け持つ）
+  const collapsing = (sim.getSnapshot().gravity?.collapseLeftSeconds ?? 0) > 0;
+  acc += collapsing ? delta * 0.45 : delta;
   let steps = 0;
   while (acc >= DT && steps < MAX_STEPS_PER_FRAME) {
     if (pendingLaunch && sim.getSnapshot().launchCooldownLeftSeconds <= 0) {
@@ -238,6 +282,10 @@ function frame(now: number): void {
     aim,
     aimGuide,
     wellSeconds: tuning.wellSeconds,
+    tap:
+      mode === 'tap'
+        ? { gauge: aim ? gaugeValue() : null, gaugeOk: GAUGE_OK, sinceJust: timeSeconds - justAt, sinceCollapse: timeSeconds - collapseAt, time: timeSeconds }
+        : null,
     wellPreview:
       armed && pointer ? { x: pointer.x, y: pointer.y, radius: tuning.wellRadius, ok: wellSpotOk(pointer) } : null,
   });
@@ -260,5 +308,5 @@ window.gravityLab = {
 resize();
 input.setEnabled(true);
 const fromUrl = new URLSearchParams(location.search).get('mode');
-setMode(fromUrl === 'well' || fromUrl === 'vortex' || fromUrl === 'none' ? fromUrl : 'grip');
+setMode(fromUrl === 'grip' || fromUrl === 'well' || fromUrl === 'vortex' || fromUrl === 'none' ? fromUrl : 'tap');
 requestAnimationFrame(frame);
