@@ -49,6 +49,7 @@ GRAVITY CORE は、中央の重力核のまわりに天体を積み、同じ階�
 見本ページ（`dev/*.html` と `src/dev/*-demo.ts`）は、誰が作ってもよい。
 
 **触ってはいけない場所**（自動チェックで止まります）:
+- （2026-10-20 方針の版 9 から）**C は** ルールを変える題目のために、`src/game/`・`src/contracts/`・`src/shared/`・`src/fixtures/`・`src/audio/`・`docs/RULES.md` も触ってよい。
 - リーダーの場所: `src/contracts/`、`src/game/`、`src/app/`、`src/shared/`、`src/fixtures/`、`src/main.ts`、`index.html`、`src/audio/`（音はリーダーと持ち主がやる）
 - 決まり: `package.json`、`package-lock.json`、設定ファイル、`.github/`、`scripts/`、`AGENTS.md`、`docs/方針.md`、`docs/RULES.md`、`docs/TEAM.md`、`docs/tasks/`、`docs/review/`、`SPEC.md`
 - ほかの担当の `docs/progress/<担当>.md` と `docs/notes/<担当>/`
