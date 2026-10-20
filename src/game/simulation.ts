@@ -31,7 +31,6 @@ import {
   HEAT_MAX,
   HEAT_RISE_PER_SECOND,
   HEAT_START,
-  HEAT_SUPERNOVA,
   LAUNCH_COOLDOWN,
   LAUNCH_RADIUS,
   LIMIT_GRACE_SECONDS,
@@ -45,6 +44,7 @@ import {
   TIER_RADIUS,
 } from './constants';
 import { createGravity, type GravityState, type GravityTuning } from './gravity';
+import { fusionCooling } from './heat';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
 import { createRng, createRngFromState } from './rng';
@@ -298,11 +298,13 @@ function build(
     stats.maxChain = Math.max(stats.maxChain, chain);
     const gained = Math.round(TIER_BASE_SCORE[a.tier] * chainMultiplier(chain));
     score += gained;
+    const cooling = fusionCooling(heat, chain, a.tier === 8);
+    heat -= cooling;
+    const heatDelta = 0 - cooling;
 
     if (a.tier === 8) {
       stats.supernovas++;
-      heat = Math.max(0, heat - HEAT_SUPERNOVA);
-      emit({ kind: 'supernova', x, y, bodyIds: [a.id, b.id], sourceTier: 8, scoreDelta: gained, heatDelta: -HEAT_SUPERNOVA, chain });
+      emit({ kind: 'supernova', x, y, bodyIds: [a.id, b.id], sourceTier: 8, scoreDelta: gained, heatDelta, chain });
       return;
     }
 
@@ -331,7 +333,7 @@ function build(
       dead: false,
     };
     born.push(child);
-    emit({ kind: 'merge', x, y, bodyIds: [a.id, b.id, child.id], sourceTier: a.tier, resultTier: tier, scoreDelta: gained, chain });
+    emit({ kind: 'merge', x, y, bodyIds: [a.id, b.id, child.id], sourceTier: a.tier, resultTier: tier, scoreDelta: gained, heatDelta, chain });
   }
 
   function stepFixed(): readonly GameEvent[] {

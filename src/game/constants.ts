@@ -88,6 +88,10 @@ export const HEAT_COOL_PER_SECOND = 14;
 export const LIMIT_GRACE_SECONDS = 1.2;
 /** 超新星で下がる熱量 */
 export const HEAT_SUPERNOVA = 40;
+/** 合体した瞬間の冷却。連鎖は最初の合体を1と数える。 */
+export const HEAT_MERGE_COOL = 2;
+export const HEAT_CHAIN_COOL_STEP = 3;
+export const HEAT_CHAIN_COOL_MAX_STEPS = 4;
 /** 安定 | 上昇 | 過熱 | 臨界 の境目 */
 export const HEAT_STATE_LIMITS = [25, 50, 75] as const;
 
