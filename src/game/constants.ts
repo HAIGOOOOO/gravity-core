@@ -105,6 +105,8 @@ export const CHAIN_WINDOW_SECONDS = 2.5;
 export const CHAIN_GRACE_SECONDS = 0.085;
 export const CHAIN_STEP = 0.5;
 export const CHAIN_MULT_MAX = 3.0;
+/** 名前・音・動きを増やす演出段階の上限。連鎖数自体には上限を設けない。 */
+export const CHAIN_STAGE_MAX = 5;
 
 // 次の天体（到達した最高 Tier が minBest 以上のときの確率。下の行が優先）
 export const QUEUE_SIZE = 3;

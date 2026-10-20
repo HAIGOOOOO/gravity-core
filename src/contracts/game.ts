@@ -5,6 +5,8 @@ export type Tier = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type BodyId = number;
 /** 1 tick = 1/120 秒 */
 export type Tick = number;
+/** 連鎖の演出段階。5で上限、連鎖数そのものは上限を付けない。 */
+export type ChainStage = 1 | 2 | 3 | 4 | 5;
 
 export type BodyView = Readonly<{
   id: BodyId;
@@ -88,6 +90,10 @@ export type GameEvent = Readonly<{
   scoreDelta?: number;
   heatDelta?: number;
   chain?: number;
+  /** merge / supernova: 判定側が確定した演出段階。表示側で連鎖を数え直さない。 */
+  chainStage?: ChainStage;
+  /** この合体で次の段へ進んだ。5段目を越えて繋いだ場合はfalse。 */
+  stageAdvanced?: boolean;
   /** land のとき: ぶつかった速さ（音や演出の強さに使う） */
   impactSpeed?: number;
 }>;

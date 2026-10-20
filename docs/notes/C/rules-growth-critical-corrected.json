@@ -1,0 +1,242 @@
+[
+  {
+    "parent": 4,
+    "offset": -0.12,
+    "turn": 0,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880033794,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": -0.12,
+    "turn": 1,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880167318,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": -0.12,
+    "turn": 2,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880111193,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": -0.12,
+    "turn": 3,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880376348,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": 0,
+    "turn": 0,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 337.85573523750185,
+    "outsideSeconds": 0.09999999999999999,
+    "lost": true
+  },
+  {
+    "parent": 4,
+    "offset": 0,
+    "turn": 1,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 337.85573523750185,
+    "outsideSeconds": 0.09999999999999999,
+    "lost": true
+  },
+  {
+    "parent": 4,
+    "offset": 0,
+    "turn": 2,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 337.85573523750185,
+    "outsideSeconds": 0.09999999999999999,
+    "lost": true
+  },
+  {
+    "parent": 4,
+    "offset": 0,
+    "turn": 3,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 337.85573523750185,
+    "outsideSeconds": 0.09999999999999999,
+    "lost": true
+  },
+  {
+    "parent": 4,
+    "offset": 0.12,
+    "turn": 0,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880033794,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": 0.12,
+    "turn": 1,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880058946,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": 0.12,
+    "turn": 2,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880062507,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 4,
+    "offset": 0.12,
+    "turn": 3,
+    "initialEdge": 319,
+    "peakOutward": 0.16896620880345134,
+    "peakEdge": 320.3695930741412,
+    "outsideSeconds": 0.03333333333333333,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": -0.12,
+    "turn": 0,
+    "initialEdge": 319,
+    "peakOutward": 24.280939363532305,
+    "peakEdge": 319.6067752143746,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": -0.12,
+    "turn": 1,
+    "initialEdge": 319,
+    "peakOutward": 24.280939363535545,
+    "peakEdge": 319.6067752143746,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": -0.12,
+    "turn": 2,
+    "initialEdge": 319,
+    "peakOutward": 24.280939363532305,
+    "peakEdge": 319.6067752143746,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": -0.12,
+    "turn": 3,
+    "initialEdge": 319,
+    "peakOutward": 24.28093936353242,
+    "peakEdge": 319.6067752143746,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": 0,
+    "turn": 0,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 335.9398302067721,
+    "outsideSeconds": 0.10833333333333332,
+    "lost": true
+  },
+  {
+    "parent": 3,
+    "offset": 0,
+    "turn": 1,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 335.9398302067721,
+    "outsideSeconds": 0.10833333333333332,
+    "lost": true
+  },
+  {
+    "parent": 3,
+    "offset": 0,
+    "turn": 2,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 335.9398302067721,
+    "outsideSeconds": 0.10833333333333332,
+    "lost": true
+  },
+  {
+    "parent": 3,
+    "offset": 0,
+    "turn": 3,
+    "initialEdge": 319,
+    "peakOutward": 0,
+    "peakEdge": 335.9398302067721,
+    "outsideSeconds": 0.10833333333333332,
+    "lost": true
+  },
+  {
+    "parent": 3,
+    "offset": 0.12,
+    "turn": 0,
+    "initialEdge": 319,
+    "peakOutward": 24.280939363532305,
+    "peakEdge": 319.6067752143746,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": 0.12,
+    "turn": 1,
+    "initialEdge": 319,
+    "peakOutward": 24.280939363535655,
+    "peakEdge": 319.6067752143745,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": 0.12,
+    "turn": 2,
+    "initialEdge": 319,
+    "peakOutward": 24.280939363532415,
+    "peakEdge": 319.6067752143745,
+    "outsideSeconds": 0,
+    "lost": false
+  },
+  {
+    "parent": 3,
+    "offset": 0.12,
+    "turn": 3,
+    "initialEdge": 319,
+    "peakOutward": 24.28093936353565,
+    "peakEdge": 319.60677521437447,
+    "outsideSeconds": 0,
+    "lost": false
+  }
+]

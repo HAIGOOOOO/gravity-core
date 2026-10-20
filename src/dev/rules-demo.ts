@@ -15,6 +15,7 @@ const sound = document.querySelector<HTMLInputElement>('#sound')!;
 const list = document.querySelector<HTMLOListElement>('#events')!;
 let sim: Simulation = createSimulation(21), prev = sim.getSnapshot(), curr = prev;
 let aim: AimView | null = null, running = false, bank = 0, last = performance.now(), time = 0;
+let freePlay = false;
 
 function unlock(): void {
   if (sound.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 65 }); audio.resume(); }
@@ -35,6 +36,7 @@ function append(events: readonly GameEvent[], snapshot: GameSnapshot): void {
   }
 }
 function begin(chain?: number): void {
+  freePlay = chain === undefined;
   effects.clear(); audio.suspend(); aim = null; input.cancel(); list.replaceChildren(); bank = 0; time = 0;
   document.querySelector('#cooling')!.textContent = '';
   if (chain === undefined) {
@@ -58,7 +60,7 @@ function draw(): void {
 }
 document.querySelector('#play')!.addEventListener('click', () => begin());
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-chain]')) button.addEventListener('click', () => begin(Number(button.dataset.chain)));
-document.querySelector('#pause')!.addEventListener('click', () => { running = !running; input.setEnabled(running); audio.suspend(); if (running) unlock(); document.querySelector('#pause')!.textContent = running ? '一時停止' : '再開'; });
+document.querySelector('#pause')!.addEventListener('click', () => { running = !running; input.setEnabled(running && freePlay); audio.suspend(); if (running) unlock(); document.querySelector('#pause')!.textContent = running ? '一時停止' : '再開'; });
 sound.addEventListener('change', () => { if (sound.checked && running) unlock(); else audio.suspend(); });
 new ResizeObserver(() => { const size = stage.clientWidth; renderer.resize(size); effects.resize(size); draw(); }).observe(stage);
 function frame(now: number): void {
@@ -71,4 +73,4 @@ function frame(now: number): void {
   }
   draw(); requestAnimationFrame(frame);
 }
-begin(3); requestAnimationFrame(frame);
+begin(3); running = false; document.querySelector('#pause')!.textContent = '再開'; requestAnimationFrame(frame);

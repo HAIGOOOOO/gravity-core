@@ -6,6 +6,7 @@
 
 import type {
   BodyId,
+  ChainStage,
   GameEvent,
   GameSnapshot,
   GravityCommand,
@@ -19,6 +20,7 @@ import type {
 } from '../contracts/game';
 import {
   CHAIN_MULT_MAX,
+  CHAIN_STAGE_MAX,
   CHAIN_STEP,
   CHAIN_GRACE_SECONDS,
   CHAIN_WINDOW_SECONDS,
@@ -37,12 +39,12 @@ import {
   LIMIT_HYSTERESIS,
   LIMIT_RADIUS,
   SLEEP_SPEED,
-  SOLVER_ITERATIONS,
   START_BODY,
   TICK_HZ,
   TIER_BASE_SCORE,
   TIER_RADIUS,
 } from './constants';
+import { solveContacts } from './contacts';
 import { createGravity, type GravityState, type GravityTuning } from './gravity';
 import { fusionCooling } from './heat';
 import { applyGravity } from './physics';
@@ -296,6 +298,8 @@ function build(
     const chainA = tick <= a.chainUntilTick + CHAIN_GRACE_TICKS ? a.chain : 0;
     const chainB = tick <= b.chainUntilTick + CHAIN_GRACE_TICKS ? b.chain : 0;
     const chain = Math.max(chainA, chainB) + 1;
+    const chainStage = Math.min(CHAIN_STAGE_MAX, chain) as ChainStage;
+    const stageAdvanced = chain <= CHAIN_STAGE_MAX;
     gravity?.onMerge(chain);
     stats.maxChain = Math.max(stats.maxChain, chain);
     const gained = Math.round(TIER_BASE_SCORE[a.tier] * chainMultiplier(chain));
@@ -306,7 +310,7 @@ function build(
 
     if (a.tier === 8) {
       stats.supernovas++;
-      emit({ kind: 'supernova', x, y, bodyIds: [a.id, b.id], sourceTier: 8, scoreDelta: gained, heatDelta, chain });
+      emit({ kind: 'supernova', x, y, bodyIds: [a.id, b.id], sourceTier: 8, scoreDelta: gained, heatDelta, chain, chainStage, stageAdvanced });
       return;
     }
 
@@ -335,7 +339,7 @@ function build(
       dead: false,
     };
     born.push(child);
-    emit({ kind: 'merge', x, y, bodyIds: [a.id, b.id, child.id], sourceTier: a.tier, resultTier: tier, scoreDelta: gained, heatDelta, chain });
+    emit({ kind: 'merge', x, y, bodyIds: [a.id, b.id, child.id], sourceTier: a.tier, resultTier: tier, scoreDelta: gained, heatDelta, chain, chainStage, stageAdvanced });
   }
 
   function stepFixed(): readonly GameEvent[] {
@@ -386,53 +390,24 @@ function build(
     bodies.length = write;
     for (const b of born) bodies.push(b);
 
-    // 4. 重なりを押し戻す（重い天体ほど動かない）
-    for (let it = 0; it < SOLVER_ITERATIONS; it++) {
-      for (let i = 0; i < bodies.length; i++) {
-        const a = bodies[i]!;
-        for (let j = i + 1; j < bodies.length; j++) {
-          const b = bodies[j]!;
-          const dx = b.px - a.px;
-          const dy = b.py - a.py;
-          const reach = a.radius + b.radius;
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= (reach + CONTACT_SLOP) * (reach + CONTACT_SLOP)) continue;
-          a.touching = true;
-          b.touching = true;
-          if (d2 >= reach * reach) continue;
-          const d = Math.sqrt(d2) || 1e-6;
-          const overlap = reach - d;
-          const wa = 1 / (a.radius * a.radius);
-          const wb = 1 / (b.radius * b.radius);
-          const nx = dx / d;
-          const ny = dy / d;
-          a.px -= (nx * overlap * wa) / (wa + wb);
-          a.py -= (ny * overlap * wa) / (wa + wb);
-          b.px += (nx * overlap * wb) / (wa + wb);
-          b.py += (ny * overlap * wb) / (wa + wb);
-        }
-      }
-      for (const b of bodies) {
-        const r = Math.hypot(b.px, b.py);
-        const min = CORE_RADIUS + b.radius;
-        if (r < min + CONTACT_SLOP) b.touching = true;
-        if (r < min) {
-          const k = r > 1e-6 ? min / r : 0;
-          if (k === 0) b.py = -min;
-          else {
-            b.px *= k;
-            b.py *= k;
-          }
-        }
-      }
-    }
+    // 4. 重なりを押し戻し、成長が伝えた位置補正を分ける
+    const growth = solveContacts(bodies);
 
     // 5. 動いた結果から速度を求め直す
     const pileCap = gravity && bent ? gravity.pileSpeedCap(MAX_SPEED) : MAX_SPEED;
     for (const b of bodies) {
       const before = Math.hypot(b.vx, b.vy);
+      const radial = Math.hypot(b.px, b.py);
+      const outwardBefore = radial > 0 ? Math.max(0, (b.vx * b.px + b.vy * b.py) / radial) : 0;
       b.vx = (b.px - b.x) / DT;
       b.vy = (b.py - b.y) / DT;
+      if (growth.has(b.id) && radial > 0) {
+        // 押しのけに接線方向へ転がる動きは残し、外へ飛ぶ速さだけ増やさない。
+        const outward = (b.vx * b.px + b.vy * b.py) / radial;
+        const extra = Math.max(0, outward - outwardBefore);
+        b.vx -= extra * b.px / radial;
+        b.vy -= extra * b.py / radial;
+      }
       b.x = b.px;
       b.y = b.py;
       if (b.touching) {

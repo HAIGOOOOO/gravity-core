@@ -13,12 +13,14 @@ describe('連鎖の冷却', () => {
     expect(fusionCooling(100, 5, true)).toBe(40);
     expect(fusionCooling(7, 5, true)).toBe(7);
   });
-  it.each([1, 3, 5])('本物の合体のイベントと熱量が一致する（連鎖%d）', (chain) => {
+  it.each([1, 2, 3, 4, 5, 6])('本物の合体のイベントと熱量・演出段階が一致する（連鎖%d）', (chain) => {
     const initial = createSimulation(1, { heat: 70, bodies: [{ tier: 0, x: 100, y: -14 }, { tier: 0, x: 100, y: 14 }] }).exportState();
     const sim = restoreSimulation({ ...initial, bodies: initial.bodies.map((b, i) => i === 0 ? { ...b, chain: chain - 1, chainUntilTick: 300 } : b) });
     const events = sim.stepFixed();
     const merge = events.find((e) => e.kind === 'merge')!;
     expect(merge.chain).toBe(chain);
+    expect(merge.chainStage).toBe(Math.min(5, chain));
+    expect(merge.stageAdvanced).toBe(chain <= 5);
     expect(merge.heatDelta).toBe(-fusionCooling(70, chain));
     expect(sim.getSnapshot().heat).toBeCloseTo(70 + merge.heatDelta! - HEAT_COOL_PER_SECOND * DT, 10);
   });
