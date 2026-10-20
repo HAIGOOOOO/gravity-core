@@ -7,6 +7,7 @@ import { createEffectPool, type EffectPool } from './pool';
 import { createPresentation } from './presentation';
 import { readTheme } from './theme';
 import { createJuiceEffects } from './juice';
+import { createCoolingReceipt } from './cooling';
 
 const pools = new WeakMap<HTMLCanvasElement, EffectPool>();
 const juiceLayers = new WeakMap<HTMLCanvasElement, ReturnType<typeof createJuiceEffects>>();
@@ -32,6 +33,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
   const events = createEventEffects(pool, theme);
   const presentation = createPresentation(shakeTarget, theme);
   const juice = createJuiceEffects(shakeTarget, theme);
+  const cooling = createCoolingReceipt();
   juiceLayers.set(canvas, juice);
 
   return {
@@ -40,7 +42,9 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       Object.assign(theme, readTheme(canvas));
     },
     handleEvents(batch, snapshot) {
+      juice.sync(snapshot);
       for (const event of batch) {
+        cooling.handle(event);
         if (event.kind === 'merge' || event.kind === 'supernova') {
           juice.handle(event, snapshot);
         } else events.handle(event);
@@ -51,6 +55,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       events.update(seconds);
       presentation.update(seconds);
       juice.update(seconds);
+      cooling.update(seconds);
     },
     draw() {
       if (!ctx) return;
@@ -62,6 +67,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       drawPool(ctx, pool, theme);
       juice.draw(ctx);
       presentation.draw(ctx);
+      cooling.draw(ctx, theme);
       ctx.restore();
     },
     playGameOver() { presentation.gameOver(); },
@@ -82,6 +88,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       events.clear();
       presentation.clear();
       juice.clear();
+      cooling.clear();
       pool.clear();
       if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);

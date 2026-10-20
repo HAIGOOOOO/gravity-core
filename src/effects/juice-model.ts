@@ -22,11 +22,12 @@ export const LAYER_ENDS = [.11, .19, .22, .23, .195, .195, .39, .775, .51, .435,
 
 export type JuiceBurst = {
   active: boolean; age: number; x: number; y: number; px: number; py: number;
-  tier: Tier; result: Tier; chain: number; nova: boolean; seed: number; score: number;
+  tier: Tier; result: Tier; chain: number; chainCount: number; nova: boolean; seed: number; score: number;
   neighbors: readonly BodyView[];
+  resultId: number | null; resultBody: BodyView | null;
 };
 export function blankBurst(): JuiceBurst {
-  return { active: false, age: 0, x: 0, y: 0, px: 0, py: 0, tier: 0, result: 1, chain: 1, nova: false, seed: 0, score: 0, neighbors: [] };
+  return { active: false, age: 0, x: 0, y: 0, px: 0, py: 0, tier: 0, result: 1, chain: 1, chainCount: 1, nova: false, seed: 0, score: 0, neighbors: [], resultId: null, resultBody: null };
 }
 export function juiceRandom(seed: number, index: number): number {
   let n = Math.imul(seed ^ (index * 374761393), 668265263);
@@ -49,8 +50,8 @@ export function burstLife(b: JuiceBurst): number { return (b.nova ? 2.4 : 1.25 +
 export function burstFromEvent(event: GameEvent, previous: { x: number; y: number }): JuiceBurst {
   return { active: true, age: 0, x: event.x ?? 0, y: event.y ?? 0, px: previous.x, py: previous.y,
     tier: event.sourceTier ?? 0, result: event.resultTier ?? event.sourceTier ?? 0,
-    chain: Math.max(1, Math.min(5, event.chain ?? 1)), nova: event.kind === 'supernova',
-    seed: event.sequence, score: event.scoreDelta ?? 0, neighbors: [] };
+    chain: event.chainStage ?? Math.max(1, Math.min(5, event.chain ?? 1)), chainCount: event.chain ?? 1, nova: event.kind === 'supernova',
+    seed: event.sequence, score: event.scoreDelta ?? 0, neighbors: [], resultId: event.kind === 'merge' ? event.bodyIds?.[2] ?? null : null, resultBody: null };
 }
 export function pulse(t: number, start: number, duration: number): number {
   const p = (t - start) / duration;

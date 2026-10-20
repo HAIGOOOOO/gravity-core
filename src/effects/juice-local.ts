@@ -65,9 +65,11 @@ export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: Jui
       for (const side of [-1, 1]) { ctx.save(); ctx.translate(side * r * (0.9 + p), side * r * 0.2); arc(ctx, TIER_RADIUS[b.tier] * (1 - p), 1.5, color); ctx.restore(); } break;
     case 17:
       if (t < 0.08 || t > 0.42) break;
+      if (!b.nova && !b.resultBody) break;
+      if (b.resultBody) ctx.translate(b.resultBody.x - b.x, b.resultBody.y - b.y);
       ctx.globalAlpha = 1; ctx.scale(1 + Math.sin((t - 0.08) * 23) * 0.13 * (1 - p), 1 - Math.sin((t - 0.08) * 23) * 0.08 * (1 - p));
       if (b.nova) { ctx.fillStyle = '#060a15'; ctx.beginPath(); ctx.arc(0, 0, r * (0.6 + p), 0, TURN); ctx.fill(); }
-      else drawBody(ctx, b.result, 0, 0, TIER_RADIUS[b.result], { seed: b.seed }); break;
+      else drawBody(ctx, b.result, 0, 0, b.resultBody!.radius, { seed: b.resultBody!.id }); break;
     case 18:
       ctx.globalAlpha = pulse(t, 0.18, 0.46) * 0.7; ctx.rotate(angle + Math.sin(t * 22) * 0.15); arc(ctx, r * 0.7, 1.5, white, 0.3, 1.6); arc(ctx, r * 0.55, 1, color, 2.8, 4.7); break;
     case 19: {

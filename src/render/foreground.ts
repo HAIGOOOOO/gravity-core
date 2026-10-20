@@ -1,5 +1,7 @@
 import type { BoardFrame } from '../contracts/app';
-import { LAUNCH_RADIUS, LIMIT_RADIUS, TIER_RADIUS } from '../game/constants';
+import { CHAIN_WINDOW_SECONDS, HEAT_MAX, LAUNCH_RADIUS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
+import { fusionCooling } from '../game/heat';
+import { chainTargetLabel } from '../ui/strings';
 import { drawBody } from './bodies';
 
 /** 操作の線は光の面と混ぜず、暗い下縁を付けて最前面へ置く。 */
@@ -9,6 +11,19 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
   ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = frame.curr.overLimit ? '#FF7D83' : 'rgba(145,160,184,0.85)';
   ctx.lineWidth = frame.curr.overLimit ? 3 : 1.5; ctx.setLineDash([10, 8]); ctx.stroke(); ctx.setLineDash([]);
+  const targets = frame.curr.bodies.filter((b) => b.chain > 0 && b.chainUntilTick > frame.curr.tick);
+  const hero = targets.reduce<(typeof targets)[number] | null>((best, b) => !best || b.chain > best.chain ? b : best, null);
+  for (const b of targets) {
+    const left = Math.min(1, (b.chainUntilTick - frame.curr.tick) / (CHAIN_WINDOW_SECONDS * TICK_HZ));
+    ctx.strokeStyle = '#101b1a'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(b.x, b.y, b.radius + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke();
+    ctx.strokeStyle = '#b2e6bc'; ctx.lineWidth = 4; ctx.stroke();
+    if (b === hero) {
+      const x = Math.max(-220, Math.min(220, b.x)), y = Math.max(-290, Math.min(290, b.y - b.radius - 25));
+      ctx.font = '700 27px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 6; ctx.strokeStyle = '#101b1a'; ctx.fillStyle = '#c5f4cb';
+      const text = chainTargetLabel(b.chain + 1, fusionCooling(HEAT_MAX, b.chain + 1, b.tier === 8));
+      ctx.strokeText(text, x, y); ctx.fillText(text, x, y);
+    }
+  }
   const { aim } = frame;
   if (aim) {
     const ox = LAUNCH_RADIUS * Math.cos(aim.originAngleRadians), oy = LAUNCH_RADIUS * Math.sin(aim.originAngleRadians);

@@ -44,4 +44,8 @@ describe('多層の合体の構成', () => {
       sourceTier: 2, resultTier: 3, scoreDelta: 1234, chain: 3 }, { x: -30, y: 40 });
     expect([b.score, b.tier, b.result, b.px]).toEqual([1234, 2, 3, -30]);
   });
+  it('演出の段は5で止めても、表示する実際の連鎖数は6以降を保持する', () => {
+    const b = burstFromEvent({ kind: 'merge', sequence: 1, tick: 1, chain: 7, chainStage: 5, bodyIds: [3, 4, 5] }, { x: 0, y: 0 });
+    expect(b.chain).toBe(5); expect(b.chainCount).toBe(7); expect(b.resultId).toBe(5);
+  });
 });

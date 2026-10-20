@@ -1,4 +1,5 @@
-import { CHAIN_MULT_MAX, CHAIN_STEP, LIMIT_RADIUS } from '../game/constants';
+import { CHAIN_MULT_MAX, LIMIT_RADIUS } from '../game/constants';
+import { STRINGS } from '../ui/strings';
 import { arc, burstValues, line, TURN, type JuiceInk } from './juice-ink';
 import { juiceRandom, pulse, releaseProgress, type JuiceBurst } from './juice-model';
 
@@ -13,7 +14,7 @@ export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: Juic
     case 24: {
       ctx.globalAlpha = pulse(t, 0.12, 0.7); ctx.translate(-b.x - (b.chain >= 5 ? 210 : 0), -b.y - 354); ctx.font = `900 ${b.chain >= 5 ? 32 : 42 + b.chain * 4}px ${ink.theme.font}`;
       ctx.textAlign = 'center'; ctx.fillStyle = '#ffbc68'; ctx.strokeStyle = '#060a15'; ctx.lineWidth = 6;
-      const label = b.chain >= 5 ? `${b.chain}連鎖` : `×${Math.min(CHAIN_MULT_MAX, 1 + (b.chain - 1) * CHAIN_STEP).toFixed(1)}`;
+      const label = `${b.chainCount}${STRINGS.effectChain}`;
       const offset = Math.max(0, 1 - (t - 0.12) / 0.12) * 18; ctx.save(); ctx.beginPath(); ctx.rect(-200, -100, 400, 90); ctx.clip(); ctx.strokeText(label, -offset, 0); ctx.fillText(label, -offset, 0); ctx.restore();
       ctx.save(); ctx.beginPath(); ctx.rect(-200, -10, 400, 90); ctx.clip(); ctx.strokeText(label, offset, 0); ctx.fillText(label, offset, 0); ctx.restore(); break;
     }

@@ -25,8 +25,12 @@ export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
       // 固定枠が埋まったら古い余韻を譲り、新しい出来事の瞬間を残す。
       const slot = bursts.find(b => !b.active) ?? bursts.reduce((a, b) => a.age > b.age ? a : b);
       Object.assign(slot, burstFromEvent(event, origins.receive(event)));
+      slot.resultBody = snapshot.bodies.find(body => body.id === slot.resultId) ?? null;
       slot.neighbors = snapshot.bodies.filter(body => !event.bodyIds?.includes(body.id)).slice(0, 16);
       if (original === null && !reduced) original = target.style.transform;
+    },
+    sync(snapshot: GameSnapshot): void {
+      for (const b of bursts) if (b.active && b.resultId !== null) b.resultBody = snapshot.bodies.find(body => body.id === b.resultId) ?? null;
     },
     update(seconds: number): void {
       const dt = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -71,10 +75,10 @@ export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
         ctx.save();
         ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS - 12, 0, Math.PI * 2); ctx.clip();
         // 何十層にも同じクリップを作らず、背後の層を一度に保護する。
-        if (!b.nova && age >= 0.08 && age <= 0.42) {
-          const hole = TIER_RADIUS[b.result] + 8;
+        if (b.resultBody && age >= 0.08 && age <= 0.6) {
+          const body = b.resultBody, hole = body.radius + 10;
           ctx.beginPath(); ctx.rect(-LIMIT_RADIUS, -LIMIT_RADIUS, LIMIT_RADIUS * 2, LIMIT_RADIUS * 2);
-          ctx.moveTo(b.x + hole, b.y); ctx.arc(b.x, b.y, hole, 0, Math.PI * 2); ctx.clip('evenodd');
+          ctx.moveTo(body.x + hole, body.y); ctx.arc(body.x, body.y, hole, 0, Math.PI * 2); ctx.clip('evenodd');
         }
         ctx.translate(b.x, b.y); drawSet(DRAW_ORDER); ctx.restore();
         ctx.save(); ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS - 12, 0, Math.PI * 2); ctx.clip();
