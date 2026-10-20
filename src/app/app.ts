@@ -26,6 +26,7 @@ import { chainMultiplier, createSimulation } from '../game/simulation';
 import { createTimeGovernor } from '../shared/time';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
+import { createReplayRecord, type ReplayRecord } from '../replay';
 import { createRankingStore, createSaveStore } from '../storage';
 import { createHud, createLayout, createOverlays } from '../ui';
 import { STRINGS, resultText } from '../ui/strings';
@@ -38,7 +39,13 @@ function newSeed(): number {
   return (Date.now() ^ (performance.now() * 1000)) >>> 0;
 }
 
-export function startApp(): void {
+/** startApp が外へ見せる口。再生・共有の画面（担当 B）はここから最後のプレイを受け取る。 */
+export type AppHandle = {
+  /** いちばん最近終わったプレイの再生の記録（シードと入力ログ）。まだ 1 回も終わっていなければ null */
+  lastReplay(): ReplayRecord | null;
+};
+
+export function startApp(): AppHandle {
   const appRoot = document.getElementById('app')!;
   const boardWrap = document.getElementById('board-wrap')!;
   const boardCanvas = document.getElementById('board') as HTMLCanvasElement;
@@ -57,6 +64,8 @@ export function startApp(): void {
   let state: AppState = 'title';
   let sim: SimulationPort = createSimulation(newSeed());
   let prev: GameSnapshot = sim.getSnapshot();
+  // 終わったプレイの入力ログを捨てずに持つ（保存の形は docs/review/B.md の 11 で決める。今はメモリの中だけ）
+  let lastReplay: ReplayRecord | null = null;
   let acc = 0;
   const timeGovernor = createTimeGovernor();
   let last = performance.now();
@@ -155,6 +164,7 @@ export function startApp(): void {
     };
     const isBest = record.score > save.bestScore;
     result = { record, isBest, rank: null };
+    lastReplay = createReplayRecord(sim);
     void ranking.submit(record, sim.getInputLog()).then(({ rank }) => {
       const hints = save.hints;
       save = saveStore.load();
@@ -347,6 +357,7 @@ export function startApp(): void {
   applySettings();
   setState('title');
   requestAnimationFrame(frame);
+  return { lastReplay: () => lastReplay };
 }
 
 // 連鎖の倍率は HUD（担当 D）からも使えるように出しておく

@@ -120,9 +120,13 @@ const scenarios = {
     await sleep(2500);
   },
 };
-// 担当が自分で足した見本ページ（あれば撮る）。操作バーのボタンを左から順に全部押す
-for (const name of ['look', 'sound', 'meta']) {
-  if (!existsSync(join(ROOT, 'dev', `${name}.html`))) continue;
+// 担当が自分で足した見本ページ（dev/ にある物は全部撮る。リーダーが一覧を直さなくてよい）。
+// 操作バーのボタンを左から順に全部押す
+const devPages = existsSync(join(ROOT, 'dev')) ? await readdir(join(ROOT, 'dev')) : [];
+for (const file of devPages) {
+  if (extname(file) !== '.html') continue;
+  const name = file.slice(0, -'.html'.length);
+  if (scenarios[name]) continue;
   scenarios[name] = async (page) => {
     await page.goto(`${base}/dev/${name}.html`);
     await sleep(800);

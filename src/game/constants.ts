@@ -94,6 +94,11 @@ export const HEAT_STATE_LIMITS = [25, 50, 75] as const;
 // 連鎖
 /** 合体で生まれた天体が、この時間内にまた合体すると連鎖 */
 export const CHAIN_WINDOW_SECONDS = 2.5;
+/**
+ * 連鎖の見えない猶予（秒）。期限（chainUntilTick）を少し過ぎた合体も連鎖に数える。
+ * 画面の期限は変えない。「ぎりぎり間に合った」と感じる側に倒すため（docs/手応え.md 4 章）
+ */
+export const CHAIN_GRACE_SECONDS = 0.085;
 export const CHAIN_STEP = 0.5;
 export const CHAIN_MULT_MAX = 3.0;
 
@@ -141,3 +146,96 @@ export const HITSTOP_RECOVER_SECONDS = 0.08;
 export const SLOWMO_MIN_SCALE = 0.2;
 export const SLOWMO_MAX_SECONDS = 3;
 export const SLOWMO_RECOVER_SECONDS = 0.5;
+
+// ───────── 重力操作の試作（dev/gravity-lab.html）─────────
+// 既定では無効。createSimulation の第 3 引数を渡したときだけ効く。
+// ここの値は「既定値」で、見本ページのスライダーがその場で上書きする。
+
+// 握る: 押している間、山にかかる重力が外向きになってふくらむ。離すと締まり、同じ天体が寄る。
+/** 握っている間、山を外へ押す加速度 */
+export const GRIP_SWELL_ACCEL = 520;
+/** 握っている間の山の減速（毎秒の割合）。ふくらむ速さの上限 = 加速度 ÷ これ */
+export const GRIP_DRAG = 6;
+/** 握り続けられる最長の秒数。越えたら自動で離す（無限にふくらまないように） */
+export const GRIP_MAX_HOLD_SECONDS = 1.4;
+/** 握っている間に上がる熱量（毎秒）。握りの代償 */
+export const GRIP_HEAT_PER_SECOND = 26;
+/** 離した後、締まっている時間（秒）。この間は同じ天体が引き合い、熱量は冷めない */
+export const GRIP_SQUEEZE_SECONDS = 0.8;
+/** 締まっている間の、核への重力の倍率 */
+export const GRIP_SQUEEZE_GRAVITY = 1.4;
+/** これより短い握り（溜めの割合）は、離しても締まらない。溜め 0 の連打を代償なしの圧縮にしない（10/18 審査 1） */
+export const GRIP_MIN_CHARGE = 0.15;
+/** 締まっている間、同じ Tier どうしが引き合う加速度 */
+export const GRIP_PULL_ACCEL = 1400;
+/** 最長まで握ったときに、同じ Tier が引き合う隙間の上限（短く握るとこれより狭い） */
+export const GRIP_PULL_RANGE = 80;
+/** 外側の端がこの半径を越えた天体は、それ以上は外へ押さない */
+export const GRIP_SWELL_LIMIT_RADIUS = 310; // 限界リング（320）の内側。ふくらむだけで熱量が上がらないように（10/18 審査 2）
+/** 握っている間と締まっている間の、山の天体の速さの上限（挟まれた天体が盤面の外まで弾かれないように） */
+export const GRIP_BODY_SPEED_CAP = 420;
+
+// 井戸: 盤面に数秒だけ効く 2 つ目の引力点を置く。
+/** 井戸の引く加速度の最大（撃った天体に対して） */
+export const WELL_ACCEL = 3000;
+/** 井戸が届く距離 */
+export const WELL_RADIUS = 240;
+/** 井戸の中心付近で力をなだらかにする距離（震えないように） */
+export const WELL_SOFT_RADIUS = 34;
+/** 井戸の中心付近にいる天体の減速（毎秒の割合）。行ったり来たりを止める */
+export const WELL_CORE_DAMPING = 7;
+/** 井戸が効く秒数 */
+export const WELL_SECONDS = 4;
+/** 消える前に力を弱めていく秒数（山が急に跳ねないように） */
+export const WELL_FADE_SECONDS = 0.6;
+/** 積もった山が井戸に引かれる割合（撃った天体を 1 として） */
+export const WELL_PILE_FACTOR = 0.25; // 1 だと山が持ち上がって限界を越え、使うほど不利だった（10/18 審査 4）
+/** 井戸の持ち数の上限と、開始時の数 */
+export const WELL_MAX_CHARGES = 2;
+export const WELL_START_CHARGES = 1;
+/** 合体を何回すると井戸が 1 個たまるか。井戸の代償（回数制） */
+export const WELL_MERGES_PER_CHARGE = 3;
+/** 井戸がある間に上がる熱量（毎秒）。既定は 0（ある間は冷めないだけ） */
+export const WELL_HEAT_PER_SECOND = 0;
+
+// 渦: 重力に横向きの成分を足して、山を核のまわりに回す。
+// 全体を同じだけ回しても、丸い盤面では何も変わらない。そこで「限界リングに近い天体ほど強く流す」形にして、
+// 山の高い所だけが横へ流れて低い所へ落ちるようにしている。
+/** 限界リングの位置で、流れが目指す横向きの速さ（回転が最大のとき） */
+export const VORTEX_SPEED = 260;
+/** 限界リングの位置での横向きの加速度の上限。重力の 0.6 倍くらいを越えると、天体が隣を乗り越え始める */
+export const VORTEX_ACCEL = 1100;
+/** 限界リングからこの深さまで流れが届く（それより内側の天体は流されない） */
+export const VORTEX_DEPTH = 170;
+/** 流れが届かない内側にも効かせる割合（1 にすると全体が同じ強さで回る。比べる用で、既定は 0） */
+export const VORTEX_INNER_FACTOR = 0;
+/** 天体の横向きの速さが、流れの速さへ近づく強さ（毎秒の割合） */
+export const VORTEX_FOLLOW = 8;
+/** 押してから回転が最大になるまでの秒数 */
+export const VORTEX_SPIN_UP_SECONDS = 0.25;
+/** 離してから回転が止まるまでの秒数（惰性。すぐには止まらない） */
+export const VORTEX_SPIN_DOWN_SECONDS = 0.9;
+/** 回転が最大のときに上がる熱量（毎秒）。回転の強さに比例する。渦の代償 */
+export const VORTEX_HEAT_PER_SECOND = 18;
+
+// ワンポチの 2 つ（10/19 持ち主「追加ギミックはワンポチで」「特定のタイミングで離すと演出」）
+// 重力弾: 押している間に満ち引きするゲージが満タンの瞬間に離すと、着いた所で同じ天体を引き寄せる。
+/** 重力弾が同じ天体を引き寄せる隙間の上限 */
+export const CHARGED_PULL_RANGE = 200;
+/** 重力弾が引き寄せる加速度 */
+export const CHARGED_PULL_ACCEL = 3000;
+/** 重力弾が引き寄せ続ける秒数 */
+export const CHARGED_PULL_SECONDS = 0.9;
+// 崩壊: 合体でためて、満タンなら核をタップ。山全体が締まり、同じ天体が寄り、熱量が下がる。
+/** 崩壊がたまる量。合体 1 回で 1、連鎖 n の合体で n たまる */
+export const BURST_MAX = 12;
+export const COLLAPSE_SECONDS = 1.2;
+/** 崩壊の間、同じ天体が引き合う隙間の上限 */
+export const COLLAPSE_PULL_RANGE = 160;
+/** 崩壊の間の、核への重力の倍率 */
+export const COLLAPSE_GRAVITY = 1.8;
+/** 崩壊の間に熱量が下がる速さ（毎秒） */
+export const COLLAPSE_COOL_PER_SECOND = 30;
+
+/** 重力操作で山が動いている間、限界の判定に持たせる幅（判定がちらつかないように） */
+export const LIMIT_HYSTERESIS = 5;

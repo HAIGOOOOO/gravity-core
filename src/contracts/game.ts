@@ -42,6 +42,8 @@ export type GameSnapshot = Readonly<{
   launchCooldownLeftSeconds: number;
   seed: number;
   stats: RunStats;
+  /** 重力操作の今の状態。重力操作が無効の計算では付かない（試作: dev/gravity-lab.html） */
+  gravity?: GravityView;
 }>;
 
 export type LaunchCommand = Readonly<{
@@ -49,6 +51,8 @@ export type LaunchCommand = Readonly<{
   /** 論理 px/秒 */
   vx: number;
   vy: number;
+  /** ゲージが満タンの瞬間に離した「重力弾」（試作。重力操作が有効の計算だけで効く） */
+  charged?: boolean;
 }>;
 
 export type LaunchRejectReason = 'cooldown' | 'overlap' | 'speed' | 'gameOver';
@@ -101,6 +105,8 @@ export type Prediction = Readonly<{
   hitBodyId: BodyId | null;
   /** 最初に当たる天体が同じ Tier（当たれば合体する） */
   willMerge: boolean;
+  /** 重力操作で山が動いていて、当たり先を言い切れない。このとき hitBodyId は null（道すじは全長） */
+  uncertain?: boolean;
 }>;
 
 export type LaunchInput = Readonly<{
@@ -108,6 +114,67 @@ export type LaunchInput = Readonly<{
   originAngleRadians: number;
   vx: number;
   vy: number;
+  /** 重力弾（試作）。共有の文字列にはまだ入らない */
+  charged?: boolean;
+}>;
+
+// ───────── 重力操作（試作）─────────
+// 射出とは別の入力。射出の記録（LaunchInput）の形は変えず、別の記録（GravityInput）に残す。
+
+export type GravityCommand =
+  /** 握る: on で握り始め、off で離す */
+  | Readonly<{ kind: 'grip'; on: boolean }>
+  /** 井戸を置く: 論理座標 (x, y) */
+  | Readonly<{ kind: 'well'; x: number; y: number }>
+  /** 渦: 1 = 時計回り、-1 = 反時計回り、0 = 手を離す */
+  | Readonly<{ kind: 'vortex'; dir: -1 | 0 | 1 }>
+  /** 崩壊（ワンポチの大技）: 合体でためた力で、山全体を締めて同じ天体を寄せる */
+  | Readonly<{ kind: 'collapse' }>;
+
+export type GravityRejectReason =
+  /** 重力操作が無効の計算 */
+  | 'disabled'
+  | 'gameOver'
+  /** すでにその状態（握っている最中にもう一度握る、など）。記録には残さない */
+  | 'noChange'
+  /** 握り: 締まっている途中 / 井戸: 前の井戸がまだある */
+  | 'busy'
+  /** 井戸の持ち数が無い */
+  | 'noCharge'
+  /** 井戸を置けない場所（核の中、射出リングの外） */
+  | 'outOfBoard';
+
+export type GravityResult = { accepted: true } | { accepted: false; reason: GravityRejectReason };
+
+export type GravityInput = Readonly<{ tick: Tick; command: GravityCommand }>;
+
+export type GravityView = Readonly<{
+  grip: Readonly<{
+    held: boolean;
+    /** 握りの溜まり具合（0〜1）。握った時間 ÷ 最長 */
+    charge: number;
+    /** 離した後、締まっている残り秒数 */
+    squeezeLeftSeconds: number;
+    /** いま離したら、同じ Tier が引き合う隙間の上限。締まっている間は、効いている値 */
+    pullRange: number;
+  }>;
+  well: Readonly<{ x: number; y: number; leftSeconds: number; radius: number }> | null;
+  wellCharges: number;
+  /** 次の井戸がたまるまでに済んだ合体の数 */
+  wellMergeProgress: number;
+  vortex: Readonly<{ dir: -1 | 0 | 1; /** 今の回転の強さ（-1〜1） */ spin: number }>;
+  /** 崩壊の力のたまり具合。value が max に届くと ready */
+  burst: Readonly<{ value: number; max: number; ready: boolean }>;
+  /** 崩壊の残り秒数（0 なら起きていない） */
+  collapseLeftSeconds: number;
+  /** 重力弾が着いた所で、同じ天体を引き寄せている天体と、その残り秒数 */
+  pulses: readonly Readonly<{ bodyId: BodyId; leftSeconds: number; range: number }>[];
+  /** 重力操作で山が動いている（予測の当たり先は言い切れない） */
+  unstable: boolean;
+  /** 重力操作のせいで熱量が冷めない */
+  coolingBlocked: boolean;
+  /** 重力操作が今足している熱量（毎秒） */
+  heatPerSecond: number;
 }>;
 
 export interface SimulationPort {
@@ -118,4 +185,7 @@ export interface SimulationPort {
   /** 状態を変えない */
   predict(command: LaunchCommand): Prediction;
   getInputLog(): readonly LaunchInput[];
+  /** 重力操作を入れる。受け付けた物は、今の tick を付けて記録に残る */
+  submitGravity(command: GravityCommand): GravityResult;
+  getGravityLog(): readonly GravityInput[];
 }
