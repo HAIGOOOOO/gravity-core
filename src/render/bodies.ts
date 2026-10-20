@@ -20,7 +20,7 @@ export function drawBody(
 ): void {
   ctx.save();
   ctx.globalAlpha *= options.alpha ?? 1;
-  if (tier === 0) { drawCachedGrain(ctx, x, y, radius); ctx.restore(); return; }
+  if (tier === 0) { drawCachedGrain(ctx, x, y, radius, options.seed); ctx.restore(); return; }
   ctx.fillStyle = TIER_COLOR[tier];
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
