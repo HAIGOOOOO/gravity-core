@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>連鎖で熱を逃がす | GRAVITY CORE</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101619;color:#f0ece0}body{max-width:1120px;margin:auto;padding:24px}a{color:#afcdb6}h1{font-size:clamp(26px,4vw,42px);margin:12px 0}p{color:#c0c3bb;line-height:1.7}main{display:grid;grid-template-columns:minmax(0,640px) minmax(250px,1fr);gap:28px}#stage{position:relative;aspect-ratio:1;max-width:640px;touch-action:none}canvas{position:absolute;inset:0;width:100%;height:100%}#effects{pointer-events:none}.controls{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}button{font:inherit;border:1px solid #647467;color:#eee9da;background:#25322b;padding:10px 14px;cursor:pointer}button:focus-visible{outline:3px solid #e1b96c;outline-offset:3px}meter{width:100%;height:22px}#heat{font-size:56px;font-weight:650;font-variant-numeric:tabular-nums}#cooling{height:32px;color:#b2e6bc;font-size:22px}ol{padding-left:22px;line-height:1.8;font-variant-numeric:tabular-nums}#mode{min-height:4em}small{color:#a7afa4}#facts{line-height:1.8;white-space:pre-line}.eyebrow{font-size:12px;letter-spacing:.16em;color:#bca376}@media(max-width:760px){body{padding:16px}main{grid-template-columns:1fr}aside{max-width:640px}#heat{font-size:42px}}
+</style></head><body>
+<span class="eyebrow">GRAVITY CORE / RULE STUDY 01</span><h1>連鎖で、熱を逃がす。</h1>
+<p>つなげた合体が、危険な熱を取り戻す。一投ごとの出現順は、決まった組を混ぜた袋から。</p>
+<nav><a href="/">ゲーム本体で遊ぶ</a>　<a href="./juice.html">演出の比較</a></nav>
+<div class="controls"><button id="play">自由に遊ぶ</button><button data-chain="1">単発の冷却</button><button data-chain="3">3連鎖目の冷却</button><button data-chain="5">5連鎖目の冷却</button><button id="pause">一時停止</button><label><input id="sound" type="checkbox">音あり</label></div>
+<main><div id="stage"><canvas id="board" aria-label="重力核のまわりへ天体を落とす盤面"></canvas><canvas id="effects"></canvas></div>
+<aside><small>核熱量 / 100</small><div id="heat">80.0</div><meter id="meter" min="0" max="100" low="50" high="75" optimum="0" value="80"></meter><div id="cooling" role="status"></div><p id="mode"></p><div id="facts"></div><h2>起きたこと</h2><ol id="events" aria-live="off"></ol><p><small>冷却の見本は、指定した連鎖目の直前の状態から本番の計算を再開します。長い連鎖を一から成功させた映像ではありません。</small></p></aside></main>
+<script type="module" src="../src/dev/rules-demo.ts"></script></body></html>

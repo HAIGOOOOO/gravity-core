@@ -41,7 +41,7 @@ import {
 /** この文字列形式の版。形を変えたら +1 する。 */
 export const SHARE_FORMAT_VERSION = 2;
 /** いまのルールの版。RULES.md のルールが変わったら +1 する（リーダー管理）。 */
-export const SHARE_RULES_VERSION = 3; // 3: 合体と連鎖で冷却（2026-10-21）
+export const SHARE_RULES_VERSION = 4; // 4: 固定組の袋から順に出す（2026-10-21）
 
 /**
  * 文字列の長さの上限。4 時間ぶんの「まっすぐ落とし」連打（約 2.9 万入力）でも十分入る大きさ。

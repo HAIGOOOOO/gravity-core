@@ -108,6 +108,8 @@ export const CHAIN_MULT_MAX = 3.0;
 
 // 次の天体（到達した最高 Tier が minBest 以上のときの確率。下の行が優先）
 export const QUEUE_SIZE = 3;
+/** 現在の確率表の最小単位5%を、整数個の天体にする。 */
+export const QUEUE_BAG_SIZE = 20;
 export const QUEUE_TABLE = [
   { minBest: 0, weights: [0.7, 0.3] },
   { minBest: 2, weights: [0.45, 0.35, 0.2] },

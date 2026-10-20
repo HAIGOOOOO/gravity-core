@@ -48,7 +48,7 @@ import { fusionCooling } from './heat';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
 import { createRng, createRngFromState } from './rng';
-import { drawTier } from './spawner';
+import { createTierBag, type TierBagState } from './spawner';
 
 type Body = {
   id: BodyId;
@@ -89,7 +89,7 @@ export type SimulationSetup = {
  * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
  */
 export type SimulationState = Readonly<{
-  format: 1;
+  format: 2;
   seed: number;
   rngState: number;
   tick: number;
@@ -104,6 +104,7 @@ export type SimulationState = Readonly<{
   pendingEvents: readonly GameEvent[];
   bodies: readonly Readonly<Body>[];
   queue: readonly [Tier, Tier, Tier];
+  bag: TierBagState;
   inputLog: readonly LaunchInput[];
   stats: Readonly<GameSnapshot['stats']>;
   /** 重力操作（試作）の状態。重力操作が無効の計算では null */
@@ -141,7 +142,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup, gravityT
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
 export function restoreSimulation(state: SimulationState): Simulation {
-  if (state.format !== 1) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
+  if (state.format !== 2) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
   return build(state.seed, undefined, state, undefined);
 }
 
@@ -152,6 +153,7 @@ function build(
   gravityTuning: GravityTuning | undefined,
 ): Simulation {
   const rng = saved ? createRngFromState(saved.rngState) : createRng(seed);
+  const bag = createTierBag(rng, saved?.bag);
   const gravity = saved
     ? saved.gravity
       ? createGravity({ ...saved.gravity.tuning }, saved.gravity)
@@ -175,7 +177,7 @@ function build(
     ? [saved.queue[0], saved.queue[1], saved.queue[2]]
     : setup?.queue
       ? [...setup.queue]
-      : [0, 0, drawTier(0, rng)];
+      : [0, 0, bag.draw(0)];
   const inputLog: LaunchInput[] = saved ? saved.inputLog.map((i) => ({ ...i })) : [];
   const stats = saved ? { ...saved.stats } : { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
 
@@ -256,7 +258,7 @@ function build(
     const tier = queue[0];
     queue[0] = queue[1];
     queue[1] = queue[2];
-    queue[2] = drawTier(bestTier, rng);
+    queue[2] = bag.draw(bestTier);
 
     const body = addBody(
       tier,
@@ -506,7 +508,7 @@ function build(
 
   function exportState(): SimulationState {
     return {
-      format: 1,
+      format: 2,
       seed,
       rngState: rng.state(),
       tick,
@@ -521,6 +523,7 @@ function build(
       pendingEvents: pendingEvents.map(copyEvent),
       bodies: bodies.map((b) => ({ ...b })),
       queue: [queue[0], queue[1], queue[2]],
+      bag: bag.exportState(),
       inputLog: inputLog.map((i) => ({ ...i })),
       stats: { ...stats },
       gravity: gravity ? gravity.exportState() : null,

@@ -9,7 +9,7 @@ import * as RULE_CONSTANTS from '../game/constants';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 4; // 4: 合体と連鎖で冷却（2026-10-21）
+export const REPLAY_FORMAT = 5; // 5: 固定組の袋から順に出す（2026-10-21）
 
 export type ReplayRecord = Readonly<{
   format: typeof REPLAY_FORMAT;
