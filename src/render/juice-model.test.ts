@@ -18,6 +18,6 @@ describe('演出の出来事と時間',()=>{
   });
   it('実装済みの20部品を個数で水増ししない',()=>{
     expect(new Set(JUICE_LAYERS).size).toBe(20);
-    expect(new Set([...JUICE_LAYERS,...JUICE_PEAK_LAYERS]).size).toBe(24);
+    expect(new Set([...JUICE_LAYERS,...JUICE_PEAK_LAYERS]).size).toBe(26);
   });
 });

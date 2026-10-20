@@ -1,10 +1,12 @@
 import '../styles/juice.css';
 import type { GameEvent, Tier } from '../contracts/game';
-import { BOARD_SIZE, DPR_CAP, LAUNCH_RADIUS, LIMIT_RADIUS, MAX_FRAME_SECONDS } from '../game/constants';
-import { dropAt, sampleEvent, setupAllTiers } from '../fixtures';
-import { createSimulation } from '../game/simulation';
+import { BOARD_SIZE, DPR_CAP, LAUNCH_RADIUS, LIMIT_RADIUS, MAX_FRAME_SECONDS, TIER_RADIUS } from '../game/constants';
 import { createBoardRenderer } from '../render';
+import { drawBody } from '../render/bodies';
+import { createJuiceScene, type JuiceScene } from './juice-scene';
 import { drawJuice } from '../render/juice-shapes';
+import { drawJuiceLabels } from '../render/juice-labels';
+import { drawJuiceMemories, drawJuiceReflections } from '../render/juice-reflections';
 import { juiceDuration, makeJuiceBurst, type JuiceBurst, type JuiceDirection } from '../render/juice-model';
 
 const board=document.getElementById('juice-board') as HTMLCanvasElement;
@@ -16,10 +18,9 @@ const status=document.getElementById('juice-status')!;
 const bar=document.getElementById('demo-controls')!;
 const slider=document.getElementById('juice-time') as HTMLInputElement;
 const reduced=document.getElementById('juice-reduced') as HTMLInputElement;
-const sim=createSimulation(13,setupAllTiers());
-const snapshot=sim.getSnapshot();const prediction=sim.predict(dropAt(-Math.PI/2));
+let scene=createJuiceScene(2,3);
 const names:Record<JuiceDirection,string>={fracture:'A 圧縮して割れる',jet:'B 一方向へ噴き出す',echo:'C 遅れて余響が広がる'};
-let direction:JuiceDirection='fracture';let event:GameEvent=sampleEvent('merge',2,135,-100,3);
+let direction:JuiceDirection='fracture';let event:GameEvent=scene.event;
 let burst=makeJuiceBurst(event,direction)!;let age=0;let paused=false;let previous=performance.now();
 function button(name:string,action:()=>void,key?:JuiceDirection):void {
   const b=document.createElement('button');b.type='button';b.textContent=name;
@@ -32,7 +33,7 @@ function announce():void {
   bar.querySelectorAll<HTMLElement>('[data-direction]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.direction===direction)));
 }
 function fire(chain:number,tier:Tier=2,nova=false):void {
-  event=sampleEvent(nova?'supernova':'merge',tier,135,-100,chain);burst=makeJuiceBurst(event,direction)!;age=0;paused=false;announce();
+  scene=createJuiceScene(nova?8:tier,chain);event=scene.event;burst=makeJuiceBurst(event,direction)!;age=0;paused=false;announce();
 }
 for(const key of Object.keys(names) as JuiceDirection[])button(names[key],()=>{direction=key;burst=makeJuiceBurst(event,direction)!;age=0;paused=false;announce();},key);
 for(let chain=1;chain<=5;chain++)button(`${chain}連鎖`,()=>fire(chain));
@@ -48,7 +49,8 @@ for(const seconds of [.04,.1,.28,.8]){
   b.addEventListener('click',()=>{paused=true;age=seconds;slider.value=String(seconds*1000);document.getElementById('juice-time-label')!.textContent=`${seconds.toFixed(2)}秒`;announce();});document.getElementById('juice-times')!.append(b);
 }
 
-function foreground(target:CanvasRenderingContext2D):void {
+function foreground(target:CanvasRenderingContext2D,current:JuiceScene):void {
+  const {prediction,background:snapshot}=current;
   // 成功の演出より、実際の予測と限界を上へ戻す。操作を推測して作らない。
   target.save();target.globalCompositeOperation='destination-out';target.lineWidth=22;
   target.beginPath();prediction.points.forEach((p,i)=>i?target.lineTo(p.x,p.y):target.moveTo(p.x,p.y));target.stroke();
@@ -58,8 +60,34 @@ function foreground(target:CanvasRenderingContext2D):void {
   target.fillStyle='#fff2d8';for(const point of prediction.points){target.beginPath();target.arc(point.x,point.y,3,0,Math.PI*2);target.fill();}
   target.beginPath();target.arc(0,-LAUNCH_RADIUS,12,0,Math.PI*2);target.stroke();
 }
-function paint(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number):void {
-  drawJuice(target,item,seconds,reduced.checked);foreground(target);
+function subjects(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number,current:JuiceScene):void {
+  const time=reduced.checked?.28:seconds/(item.direction==='echo'?1.6:item.direction==='jet'?.82:1);
+  target.save();target.globalCompositeOperation='destination-out';
+  for(const body of current.background.bodies){target.beginPath();target.arc(body.x,body.y,body.radius+4,0,Math.PI*2);target.fill();}
+  // 誕生した天体の面を抜き、破片に輪郭が埋もれないようにする。
+  if(current.result&&time>=.09){const body=current.result;target.beginPath();target.arc(body.x,body.y,TIER_RADIUS[body.tier]+5,0,Math.PI*2);target.fill();}
+  target.restore();target.save();target.strokeStyle='#fff2d8';target.lineWidth=2;
+  if(time<.09){
+    const p=Math.min(1,time/.09);
+    for(const body of current.sources){
+      const x=body.x+(item.x-body.x)*p*.55,y=body.y+(item.y-body.y)*p*.55,r=body.radius*(1-p*.18);
+      drawBody(target,body.tier,x,y,r,{seed:body.id});target.beginPath();target.arc(x,y,r+2,0,Math.PI*2);target.stroke();
+    }
+  }else if(current.result){
+    const body=current.result;const r=TIER_RADIUS[body.tier]*(time<.3?1+.12*Math.sin((time-.09)/.21*Math.PI):1);
+    drawBody(target,body.tier,body.x,body.y,r,{seed:body.id});target.beginPath();target.arc(body.x,body.y,r+2,0,Math.PI*2);target.stroke();
+  }
+  target.restore();
+}
+function paint(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number,current:JuiceScene=scene):void {
+  const time=reduced.checked?.28:seconds/(item.direction==='echo'?1.6:item.direction==='jet'?.82:1);
+  drawJuice(target,item,seconds,reduced.checked);
+  target.save();if(reduced.checked)target.globalAlpha*=Math.max(0,1-seconds/.9);
+  drawJuiceMemories(target,item,current.sources,time);target.restore();
+  subjects(target,item,seconds,current);
+  target.save();if(reduced.checked)target.globalAlpha*=Math.max(0,1-seconds/.9);
+  drawJuiceReflections(target,item,current.background.bodies,time);target.restore();
+  drawJuiceLabels(target,item,seconds,reduced.checked);foreground(target,current);
 }
 function resize():void {
   const size=stage.clientWidth;renderer.resize(size);const pixels=Math.round(size*Math.min(devicePixelRatio,DPR_CAP));effects.width=pixels;effects.height=pixels;
@@ -67,15 +95,18 @@ function resize():void {
 new ResizeObserver(resize).observe(stage);resize();
 function frame(now:number):void {
   const dt=Math.min((now-previous)/1000,MAX_FRAME_SECONDS);previous=now;if(!paused){age+=dt;if(age>juiceDuration(burst)){paused=true;announce();}}
+  const snapshot=scene.background;
   renderer.draw({prev:snapshot,curr:snapshot,alpha:1,timeSeconds:0,aim:null,reducedMotion:reduced.checked,aimGuide:true,dimmed:false});
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,effects.width,effects.height);
   const scale=effects.width/BOARD_SIZE;ctx.setTransform(scale,0,0,scale,effects.width/2,effects.height/2);
-  if(age<=juiceDuration(burst))paint(ctx,burst,age);else foreground(ctx);
+  if(age<=juiceDuration(burst))paint(ctx,burst,age);else {subjects(ctx,burst,age,scene);foreground(ctx,scene);}
   requestAnimationFrame(frame);
 }
 function compare():void {
   const out=document.getElementById('juice-frames')!;out.replaceChildren();document.getElementById('juice-comparison')!.hidden=false;
+  document.getElementById('juice-comparison-title')!.textContent='同じ出来事の3案';
   for(const key of Object.keys(names) as JuiceDirection[]){
+    const snapshot=scene.background;
     const figure=document.createElement('figure');const canvas=document.createElement('canvas');canvas.width=480;canvas.height=480;
     const r=createBoardRenderer(canvas);r.resize(480);r.draw({prev:snapshot,curr:snapshot,alpha:1,timeSeconds:0,aim:null,reducedMotion:false,aimGuide:true,dimmed:false});
     const overlay=document.createElement('canvas');overlay.width=canvas.width;overlay.height=canvas.height;const context=overlay.getContext('2d')!;const s=overlay.width/BOARD_SIZE;context.setTransform(s,0,0,s,overlay.width/2,overlay.height/2);
@@ -86,13 +117,15 @@ function compare():void {
 }
 function timeline():void {
   const out=document.getElementById('juice-frames')!;out.replaceChildren();document.getElementById('juice-comparison')!.hidden=false;
+  document.getElementById('juice-comparison-title')!.textContent='1・3・5連鎖の時系列';
   for(const chain of [1,3,5]){
+    const current=createJuiceScene(2,chain),snapshot=current.background;
     const figure=document.createElement('figure');figure.style.gridColumn='1/-1';const strip=document.createElement('canvas');strip.width=960;strip.height=240;const context=strip.getContext('2d')!;
-    const item=makeJuiceBurst(sampleEvent('merge',2,135,-100,chain),direction)!;
+    const item=makeJuiceBurst(current.event,direction)!;
     for(const [index,seconds] of [.04,.1,.28,.8].entries()){
       const tile=document.createElement('canvas');const render=createBoardRenderer(tile);render.resize(240);render.draw({prev:snapshot,curr:snapshot,alpha:1,timeSeconds:0,aim:null,reducedMotion:false,aimGuide:true,dimmed:false});
       const overlay=document.createElement('canvas');overlay.width=tile.width;overlay.height=tile.height;const drawing=overlay.getContext('2d')!;const scale=overlay.width/BOARD_SIZE;drawing.setTransform(scale,0,0,scale,overlay.width/2,overlay.height/2);
-      paint(drawing,item,seconds);composite(tile,overlay);context.drawImage(tile,index*240,0,240,240);
+      paint(drawing,item,seconds,current);composite(tile,overlay);context.drawImage(tile,index*240,0,240,240);
     }
     const caption=document.createElement('figcaption');caption.textContent=`${chain}連鎖：左から0.04 / 0.10 / 0.28 / 0.80秒`;figure.append(strip,caption);out.append(figure);
   }
