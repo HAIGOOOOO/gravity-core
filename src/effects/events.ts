@@ -1,5 +1,6 @@
 import type { GameEvent, Tier } from '../contracts/game';
-import { LIMIT_RADIUS, TIER_COLOR, TIER_RADIUS } from '../game/constants';
+import { CORE_RADIUS, LIMIT_RADIUS, TIER_COLOR, TIER_RADIUS } from '../game/constants';
+import { STRINGS } from '../ui/strings';
 import { drawBody } from '../render/bodies';
 import { EFFECT_TEXT, impactStrength, mergeProfile, signedNumber, VISUAL } from './appearance';
 import { fade, lifeProgress, REDUCED_RING_SECONDS, safeDelta } from './motion';
@@ -72,6 +73,11 @@ export function createEventEffects(pool: EffectPool, theme: EffectTheme) {
       const source = event.sourceTier ?? 0;
       const color = TIER_COLOR[source];
       switch (event.kind) {
+        case 'collapse':
+          ring(0, 0, LIMIT_RADIUS - 12, CORE_RADIUS + 8, 5, theme.cool, 0.45);
+          ring(0, 0, LIMIT_RADIUS * 0.65, CORE_RADIUS + 8, 2, theme.text, 0.65);
+          pool.text(0, -CORE_RADIUS - VISUAL.textGap, STRINGS.effectCollapse, theme.cool, VISUAL.chainTextSize);
+          break;
         case 'launch':
           for (let i = 0; i < 3; i++) ring(x, y, TIER_RADIUS[source] + i * 5,
             TIER_RADIUS[source] + VISUAL.launchSpread * (3 - i * 0.55), 9 - i * 2, i ? color : theme.text, VISUAL.launchSeconds + i * 0.04);

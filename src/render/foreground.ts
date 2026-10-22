@@ -1,12 +1,14 @@
 import type { BoardFrame } from '../contracts/app';
 import { CHAIN_WINDOW_SECONDS, HEAT_MAX, LAUNCH_RADIUS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
 import { fusionCooling } from '../game/heat';
-import { chainTargetLabel } from '../ui/strings';
+import { chainTargetLabel, STRINGS } from '../ui/strings';
 import { drawBody } from './bodies';
+import { drawPlayingBodies } from './playing-bodies';
 
 /** 操作の線は光の面と混ぜず、暗い下縁を付けて最前面へ置く。 */
 export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardFrame): void {
   ctx.save();
+  drawPlayingBodies(ctx, frame);
   ctx.strokeStyle = '#070b18'; ctx.lineWidth = frame.curr.overLimit ? 7 : 5;
   ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = frame.curr.overLimit ? '#FF7D83' : 'rgba(145,160,184,0.85)';
@@ -29,6 +31,18 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
     const ox = LAUNCH_RADIUS * Math.cos(aim.originAngleRadians), oy = LAUNCH_RADIUS * Math.sin(aim.originAngleRadians);
     drawBody(ctx, aim.tier, ox, oy, TIER_RADIUS[aim.tier], { alpha: 0.8 });
     const prediction = aim.prediction;
+    const growth = frame.aimGuide ? prediction?.mergePreview : undefined;
+    if (growth) {
+      ctx.setLineDash([5, 5]); ctx.lineWidth = 3;
+      ctx.strokeStyle = growth.mayCrossLimit ? '#FF7D83' : '#b2e6bc';
+      ctx.beginPath(); ctx.arc(growth.x, growth.y, growth.radius, 0, Math.PI * 2); ctx.stroke();
+      for (const b of growth.pushed) { ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.setLineDash([]); ctx.font = '700 25px system-ui,sans-serif'; ctx.textAlign = 'center';
+      const x = Math.max(-210, Math.min(210, growth.x)), y = Math.max(-290, Math.min(290, growth.y + growth.radius + 32));
+      const text = growth.mayCrossLimit ? STRINGS.growthRisk : STRINGS.growthPreview;
+      ctx.strokeStyle = '#101b1a'; ctx.lineWidth = 6; ctx.strokeText(text, x, y);
+      ctx.fillStyle = growth.mayCrossLimit ? '#FF7D83' : '#b2e6bc'; ctx.fillText(text, x, y);
+    }
     if (frame.aimGuide && prediction && prediction.points.length > 1) {
       const last = prediction.points[prediction.points.length - 1];
       for (const underlay of [true, false]) {
@@ -47,7 +61,7 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
 /** 2枚の盤面を重ねる本体だけに、入力を受けない前景を足す。見本の単独canvasは増やさない。 */
 export function createBoardForeground(canvas: HTMLCanvasElement): HTMLCanvasElement | null {
   const parent = canvas.parentElement;
-  if (parent?.id !== 'board-wrap') return null;
+  if (parent?.id !== 'board-wrap' && parent?.id !== 'stage') return null;
   const existing = parent.querySelector<HTMLCanvasElement>('canvas[data-board-foreground]');
   if (existing) return existing;
   const top = document.createElement('canvas'); top.dataset.boardForeground = '';

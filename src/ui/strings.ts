@@ -71,6 +71,9 @@ export const STRINGS = {
   effectChain: '連鎖',
   effectSupernova: '超新星反応',
   effectHeat: '核熱量',
+  effectCollapse: '崩壊',
+  growthPreview: '成長後の目安',
+  growthRisk: '成長後、限界を越す可能性',
 } as const;
 
 export function rankLabel(rank: number): string { return `この端末で ${rank} 位`; }

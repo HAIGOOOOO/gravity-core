@@ -22,6 +22,7 @@
 import type { GameEvent, GameSnapshot, SimulationPort, Tick } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
 import { createSimulation } from '../game/simulation';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import { runReplay, type ReplayFailure } from './engine';
 import { copySetup, type ReplayRecord } from './record';
 
@@ -114,7 +115,7 @@ export function createReplayPlayer(
   const { endTick } = record;
   // 呼び出し側があとで記録の中身を書き換えても、カーソルの再計算が腐らないよう
   // 入力と開始状態は作るときに複製して持つ（record.ts と同じ考え方）。
-  const inputs = record.inputs.map((i) => ({ ...i }));
+  const inputs = expandLaunchInputs(record.inputs.map((i) => ({ ...i })), record.endTick)!;
   const setup = record.setup === undefined ? undefined : copySetup(record.setup);
   // run の中身は必要な物だけ取り出し、配列ごとの参照をクロージャに残さない
   // （checkpoints の配列自体はキーフレームへ移したあと手放す）。
@@ -156,7 +157,8 @@ export function createReplayPlayer(
     while (c.nextInput < inputs.length && inputs[c.nextInput]!.tick === tick) {
       const input = inputs[c.nextInput]!;
       c.nextInput++;
-      c.sim.submitLaunch(input);
+      if (input.kind === 'launch') c.sim.submitLaunch(input.input);
+      else c.sim.submitGravity({ kind: 'collapse' });
     }
   };
 

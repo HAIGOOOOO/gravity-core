@@ -15,6 +15,7 @@ import {
 } from './constants';
 import type { FlightModel } from './gravity';
 import { stepFree, type Mover } from './physics';
+import { mergePreview } from './merge-preview';
 
 // 丸め（quantizeLaunch）で速さは最大 √2/2 ≈ 0.71 ずれるので、それを越える余裕を持たせる
 const SPEED_TOLERANCE = 1;
@@ -114,5 +115,7 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand, fl
   const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points };
   // 山が動いているときは、線と終わり方は出すが「何に当たるか」は答えない（終点は「不確か」の見た目で描く）
   if (uncertain) return { ...base, end, hitBodyId: null, willMerge: false, uncertain: true };
-  return { ...base, end, hitBodyId, willMerge };
+  const path = { ...base, end, hitBodyId, willMerge };
+  const preview = mergePreview(snapshot, path);
+  return preview ? { ...path, mergePreview: preview } : path;
 }

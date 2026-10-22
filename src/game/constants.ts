@@ -237,6 +237,10 @@ export const CHARGED_PULL_SECONDS = 0.9;
 // 崩壊: 合体でためて、満タンなら核をタップ。山全体が締まり、同じ天体が寄り、熱量が下がる。
 /** 崩壊がたまる量。合体 1 回で 1、連鎖 n の合体で n たまる */
 export const BURST_MAX = 12;
+/** 本番で崩壊を知る段階。最初からすべての操作を並べない。 */
+export const INTERVENTION_UNLOCK_TIER = 3;
+/** 直前の射出からこの秒数以内に一度だけ介入できる。次の射出で窓を更新する。 */
+export const INTERVENTION_WINDOW_SECONDS = 1.2;
 export const COLLAPSE_SECONDS = 1.2;
 /** 崩壊の間、同じ天体が引き合う隙間の上限 */
 export const COLLAPSE_PULL_RANGE = 160;

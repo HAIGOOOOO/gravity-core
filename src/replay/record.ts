@@ -9,7 +9,7 @@ import * as RULE_CONSTANTS from '../game/constants';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 6; // 6: 成長の押しのけを射出速度にしない（2026-10-21）
+export const REPLAY_FORMAT = 7; // 7: 射出後の一手と、その入力時刻を保存（2026-10-22）
 
 export type ReplayRecord = Readonly<{
   format: typeof REPLAY_FORMAT;
@@ -172,7 +172,8 @@ function isInput(v: unknown): v is LaunchInput {
     isNonNegativeInt(i.tick) &&
     isFiniteNum(i.originAngleRadians) &&
     isFiniteNum(i.vx) &&
-    isFiniteNum(i.vy)
+    isFiniteNum(i.vy) &&
+    (i.collapseTick === undefined || isNonNegativeInt(i.collapseTick))
   );
 }
 

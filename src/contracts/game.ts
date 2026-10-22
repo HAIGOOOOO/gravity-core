@@ -44,6 +44,13 @@ export type GameSnapshot = Readonly<{
   launchCooldownLeftSeconds: number;
   seed: number;
   stats: RunStats;
+  /** 本番の「撃った後に一度だけ使う崩壊」。試作の連続操作とは分ける。 */
+  intervention?: Readonly<{
+    unlocked: boolean; charge: number; max: number; ready: boolean;
+    windowLeftSeconds: number; activeLeftSeconds: number; used: boolean;
+    /** 直前のtickで崩壊が実際に冷やした量。熱0以下を架空の冷却にしない。 */
+    coolingThisTick: number;
+  }>;
   /** 重力操作の今の状態。重力操作が無効の計算では付かない（試作: dev/gravity-lab.html） */
   gravity?: GravityView;
 }>;
@@ -76,6 +83,8 @@ export type GameEventKind =
   | 'overLimitStart'
   /** 越えた天体がなくなった（熱量が下がり始めた） */
   | 'overLimitEnd'
+  /** 撃った後に崩壊を使った。冷却は続くtickの実熱量へ反映される。 */
+  | 'collapse'
   | 'gameOver';
 
 export type GameEvent = Readonly<{
@@ -113,6 +122,11 @@ export type Prediction = Readonly<{
   willMerge: boolean;
   /** 重力操作で山が動いていて、当たり先を言い切れない。このとき hitBodyId は null（道すじは全長） */
   uncertain?: boolean;
+  /** 静止した盤面での成長後の目安。時間発展・連鎖・限界猶予を含む未来予測ではない。 */
+  mergePreview?: Readonly<{
+    x: number; y: number; radius: number; tier: Tier; mayCrossLimit: boolean;
+    pushed: readonly Readonly<{ id: BodyId; x: number; y: number; radius: number }>[];
+  }>;
 }>;
 
 export type LaunchInput = Readonly<{
@@ -122,6 +136,8 @@ export type LaunchInput = Readonly<{
   vy: number;
   /** 重力弾（試作）。共有の文字列にはまだ入らない */
   charged?: boolean;
+  /** この射出の後に崩壊を受け付けたtick。次の射出より前（同tickなら崩壊が先）。 */
+  collapseTick?: Tick;
 }>;
 
 // ───────── 重力操作（試作）─────────
@@ -141,6 +157,10 @@ export type GravityRejectReason =
   /** 重力操作が無効の計算 */
   | 'disabled'
   | 'gameOver'
+  | 'locked'
+  | 'noShot'
+  | 'expired'
+  | 'alreadyUsed'
   /** すでにその状態（握っている最中にもう一度握る、など）。記録には残さない */
   | 'noChange'
   /** 握り: 締まっている途中 / 井戸: 前の井戸がまだある */

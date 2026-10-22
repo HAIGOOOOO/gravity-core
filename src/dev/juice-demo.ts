@@ -74,10 +74,10 @@ const comparisonAim: AimView = {
   prediction: { valid: true, end: 'body', hitBodyId: null, willMerge: false,
     points: [{ x: 310, y: -250, t: 0 }, { x: 125, y: -70, t: 0.5 }] },
 };
-function drawGuides(): void {
+function drawGuides(scene: GameSnapshot): void {
   const k = 560 / BOARD_SIZE;
   ctx.save(); ctx.scale(k, k);
-  drawBoardForeground(ctx, { prev: after, curr: after, alpha: 1, timeSeconds: 0, aim: comparisonAim, reducedMotion: reduced.checked, aimGuide: true, dimmed: false });
+  drawBoardForeground(ctx, { prev: scene, curr: scene, alpha: 1, timeSeconds: 0, aim: comparisonAim, reducedMotion: reduced.checked, aimGuide: true, dimmed: false });
   ctx.restore();
 }
 function paint(): void {
@@ -93,7 +93,7 @@ function paint(): void {
     ctx.save(); ctx.translate(280, 320);
     if (i > 0 || !compare.checked) { const matrix = new DOMMatrix(target.style.transform || undefined); ctx.transform(matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f); }
     ctx.drawImage(board, -280, -280, 560, 560); ctx.drawImage(i === 0 && compare.checked ? baseCanvas : overlay, -280, -280, 560, 560);
-    drawGuides(); ctx.restore(); ctx.restore();
+    drawGuides(scene); ctx.restore(); ctx.restore();
   }
 }
 function percentile(values: number[], fraction: number): number { const sorted = [...values].sort((a, b) => a - b); return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0; }

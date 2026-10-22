@@ -26,6 +26,7 @@
 
 import type { LaunchInput, SimulationPort } from '../contracts/game';
 import { DROP_SPEED, TICK_HZ } from '../game/constants';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import {
   base64UrlToBytes,
   bytesToBase64Url,
@@ -39,9 +40,9 @@ import {
 } from './coding';
 
 /** この文字列形式の版。形を変えたら +1 する。 */
-export const SHARE_FORMAT_VERSION = 2;
+export const SHARE_FORMAT_VERSION = 3;
 /** いまのルールの版。RULES.md のルールが変わったら +1 する（リーダー管理）。 */
-export const SHARE_RULES_VERSION = 5; // 5: 成長の押しのけを射出速度にしない（2026-10-21）
+export const SHARE_RULES_VERSION = 6; // 6: 射出後の一手（2026-10-22）
 
 /**
  * 文字列の長さの上限。4 時間ぶんの「まっすぐ落とし」連打（約 2.9 万入力）でも十分入る大きさ。
@@ -173,7 +174,7 @@ function encodeInner(args: EncodePlayArgs): string {
   // endTick の省略時は最後の入力の tick を使う（入力が無ければ doc どおり 0）。
   // 最後の要素が型を越えた物（null・数など）なら NaN になり、後の整数チェックで弾く
   const last = inputs.length ? (inputs[inputs.length - 1] as LaunchInput | null | undefined) : undefined;
-  const lastTick = inputs.length === 0 ? 0 : typeof last === 'object' && last !== null ? last.tick : Number.NaN;
+  const lastTick = inputs.length === 0 ? 0 : typeof last === 'object' && last !== null ? Math.max(last.tick, last.collapseTick ?? last.tick) : Number.NaN;
   const endTick = args.endTick ?? lastTick;
   if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) return '';
@@ -214,6 +215,13 @@ function encodeInner(args: EncodePlayArgs): string {
     }
   }
 
+  if (!expandLaunchInputs(inputs, endTick)) return '';
+  // 形式3: 崩壊を使った射出だけ、添字と射出からのtick差を末尾へ足す。
+  const collapses = inputs.flatMap((input, index) => input.collapseTick === undefined ? [] : [{ index, delay: input.collapseTick - input.tick }]);
+  if (collapses.length > 0) {
+    writeVarint(bytes, collapses.length);
+    for (const action of collapses) { writeVarint(bytes, action.index); writeVarint(bytes, action.delay); }
+  }
   const body = Uint8Array.from(bytes);
   const sum = fnv1a(body);
   const all = new Uint8Array(body.length + 4);
@@ -324,7 +332,18 @@ export function decodePlay(text: string): DecodePlayResult {
       inputs.push({ tick, originAngleRadians: angle, vx, vy });
       prevTick = tick;
     }
-    if (pos.i !== body.length) return fail('badData');
+    if (pos.i < body.length) {
+      const collapses = readVarint(body, pos);
+      if (collapses === null || collapses === 0 || collapses > inputs.length) return fail('badData');
+      let previous = -1;
+      for (let n = 0; n < collapses; n++) {
+        const index = readVarint(body, pos), delay = readVarint(body, pos);
+        if (index === null || delay === null || index <= previous || index >= inputs.length) return fail('badData');
+        const input = inputs[index]!;
+        inputs[index] = { ...input, collapseTick: input.tick + delay }; previous = index;
+      }
+    }
+    if (pos.i !== body.length || !expandLaunchInputs(inputs, endTick)) return fail('badData');
     return { ok: true, play: { rulesVersion, seed, endTick, inputs } };
   } catch {
     return fail('badData');
