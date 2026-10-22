@@ -36,7 +36,7 @@ function begin(mode: RuleMode): void {
 }
 function draw(): void {
   const s = study.read(), i = s.curr.intervention;
-  renderer.draw({ prev: s.prev, curr: s.curr, alpha: s.running ? Math.min(1, bank / DT) : 1, timeSeconds: time, aim, reducedMotion: false, aimGuide: true, dimmed: false });
+  renderer.draw({ prev: s.prev, curr: s.curr, alpha: s.running ? Math.min(1, bank / DT) : 1, timeSeconds: time, aim, reducedMotion: false, aimGuide: !s.finished, dimmed: false });
   effects.draw(); drawRuleTrace(trace.getContext('2d')!, study, compare.checked);
   text('heat', s.curr.heat.toFixed(1)); el<HTMLMeterElement>('meter').value = s.curr.heat;
   text('cooling', `合体で −${s.mergeCooling.toFixed(1)}`);

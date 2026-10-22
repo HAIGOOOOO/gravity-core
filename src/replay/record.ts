@@ -9,7 +9,7 @@ import * as RULE_CONSTANTS from '../game/constants';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 7; // 7: 射出後の一手と、その入力時刻を保存（2026-10-22）
+export const REPLAY_FORMAT = 8; // 8: 盤面全体の流れを導入（2026-10-22）
 
 export type ReplayRecord = Readonly<{
   format: typeof REPLAY_FORMAT;

@@ -17,6 +17,8 @@ export const CORE_RADIUS = 44;
 export const LIMIT_RADIUS = 320;
 /** 射出リング。撃つ天体の中心が置かれる半径 */
 export const LAUNCH_RADIUS = 425;
+/** 画面の同じ方角が山の同じ場所になり続けないよう、盤面全体を時計回りに毎秒18度流す。 */
+export const BOARD_ROTATION_RADIANS_PER_SECOND = Math.PI / 10;
 /** これより内側の押下は照準にしない（角度が不安定なため） */
 export const AIM_MIN_RADIUS = 60;
 

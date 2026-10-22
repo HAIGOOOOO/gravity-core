@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 import { execFileSync } from 'node:child_process';
 
 const phase = process.argv[2] ?? 'screen';
-const seeds = phase.startsWith('screen') ? [1,2,3,4] : Array.from({ length: 16 }, (_, i) => i + 101);
+const seeds = phase.startsWith('screen') ? [1,2,3,4] : Array.from({ length: 16 }, (_, i) => i + (phase === 'holdout18' ? 201 : 101));
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
 const source = execFileSync('git', ['show', '02e0994:src/game/simulation.ts'], { encoding: 'utf8' }), generated = [];
 const inject = (s, from, to) => { if (!s.includes(from)) throw new Error(`missing anchor ${from}`); return s.replace(from, to); };
@@ -27,7 +27,7 @@ const variants = {
 };
 variants['rotation-all-12'] = variants['rotation-12'].replace('for (const b of bodies) if (b.landed)', 'for (const b of bodies)');
 variants['rotation-all-18'] = variants['rotation-all-12'].replaceAll('Math.PI / 15 * DT', 'Math.PI / 10 * DT');
-const selected = phase === 'screen-all' ? ['baseline','rotation-all-12','rotation-all-18'] : phase === 'holdout' ? ['baseline','rotation-all-12'] : ['baseline','heat-4','rotation-12','damping-1-5'];
+const selected = phase === 'screen-all' ? ['baseline','rotation-all-12','rotation-all-18'] : phase === 'holdout' ? ['baseline','rotation-all-12'] : phase === 'holdout18' ? ['baseline','rotation-all-18'] : ['baseline','heat-4','rotation-12','damping-1-5'];
 const median = values => { const a = [...values].sort((a,b)=>a-b); return (a[Math.floor((a.length-1)/2)]+a[Math.floor(a.length/2)])/2; };
 try {
   const { randomBot, spiralBot } = await server.ssrLoadModule('/src/tools/bots.ts');

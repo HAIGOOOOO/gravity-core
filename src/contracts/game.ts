@@ -109,7 +109,7 @@ export type GameEvent = Readonly<{
 
 export type PathPoint = Readonly<{ x: number; y: number; t: number }>;
 
-/** いまの盤面が止まっていると仮定して、撃った天体が最初に何かへ触れるまでの道すじ。 */
+/** 他の天体の相対配置を固定し、全体の回転を含めて最初の接触まで描く道すじ。 */
 export type Prediction = Readonly<{
   valid: boolean;
   rejectReason?: LaunchRejectReason;
@@ -122,7 +122,7 @@ export type Prediction = Readonly<{
   willMerge: boolean;
   /** 重力操作で山が動いていて、当たり先を言い切れない。このとき hitBodyId は null（道すじは全長） */
   uncertain?: boolean;
-  /** 静止した盤面での成長後の目安。時間発展・連鎖・限界猶予を含む未来予測ではない。 */
+  /** 相対配置を固定した山での成長後の目安。全体の回転以外の運動・連鎖・限界猶予は含まない。 */
   mergePreview?: Readonly<{
     x: number; y: number; radius: number; tier: Tier; mayCrossLimit: boolean;
     pushed: readonly Readonly<{ id: BodyId; x: number; y: number; radius: number }>[];

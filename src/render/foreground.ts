@@ -1,5 +1,5 @@
 import type { BoardFrame } from '../contracts/app';
-import { CHAIN_WINDOW_SECONDS, HEAT_MAX, LAUNCH_RADIUS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
+import { BOARD_ROTATION_RADIANS_PER_SECOND, CHAIN_WINDOW_SECONDS, HEAT_MAX, LAUNCH_RADIUS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
 import { fusionCooling } from '../game/heat';
 import { chainTargetLabel, STRINGS } from '../ui/strings';
 import { drawBody } from './bodies';
@@ -9,11 +9,21 @@ import { drawPlayingBodies } from './playing-bodies';
 export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardFrame): void {
   ctx.save();
   drawPlayingBodies(ctx, frame);
+  // 実際に流れる向きを射出リングの外へ示す。動きを減らす時は印を回さない。
+  const flow = frame.reducedMotion ? 0 : frame.curr.tick / TICK_HZ * BOARD_ROTATION_RADIANS_PER_SECOND;
+  ctx.strokeStyle = '#5a7385'; ctx.lineWidth = 2;
+  for (let n = 0; n < 3; n++) {
+    const a = flow + n * Math.PI * 2 / 3, r = LAUNCH_RADIUS + 20, end = a + .18;
+    ctx.beginPath(); ctx.arc(0, 0, r, a, end); ctx.stroke();
+    const x = Math.cos(end) * r, y = Math.sin(end) * r;
+    ctx.beginPath(); ctx.moveTo(x + Math.sin(end) * 9 + Math.cos(end) * 6, y - Math.cos(end) * 9 + Math.sin(end) * 6);
+    ctx.lineTo(x, y); ctx.lineTo(x + Math.sin(end) * 9 - Math.cos(end) * 6, y - Math.cos(end) * 9 - Math.sin(end) * 6); ctx.stroke();
+  }
   ctx.strokeStyle = '#070b18'; ctx.lineWidth = frame.curr.overLimit ? 7 : 5;
   ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = frame.curr.overLimit ? '#FF7D83' : 'rgba(145,160,184,0.85)';
   ctx.lineWidth = frame.curr.overLimit ? 3 : 1.5; ctx.setLineDash([10, 8]); ctx.stroke(); ctx.setLineDash([]);
-  const targets = frame.curr.bodies.filter((b) => b.chain > 0 && b.chainUntilTick > frame.curr.tick);
+  const targets = frame.aimGuide ? frame.curr.bodies.filter((b) => b.chain > 0 && b.chainUntilTick > frame.curr.tick) : [];
   const hero = targets.reduce<(typeof targets)[number] | null>((best, b) => !best || b.chain > best.chain ? b : best, null);
   for (const b of targets) {
     const left = Math.min(1, (b.chainUntilTick - frame.curr.tick) / (CHAIN_WINDOW_SECONDS * TICK_HZ));
