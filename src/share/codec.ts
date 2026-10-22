@@ -14,6 +14,7 @@
 //     種別 2: f64 の角度・vx・vy をそのまま
 //     種別 3: u32le の k（角度は種別 0 と同じ）+ zigzag varint の vx・vy（整数）。
 //             シミュレーションが丸めた射出（src/game/predictor.ts の quantizeLaunch）は全部これに乗る（1 投 7〜9 バイト）
+//   崩壊がある時だけ: [varint]件数、各[varint]射出の添字 + [varint]射出からのtick差（形式3から）
 //   [u32le]  ここまで全部の FNV-1a（壊れを見つける検査値）
 // 文字は URL に入れても壊れない base64url（padding なし）。
 //

@@ -141,7 +141,7 @@ export type LaunchInput = Readonly<{
 }>;
 
 // ───────── 重力操作（試作）─────────
-// 射出とは別の入力。射出の記録（LaunchInput）の形は変えず、別の記録（GravityInput）に残す。
+// 試作の連続操作はGravityInputに残す。通常の崩壊はLaunchInput.collapseTickで再生する。
 
 export type GravityCommand =
   /** 握る: on で握り始め、off で離す */

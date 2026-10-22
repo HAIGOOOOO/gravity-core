@@ -33,12 +33,12 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
     const prediction = aim.prediction;
     const growth = frame.aimGuide ? prediction?.mergePreview : undefined;
     if (growth) {
-      ctx.setLineDash([5, 5]); ctx.lineWidth = 3;
+      ctx.setLineDash([7, 5]); ctx.lineWidth = 5;
       ctx.strokeStyle = growth.mayCrossLimit ? '#FF7D83' : '#b2e6bc';
       ctx.beginPath(); ctx.arc(growth.x, growth.y, growth.radius, 0, Math.PI * 2); ctx.stroke();
-      for (const b of growth.pushed) { ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.stroke(); }
+      for (const b of growth.pushed) { ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,125,131,.15)'; ctx.fill(); ctx.stroke(); }
       ctx.setLineDash([]); ctx.font = '700 25px system-ui,sans-serif'; ctx.textAlign = 'center';
-      const x = Math.max(-210, Math.min(210, growth.x)), y = Math.max(-290, Math.min(290, growth.y + growth.radius + 32));
+      const x = 0, y = -450;
       const text = growth.mayCrossLimit ? STRINGS.growthRisk : STRINGS.growthPreview;
       ctx.strokeStyle = '#101b1a'; ctx.lineWidth = 6; ctx.strokeText(text, x, y);
       ctx.fillStyle = growth.mayCrossLimit ? '#FF7D83' : '#b2e6bc'; ctx.fillText(text, x, y);
