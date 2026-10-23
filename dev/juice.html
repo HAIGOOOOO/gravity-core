@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="ja">
+  <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>合体と連鎖の演出 — GRAVITY CORE</title></head>
+  <body>
+    <header><h1>合体と連鎖</h1><p>圧縮、噴出、余響。20種類の部品を重ねた、演出の制作途中です。</p><div id="demo-controls" aria-label="演出を比べる"></div></header>
+    <main><div class="juice-stage"><canvas id="juice-board" aria-label="3案共通の盤面"></canvas><canvas id="juice-effects" aria-label="合体と連鎖の演出"></canvas></div><aside><h2 id="direction-name"></h2><p id="juice-status" role="status"></p><p id="juice-performance" role="status">通常20部品、連鎖5は26部品、超新星は25部品。目標の40層へは制作途中です。</p><label>止めて見る時刻 <input id="juice-time" type="range" min="0" max="2500" step="10" value="280"/> <output id="juice-time-label">0.28秒</output></label><div id="juice-times"></div><label><input id="juice-reduced" type="checkbox"/> 動きを減らす</label><p>合体は実際の計算で作り、連鎖数だけ比較用に指定します。演出のボタンだけが反応します。</p><a href="./board.html">本番の描画を確認</a></aside><section id="juice-comparison" hidden><h2 id="juice-comparison-title">同じ出来事の3案</h2><div id="juice-frames"></div></section></main>
+    <script type="module" src="/src/dev/juice-demo.ts"></script>
+  </body>
+</html>
