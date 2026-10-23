@@ -3,7 +3,7 @@ import { HEAT_STATE_LIMITS, TICK_HZ } from '../game/constants';
 import { at, createAutoPlay, dropAt } from '../fixtures';
 import { createSimulation } from '../game/simulation';
 import { createReplayPlayer } from './player';
-import { createReplayRecord, snapshotHash } from './record';
+import { createReplayRecord, serializeReplay, snapshotHash } from './record';
 import { findHighlights } from './highlights';
 import { analyzeCause } from './cause';
 
@@ -55,6 +55,8 @@ describe('復元する再生と共通の解析', () => {
     }
     const record = createReplayRecord(auto.sim);
     expect(record.endTick).toBe(endTick);
+    const savedBytes = new TextEncoder().encode(serializeReplay(record)).length;
+    expect(savedBytes).toBeLessThanOrEqual(20 * 1024);
     const began = performance.now();
     const start = createReplayPlayer(record);
     const createMs = performance.now() - began;
@@ -70,6 +72,6 @@ describe('復元する再生と共通の解析', () => {
       expect(snapshotHash(snapshot), `tick ${target}`).toBe(truth.get(target));
     }
     expect(maxMs).toBeLessThan(200);
-    console.log(`[replay] 10min launches=${record.inputs.length} create=${createMs.toFixed(1)}ms worstSeek=${maxMs.toFixed(2)}ms memory=${start.player.memory.approxBytes}B`);
+    console.log(`[replay] 10min launches=${record.inputs.length} saved=${savedBytes}B create=${createMs.toFixed(1)}ms worstSeek=${maxMs.toFixed(2)}ms memory=${start.player.memory.approxBytes}B`);
   });
 });

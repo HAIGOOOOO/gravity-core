@@ -22,7 +22,10 @@ describe('記録と再生', () => {
     () => {
       for (let seed = 1; seed <= 100; seed++) {
         const { record, final } = recordAutoPlay(seed, 1_800);
-        const start = createReplayPlayer(record);
+        const saved = parseReplay(serializeReplay(record));
+        expect(saved, `保存 seed ${seed}`).not.toBeNull();
+        if (!saved) continue;
+        const start = createReplayPlayer(saved);
         expect(start.ok, `seed ${seed}`).toBe(true);
         if (!start.ok) continue;
         const snap = start.player.seek(record.endTick);

@@ -16,9 +16,11 @@
 //     endTick だけを大きく書き換えられた記録を渡されると実質止まらない。
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
-import { HEAT_STATE_LIMITS, TICK_HZ } from '../game/constants';
+import { HEAT_STATE_LIMITS } from '../game/constants';
 import { createSimulation, type SimulationState } from '../game/simulation';
 import { rulesVersion, snapshotHash, type ReplayRecord } from './record';
+import { MAX_REPLAY_TICKS } from './limits';
+export { MAX_REPLAY_TICKS } from './limits';
 
 export type ReplayFailure =
   | Readonly<{ ok: false; reason: 'rulesMismatch'; expected: string; actual: string }>
@@ -51,15 +53,6 @@ export type ReplayRun = Readonly<{
 
 /** 盤面を覚えておく間隔の既定値（60 tick = 0.5 秒）。 */
 export const CHECKPOINT_EVERY = 60;
-
-/**
- * 検証に使う tick の上限（1 時間ぶん）。
- * 「記録と合うか」の確かめは endTick ぶん全部計算し直すので、記録の長さに
- * 比例して掛かる。上限が無いと、共有された記録の endTick ひとつの書き換えで
- * 何時間もの再計算を始めてしまう（終わらない盤面なら実質永遠）。
- * これを越える記録を確かめたい時は options.maxTicks で上げる。
- */
-export const MAX_REPLAY_TICKS: Tick = TICK_HZ * 60 * 60;
 
 export type RunOptions = {
   /**

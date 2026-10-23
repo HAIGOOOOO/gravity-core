@@ -5,8 +5,9 @@ import { at, createAutoPlay } from '../fixtures';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 import { createBoardRenderer } from '../render';
 import { annotateCause, annotateMerge } from './replay-annotations';
+import { createReplaySavePanel } from './replay-save-panel';
 import {
-  createReplayPlayer, createReplayRecord, parseReplay, serializeReplay,
+  createReplayPlayer, createReplayRecord,
   type ReplayPlayer, type ReplayRecord, type ReplayHighlight,
 } from '../replay';
 
@@ -14,9 +15,7 @@ const element = <T extends HTMLElement>(id: string) => document.getElementById(i
 const canvas = element<HTMLCanvasElement>('board');
 const renderer = createBoardRenderer(canvas);
 const timeline = element<HTMLInputElement>('timeline');
-const text = element<HTMLTextAreaElement>('record-text');
 const status = element('status');
-const storageKey = 'gravity-core.replay-demo.v1';
 let player: ReplayPlayer | null = null;
 let playing = false;
 let speed = 1;
@@ -76,12 +75,12 @@ function seek(tick: number): void {
   status.textContent = `${clock(player.tick)} を表示しています。`;
   draw();
 }
-function openRecord(record: ReplayRecord, name: string): void {
+async function openRecord(record: ReplayRecord, name: string): Promise<boolean> {
   const started = performance.now();
   const result = createReplayPlayer(record);
   if (!result.ok) {
     status.textContent = result.reason === 'rulesMismatch' ? '今のルールと違うため、この記録は再生できません。' : '記録を再現できません。元の記録を確認してください。';
-    return;
+    return false;
   }
   player = result.player;
   playing = false; showingCause = false; fractionalTicks = 0; causeStop = null; mergeEvents = []; previousSnapshot = null;
@@ -99,10 +98,11 @@ function openRecord(record: ReplayRecord, name: string): void {
     ? `${clock(cause.heatRiseTick)} に限界リングを越え、熱量が上がりました。白い輪と矢印でその時の天体を示します。`
     : 'この記録は、ゲームが終わる前までのプレイです。';
   causeButton.disabled = !cause;
-  text.value = serializeReplay(record);
+  savePanel.refresh();
   status.dataset.openMs = (performance.now() - started).toFixed(0);
   status.textContent = '記録を開きました。再生を押すと始まります。';
   draw();
+  return true;
 }
 function sample(defeat: boolean): void {
   if (!defeat) {
@@ -147,24 +147,7 @@ const speedButtons = [.5, 1, 2, 4, 8].map((value) => {
   return { value, button: b };
 });
 timeline.addEventListener('input', () => { playing = false; showingCause = false; causeStop = null; seek(Number(timeline.value)); });
-button('save-controls', '端末に保存', () => {
-  if (!player) return;
-  try { localStorage.setItem(storageKey, serializeReplay(player.record)); status.textContent = 'この端末に保存しました。'; }
-  catch { status.textContent = '端末への保存ができません。記録の文字列をコピーして残せます。'; }
-});
-button('save-controls', '保存を開く', () => {
-  try {
-    const value = localStorage.getItem(storageKey);
-    const record = value ? parseReplay(value) : null;
-    if (record) openRecord(record, 'この端末に保存したプレイ');
-    else status.textContent = value ? '保存された記録を読み込めません。' : 'この端末には、まだ記録を保存していません。';
-  } catch { status.textContent = '端末の保存を読み込めません。'; }
-});
-element('import-record').addEventListener('click', () => {
-  const record = parseReplay(text.value);
-  if (record) openRecord(record, '貼り付けたプレイ');
-  else status.textContent = '記録の形式を読み取れません。コピーした全文を貼ってください。';
-});
+const savePanel = createReplaySavePanel({ getPlayer: () => player, openRecord });
 // Canvas 自身を監視すると、枠線を引いた幅で縮み続けるため親の幅で決める。
 let boardWidth = 0;
 new ResizeObserver(() => {
