@@ -12,6 +12,24 @@ button:disabled { opacity: .4; cursor: default; }
 button:hover:enabled { border-color: var(--cool); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
 #demo-controls, #transport, #save-controls { display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0; }
+#demo-controls { column-gap: 26px; align-items: end; }
+.control-label { color: var(--text-sub); font-size: 12px; margin: 0 0 7px; }
+#sample-controls, #record-jumps { display: flex; flex-wrap: wrap; gap: 6px; }
+#sample-controls button { border-width: 0 0 2px; border-radius: 0; background: transparent; }
+#sample-controls button[aria-pressed=true] { border-color: var(--core); color: var(--core); }
+#transport button:first-child { background: var(--core); color: var(--bg); border-color: var(--core); font-weight: 600; }
+#timeline-markers { position: relative; height: 9px; margin: -8px 2px 0; }
+#timeline-markers { height: 44px; margin: 0 22px; }
+#timeline-markers button { position: absolute; width: 44px; min-height: 44px; padding: 0; transform: translateX(-50%); color: var(--core); font-size: 12px; border: 0; background: var(--bg); }
+#timeline-window { color: var(--text-sub); font-size: 12px; margin: 4px 0; }
+#highlight-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+#cause-availability { font-size: 12px; color: var(--text-sub); max-width: 270px; line-height: 1.6; margin: 5px 0 0; }
+#preparation-controls { min-height: 44px; }
+#preparation-note { min-height: 42px; line-height: 1.6; font-size: 13px; color: var(--text-sub); }
+#selected-highlight { color: var(--core); margin: 4px 0; font-size: 13px; }
+#selected-highlight:empty { display: none; }
+input[type=file] { max-width: 100%; display: block; margin: 10px 0; }
+[aria-busy=true] #board { opacity: .45; }
 #transport { margin: 12px 0; }
 #transport button[aria-pressed=true] { border-color: var(--core); color: var(--core); }
 .timeline { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 14px; }

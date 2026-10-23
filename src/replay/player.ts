@@ -2,7 +2,7 @@
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
-import { runReplay, type ReplayFailure } from './engine';
+import { runReplay, type ReplayFailure, type ReplayRun } from './engine';
 import type { ReplayRecord } from './record';
 import { createReplayCursor } from './cursor';
 import { highlightsFromRun, type ReplayHighlight } from './highlights';
@@ -24,7 +24,8 @@ const KEYFRAME_CAP = 720;
  */
 export function keyframeInterval(endTick: Tick, cap: number = KEYFRAME_CAP): Tick {
   // cap が 0 以下だと間隔が Infinity になって peek の割り算が壊れるので、1 未満は 1 に丸める
-  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / Math.max(1, cap)));
+  const safeCap = Number.isFinite(cap) ? Math.max(1, Math.floor(cap)) : KEYFRAME_CAP;
+  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / safeCap));
 }
 
 /** 「行った所」の記憶の上限（キーフレームとは別枠）。往復し続けても増え続けないようにする */
@@ -87,6 +88,12 @@ export function createReplayPlayer(
   const every = keyframeInterval(record.endTick, options.keyframeCap ?? KEYFRAME_CAP);
   const run = runReplay(record, { checkpointEvery: every, captureStates: true, maxTicks: options.maxTicks });
   if (!run.ok) return run;
+  return playerFromRun(record, run);
+}
+
+/** 同じコードで計算したWorkerの検証結果を受け取る内部口。外部の保存値は渡さない。 */
+export function playerFromRun(record: ReplayRecord, run: ReplayRun): ReplayStart {
+  const every = run.checkpointEvery;
   const { endTick } = record;
   // 呼び出し側があとで記録の中身を書き換えても、カーソルの再計算が腐らないよう
   // 入力と開始状態は作るときに複製して持つ（record.ts と同じ考え方）。

@@ -27,8 +27,8 @@ describe('端末保存の可逆圧縮', () => {
     const endTick = 10 * 60 * TICK_HZ;
     const spacing = Math.round(LAUNCH_COOLDOWN * TICK_HZ);
     // 実際の操作変換とゲーム側の丸めを使用。容量の上限を調べる入力であり、
-    // この1200投を本物の盤面が10分間すべて受け付けた、という主張はしない。
-    const inputs = Array.from({ length: endTick / spacing }, (_, i) => {
+    // この容量上限の入力を本物の盤面が10分間すべて受け付けた、という主張はしない。
+    const inputs = Array.from({ length: Math.floor(endTick / spacing) + 1 }, (_, i) => {
       const angle = i * .73;
       const velocity = aimVelocity(angle, -120 * Math.cos(angle - .35), -120 * Math.sin(angle - .35));
       return { tick: i * spacing, ...quantizeLaunch({ originAngleRadians: angle, ...velocity }) };

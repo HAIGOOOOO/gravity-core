@@ -25,7 +25,7 @@ function describe(saved: Saved): string {
 
 export function createReplaySavePanel(deps: {
   getPlayer(): ReplayPlayer | null;
-  openRecord(record: ReplayRecord, name: string): Promise<boolean>;
+  openRecord(record: ReplayRecord, name: string): Promise<boolean | null>;
 }) {
   let previous: string | null | undefined;
   try {
@@ -79,6 +79,7 @@ export function createReplaySavePanel(deps: {
       const saved = raw ? parse(raw) : null;
       if (!saved) { saveNotice.textContent = '開ける記録がありません。'; refreshSaved(); return; }
       const opened = await deps.openRecord(saved.record, saved.name);
+      if (opened === null) return;
       saveNotice.textContent = opened ? `${describe(saved)}を開きました。` : '今のルールでは、この保存を再生できません。';
       see.hidden = !opened;
     } catch { saveNotice.textContent = '保存した記録を読み込めませんでした。'; }
@@ -112,6 +113,7 @@ export function createReplaySavePanel(deps: {
   async function importSaved(saved: Saved | null): Promise<void> {
     if (!saved) { importNotice.textContent = '記録を読み取れません。コピーした全文を貼ってください。'; return; }
     const opened = await deps.openRecord(saved.record, saved.name);
+    if (opened === null) return;
     let alreadySaved = false;
     try {
       const raw = localStorage.getItem(KEY);
