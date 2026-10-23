@@ -7,8 +7,8 @@
 //   beforeGameOver ゲームオーバーの 10 秒前（負けた理由の巻き戻しの入口）
 
 import type { Tick } from '../contracts/game';
-import { HEAT_STATE_LIMITS, TICK_HZ } from '../game/constants';
-import { runReplay, type ReplayFailure } from './engine';
+import { TICK_HZ } from '../game/constants';
+import { runReplay, type ReplayFailure, type ReplayRun } from './engine';
 import type { ReplayRecord } from './record';
 
 export type HighlightKind = 'maxChain' | 'bestTier' | 'supernova' | 'heatCritical' | 'beforeGameOver';
@@ -24,25 +24,15 @@ export type HighlightsResult = Readonly<{ ok: true; highlights: readonly ReplayH
 
 /** ゲームオーバーの何秒前を「直前」とするか（題目の決まりは 10 秒）。 */
 const BEFORE_GAME_OVER_SECONDS = 10;
-/** 「臨界」の境目（75）。 */
-const HEAT_CRITICAL = HEAT_STATE_LIMITS[2];
 
 export function findHighlights(record: ReplayRecord): HighlightsResult {
-  let heatTick: Tick | null = null;
-  let heatValue = 0;
-  // 中間の盤面は tick 0 以外いらない（最高 Tier の下限に使うだけ）ので、
-  // checkpoints は取らない。長い記録で盤面を数百面溜め込むのを避ける。
-  const run = runReplay(record, {
-    checkpointEvery: 0,
-    visit: (snap) => {
-      if (heatTick === null && snap.heat > HEAT_CRITICAL) {
-        heatTick = snap.tick;
-        heatValue = snap.heat;
-      }
-    },
-  });
+  const run = runReplay(record, { checkpointEvery: 0 });
   if (!run.ok) return run;
+  return { ok: true, highlights: highlightsFromRun(run) };
+}
 
+/** 検証済みの計算を共有し、見どころのために物理を回し直さない。 */
+export function highlightsFromRun(run: ReplayRun): readonly ReplayHighlight[] {
   const highlights: ReplayHighlight[] = [];
   let maxChain = 0;
   let maxChainTick: Tick | null = null;
@@ -82,7 +72,7 @@ export function findHighlights(record: ReplayRecord): HighlightsResult {
   if (maxChainTick !== null) highlights.push({ kind: 'maxChain', tick: maxChainTick, value: maxChain });
   if (bestTierTick !== null) highlights.push({ kind: 'bestTier', tick: bestTierTick, value: bestTier });
   // value は「境目」ではなく越えた瞬間の実熱量（巻き戻し先の危険度として渡す）
-  if (heatTick !== null) highlights.push({ kind: 'heatCritical', tick: heatTick, value: heatValue });
+  if (run.critical) highlights.push({ kind: 'heatCritical', tick: run.critical.tick, value: run.critical.heat });
   if (gameOverTick !== null) {
     highlights.push({
       kind: 'beforeGameOver',
@@ -92,5 +82,5 @@ export function findHighlights(record: ReplayRecord): HighlightsResult {
   }
 
   highlights.sort((a, b) => a.tick - b.tick);
-  return { ok: true, highlights };
+  return highlights;
 }

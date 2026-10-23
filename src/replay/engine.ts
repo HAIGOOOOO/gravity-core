@@ -16,8 +16,8 @@
 //     endTick だけを大きく書き換えられた記録を渡されると実質止まらない。
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
-import { TICK_HZ } from '../game/constants';
-import { createSimulation } from '../game/simulation';
+import { HEAT_STATE_LIMITS, TICK_HZ } from '../game/constants';
+import { createSimulation, type SimulationState } from '../game/simulation';
 import { rulesVersion, snapshotHash, type ReplayRecord } from './record';
 
 export type ReplayFailure =
@@ -32,6 +32,8 @@ export type ReplayFailure =
  */
 export type IndexedEvent = Readonly<{ at: Tick; event: GameEvent }>;
 
+export type ReplayCheckpoint = Readonly<{ state: SimulationState; nextInput: number }>;
+
 export type ReplayRun = Readonly<{
   ok: true;
   /** 起きた順の全出来事。at = その出来事が返った tick（= そのステップで到達した tick） */
@@ -40,6 +42,10 @@ export type ReplayRun = Readonly<{
   checkpoints: readonly GameSnapshot[];
   /** checkpoints を取った間隔。0 = 中間の盤面は取っていない */
   checkpointEvery: Tick;
+  /** 復元用の状態。JSON 化せずメモリだけに保持する。 */
+  states: readonly ReplayCheckpoint[];
+  critical: GameSnapshot | null;
+  lastHeatRise: GameSnapshot | null;
   final: GameSnapshot;
 }>;
 
@@ -62,6 +68,8 @@ export type RunOptions = {
    * 長い記録で盤面を溜め込まないようにする。
    */
   checkpointEvery?: Tick;
+  /** プレイヤーを作るときだけ復元用の状態も取る。 */
+  captureStates?: boolean;
   /** endTick の上限（既定 MAX_REPLAY_TICKS）。越える記録は tooLong を返す。 */
   maxTicks?: Tick;
   /** 各ステップの直後に呼ばれる（per-tick の熱量などが要る題目用）。盤面は変えないこと。 */
@@ -103,6 +111,18 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   let nextInput = 0;
   const events: IndexedEvent[] = [];
   const checkpoints: GameSnapshot[] = [];
+  const states: ReplayCheckpoint[] = [];
+  let critical: GameSnapshot | null = null;
+  let lastHeatRise: GameSnapshot | null = null;
+  const observe = (snap: GameSnapshot, surfaced: readonly GameEvent[]): void => {
+    if (critical === null && snap.heat >= HEAT_STATE_LIMITS[2]) critical = snap;
+    if (surfaced.some((e) => e.kind === 'overLimitStart')) lastHeatRise = snap;
+    options.visit?.(snap, surfaced);
+  };
+  const checkpoint = (): void => {
+    checkpoints.push(sim.getSnapshot());
+    if (options.captureStates) states.push({ state: sim.exportState(), nextInput });
+  };
 
   // いまの tick に届いている入力を順に投入する。
   // 受理されない入力・順序のおかしい入力があれば記録が壊れているので、
@@ -124,8 +144,8 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   // 最初の盤面は入力を反映する前に取る。
   // 元のプレイでも tick 0 の入力は、tick 0 の盤面が出たあとに撃たれている。
   // （tick 0 の入力は、下のループの最初の周で stepFixed の前に投入される）
-  checkpoints.push(sim.getSnapshot());
-  options.visit?.(sim.getSnapshot(), []);
+  checkpoint();
+  observe(sim.getSnapshot(), []);
 
   while (sim.getSnapshot().tick < record.endTick) {
     const before = sim.getSnapshot();
@@ -135,8 +155,8 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
     const surfaced = sim.stepFixed();
     const after = sim.getSnapshot();
     for (const event of surfaced) events.push({ at: after.tick, event });
-    if (every > 0 && after.tick % every === 0) checkpoints.push(after);
-    options.visit?.(after, surfaced);
+    if (every > 0 && after.tick % every === 0) checkpoint();
+    observe(after, surfaced);
   }
 
   // 記録された tick ちょうどに撃たれた入力は、ステップを進めずに反映する
@@ -181,5 +201,5 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
     );
   }
 
-  return { ok: true, events, checkpoints, checkpointEvery: every, final };
+  return { ok: true, events, checkpoints, checkpointEvery: every, states, critical, lastHeatRise, final };
 }

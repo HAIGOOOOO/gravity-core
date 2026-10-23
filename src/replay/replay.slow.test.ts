@@ -17,10 +17,10 @@ import { recordAutoPlay, recordSetup, UP } from './testkit';
 
 describe('記録と再生', () => {
   it(
-    '自動プレイ 30 回ぶんを記録して再生すると、最後の得点と天体の数が元と一致する',
+    '自動プレイ 100 回ぶんを記録して再生すると、最後の得点と天体の数が元と一致する',
     { timeout: 120_000 },
     () => {
-      for (let seed = 1; seed <= 30; seed++) {
+      for (let seed = 1; seed <= 100; seed++) {
         const { record, final } = recordAutoPlay(seed, 1_800);
         const start = createReplayPlayer(record);
         expect(start.ok, `seed ${seed}`).toBe(true);
