@@ -10,6 +10,7 @@ import { aimVelocity } from '../shared/launch';
 export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInputDeps): PointerInput {
   let enabled = false;
   let active: { id: number; startX: number; startY: number; angle: number } | null = null;
+  let aimFrame = 0, latestX = 0, latestY = 0;
 
   function build(clientX: number, clientY: number): AimView {
     const a = active!;
@@ -31,6 +32,7 @@ export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInput
   }
 
   function stop(): void {
+    cancelAnimationFrame(aimFrame); aimFrame = 0;
     active = null;
     deps.onAim(null);
   }
@@ -46,7 +48,12 @@ export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInput
 
   function onMove(e: PointerEvent): void {
     if (!active || e.pointerId !== active.id) return;
-    deps.onAim(build(e.clientX, e.clientY));
+    latestX = e.clientX; latestY = e.clientY;
+    // 成長の目安も計算するので、移動イベントを一描画につき一回へまとめる。
+    if (!aimFrame) aimFrame = requestAnimationFrame(() => {
+      aimFrame = 0;
+      if (active) deps.onAim(build(latestX, latestY));
+    });
   }
 
   function onUp(e: PointerEvent): void {

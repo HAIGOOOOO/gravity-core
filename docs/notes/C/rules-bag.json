@@ -1,0 +1,1262 @@
+[
+  {
+    "name": "fixed",
+    "summary": {
+      "seconds": {
+        "n": 8,
+        "mean": 132.41250000000002,
+        "median": 119.21666666666667,
+        "p10": 110.03166666666667,
+        "p90": 173.32833333333332,
+        "min": 106.04166666666667,
+        "max": 188.425
+      },
+      "score": {
+        "n": 8,
+        "mean": 557653.75,
+        "median": 490045,
+        "p10": 397222,
+        "p90": 846659,
+        "min": 371420,
+        "max": 907790
+      },
+      "bestTier": {
+        "n": 8,
+        "mean": 8,
+        "median": 8,
+        "p10": 8,
+        "p90": 8,
+        "min": 8,
+        "max": 8
+      },
+      "merges": {
+        "n": 8,
+        "mean": 226.5,
+        "median": 205.5,
+        "p10": 183.39999999999998,
+        "p90": 302,
+        "min": 175,
+        "max": 337
+      },
+      "mergesPerLaunch": {
+        "n": 8,
+        "mean": 0.8547891814950296,
+        "median": 0.8566269468794248,
+        "p10": 0.8262583755515607,
+        "p90": 0.8839730886850153,
+        "min": 0.8189655172413793,
+        "max": 0.8986666666666666
+      },
+      "maxChain": {
+        "n": 8,
+        "mean": 6.5,
+        "median": 6,
+        "p10": 5.699999999999999,
+        "p90": 8,
+        "min": 5,
+        "max": 8
+      },
+      "heat75Count": {
+        "n": 8,
+        "mean": 1.75,
+        "median": 1.5,
+        "p10": 1,
+        "p90": 2.5999999999999996,
+        "min": 1,
+        "max": 4
+      },
+      "peakHeat": {
+        "n": 8,
+        "mean": 100,
+        "median": 100,
+        "p10": 100,
+        "p90": 100,
+        "min": 100,
+        "max": 100
+      },
+      "overLimitSeconds": {
+        "n": 8,
+        "mean": 39.947916666666664,
+        "median": 35.70833333333333,
+        "p10": 28.9575,
+        "p90": 56.376666666666665,
+        "min": 27.458333333333332,
+        "max": 60.425
+      },
+      "launches": {
+        "n": 8,
+        "mean": 263.625,
+        "median": 238.5,
+        "p10": 220.1,
+        "p90": 341.4,
+        "min": 211,
+        "max": 375
+      },
+      "supernovas": {
+        "n": 8,
+        "mean": 0.25,
+        "median": 0,
+        "p10": 0,
+        "p90": 1,
+        "min": 0,
+        "max": 1
+      },
+      "rejects": {
+        "n": 8,
+        "mean": 7.25,
+        "median": 2.5,
+        "p10": 0.7000000000000001,
+        "p90": 17.199999999999996,
+        "min": 0,
+        "max": 34
+      }
+    },
+    "runs": [
+      {
+        "seed": 1,
+        "ticks": 12725,
+        "seconds": 106.04166666666667,
+        "score": 456210,
+        "bestTier": 8,
+        "launches": 211,
+        "rejects": 7,
+        "rejectsByReason": {
+          "overlap": 7,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 175,
+        "mergesPerLaunch": 0.8293838862559242,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 27.458333333333332,
+        "timedOut": false,
+        "overflowNearGrowth": 7,
+        "cooling": 281.8499999999992
+      },
+      {
+        "seed": 2,
+        "ticks": 14340,
+        "seconds": 119.5,
+        "score": 533170,
+        "bestTier": 8,
+        "launches": 239,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 205,
+        "mergesPerLaunch": 0.8577405857740585,
+        "supernovas": 0,
+        "maxChain": 7,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 34.65833333333333,
+        "timedOut": false,
+        "overflowNearGrowth": 13,
+        "cooling": 411.3666666666658
+      },
+      {
+        "seed": 3,
+        "ticks": 20023,
+        "seconds": 166.85833333333332,
+        "score": 820460,
+        "bestTier": 8,
+        "launches": 327,
+        "rejects": 34,
+        "rejectsByReason": {
+          "overlap": 34,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 287,
+        "mergesPerLaunch": 0.8776758409785933,
+        "supernovas": 1,
+        "maxChain": 8,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 54.641666666666666,
+        "timedOut": false,
+        "overflowNearGrowth": 23,
+        "cooling": 646.7166666666639
+      },
+      {
+        "seed": 4,
+        "ticks": 15790,
+        "seconds": 131.58333333333334,
+        "score": 440020,
+        "bestTier": 8,
+        "launches": 263,
+        "rejects": 2,
+        "rejectsByReason": {
+          "overlap": 2,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 225,
+        "mergesPerLaunch": 0.8555133079847909,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 33.25,
+        "timedOut": false,
+        "overflowNearGrowth": 11,
+        "cooling": 394.3666666666668
+      },
+      {
+        "seed": 5,
+        "ticks": 13409,
+        "seconds": 111.74166666666666,
+        "score": 371420,
+        "bestTier": 8,
+        "launches": 224,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 187,
+        "mergesPerLaunch": 0.8348214285714286,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 4,
+        "peakHeat": 100,
+        "overLimitSeconds": 29.6,
+        "timedOut": false,
+        "overflowNearGrowth": 12,
+        "cooling": 322.6833333333334
+      },
+      {
+        "seed": 6,
+        "ticks": 22611,
+        "seconds": 188.425,
+        "score": 907790,
+        "bestTier": 8,
+        "launches": 375,
+        "rejects": 10,
+        "rejectsByReason": {
+          "overlap": 10,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 337,
+        "mergesPerLaunch": 0.8986666666666666,
+        "supernovas": 1,
+        "maxChain": 8,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 60.425,
+        "timedOut": false,
+        "overflowNearGrowth": 20,
+        "cooling": 757.7166666666652
+      },
+      {
+        "seed": 7,
+        "ticks": 14272,
+        "seconds": 118.93333333333334,
+        "score": 523880,
+        "bestTier": 8,
+        "launches": 238,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 206,
+        "mergesPerLaunch": 0.865546218487395,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 42.791666666666664,
+        "timedOut": false,
+        "overflowNearGrowth": 16,
+        "cooling": 526.9166666666665
+      },
+      {
+        "seed": 8,
+        "ticks": 13946,
+        "seconds": 116.21666666666667,
+        "score": 408280,
+        "bestTier": 8,
+        "launches": 232,
+        "rejects": 3,
+        "rejectsByReason": {
+          "overlap": 3,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 190,
+        "mergesPerLaunch": 0.8189655172413793,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 36.75833333333333,
+        "timedOut": false,
+        "overflowNearGrowth": 16,
+        "cooling": 410.8666666666661
+      }
+    ]
+  },
+  {
+    "name": "four",
+    "summary": {
+      "seconds": {
+        "n": 8,
+        "mean": 107.09270833333335,
+        "median": 106.19166666666666,
+        "p10": 99.25666666666666,
+        "p90": 115.37583333333332,
+        "min": 96.375,
+        "max": 125.975
+      },
+      "score": {
+        "n": 8,
+        "mean": 294615,
+        "median": 306245,
+        "p10": 232395,
+        "p90": 353174,
+        "min": 224240,
+        "max": 353370
+      },
+      "bestTier": {
+        "n": 8,
+        "mean": 7.375,
+        "median": 7,
+        "p10": 7,
+        "p90": 8,
+        "min": 7,
+        "max": 8
+      },
+      "merges": {
+        "n": 8,
+        "mean": 170.25,
+        "median": 167,
+        "p10": 153.60000000000002,
+        "p90": 189,
+        "min": 148,
+        "max": 210
+      },
+      "mergesPerLaunch": {
+        "n": 8,
+        "mean": 0.7924606427930405,
+        "median": 0.7933697244042072,
+        "p10": 0.7600433787203278,
+        "p90": 0.8227272727272728,
+        "min": 0.7441860465116279,
+        "max": 0.8333333333333334
+      },
+      "maxChain": {
+        "n": 8,
+        "mean": 5.625,
+        "median": 5.5,
+        "p10": 5,
+        "p90": 6.3,
+        "min": 5,
+        "max": 7
+      },
+      "heat75Count": {
+        "n": 8,
+        "mean": 1.875,
+        "median": 1,
+        "p10": 1,
+        "p90": 3.499999999999999,
+        "min": 1,
+        "max": 7
+      },
+      "peakHeat": {
+        "n": 8,
+        "mean": 100,
+        "median": 100,
+        "p10": 100,
+        "p90": 100,
+        "min": 100,
+        "max": 100
+      },
+      "overLimitSeconds": {
+        "n": 8,
+        "mean": 25.322916666666668,
+        "median": 23.604166666666664,
+        "p10": 20.186666666666667,
+        "p90": 33.43666666666667,
+        "min": 19.825,
+        "max": 35.291666666666664
+      },
+      "launches": {
+        "n": 8,
+        "mean": 214.5,
+        "median": 212.5,
+        "p10": 198.6,
+        "p90": 231,
+        "min": 193,
+        "max": 252
+      },
+      "supernovas": {
+        "n": 8,
+        "mean": 0,
+        "median": 0,
+        "p10": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rejects": {
+        "n": 8,
+        "mean": 1.125,
+        "median": 1,
+        "p10": 0,
+        "p90": 2.3,
+        "min": 0,
+        "max": 3
+      }
+    },
+    "runs": [
+      {
+        "seed": 1,
+        "ticks": 11565,
+        "seconds": 96.375,
+        "score": 224240,
+        "bestTier": 7,
+        "launches": 193,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 148,
+        "mergesPerLaunch": 0.7668393782383419,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 19.825,
+        "timedOut": false,
+        "overflowNearGrowth": 8,
+        "cooling": 197.66666666666615
+      },
+      {
+        "seed": 2,
+        "ticks": 12059,
+        "seconds": 100.49166666666666,
+        "score": 241060,
+        "bestTier": 7,
+        "launches": 201,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 156,
+        "mergesPerLaunch": 0.7761194029850746,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 20.341666666666665,
+        "timedOut": false,
+        "overflowNearGrowth": 9,
+        "cooling": 231.71666666666667
+      },
+      {
+        "seed": 3,
+        "ticks": 12570,
+        "seconds": 104.75,
+        "score": 321750,
+        "bestTier": 7,
+        "launches": 210,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 171,
+        "mergesPerLaunch": 0.8142857142857143,
+        "supernovas": 0,
+        "maxChain": 7,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 26.05,
+        "timedOut": false,
+        "overflowNearGrowth": 6,
+        "cooling": 272.6333333333332
+      },
+      {
+        "seed": 4,
+        "ticks": 13300,
+        "seconds": 110.83333333333333,
+        "score": 353090,
+        "bestTier": 8,
+        "launches": 222,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 174,
+        "mergesPerLaunch": 0.7837837837837838,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 21.266666666666666,
+        "timedOut": false,
+        "overflowNearGrowth": 8,
+        "cooling": 229.53333333333336
+      },
+      {
+        "seed": 5,
+        "ticks": 13147,
+        "seconds": 109.55833333333334,
+        "score": 336780,
+        "bestTier": 8,
+        "launches": 220,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 180,
+        "mergesPerLaunch": 0.8181818181818182,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 32.641666666666666,
+        "timedOut": false,
+        "overflowNearGrowth": 10,
+        "cooling": 326.2833333333333
+      },
+      {
+        "seed": 6,
+        "ticks": 12916,
+        "seconds": 107.63333333333334,
+        "score": 235890,
+        "bestTier": 7,
+        "launches": 215,
+        "rejects": 3,
+        "rejectsByReason": {
+          "overlap": 3,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 160,
+        "mergesPerLaunch": 0.7441860465116279,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 21.225,
+        "timedOut": false,
+        "overflowNearGrowth": 10,
+        "cooling": 181.26666666666674
+      },
+      {
+        "seed": 7,
+        "ticks": 12135,
+        "seconds": 101.125,
+        "score": 290740,
+        "bestTier": 7,
+        "launches": 203,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 163,
+        "mergesPerLaunch": 0.8029556650246306,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 25.941666666666666,
+        "timedOut": false,
+        "overflowNearGrowth": 9,
+        "cooling": 267.4
+      },
+      {
+        "seed": 8,
+        "ticks": 15117,
+        "seconds": 125.975,
+        "score": 353370,
+        "bestTier": 8,
+        "launches": 252,
+        "rejects": 2,
+        "rejectsByReason": {
+          "overlap": 2,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 210,
+        "mergesPerLaunch": 0.8333333333333334,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 7,
+        "peakHeat": 100,
+        "overLimitSeconds": 35.291666666666664,
+        "timedOut": false,
+        "overflowNearGrowth": 9,
+        "cooling": 381.100000000001
+      }
+    ]
+  },
+  {
+    "name": "random",
+    "summary": {
+      "seconds": {
+        "n": 8,
+        "mean": 110.80208333333334,
+        "median": 105.41666666666666,
+        "p10": 95.68333333333334,
+        "p90": 137.32333333333332,
+        "min": 90.78333333333333,
+        "max": 137.70833333333334
+      },
+      "score": {
+        "n": 8,
+        "mean": 363328.75,
+        "median": 329075,
+        "p10": 199964,
+        "p90": 544293,
+        "min": 198200,
+        "max": 554590
+      },
+      "bestTier": {
+        "n": 8,
+        "mean": 7.5,
+        "median": 7.5,
+        "p10": 7,
+        "p90": 8,
+        "min": 7,
+        "max": 8
+      },
+      "merges": {
+        "n": 8,
+        "mean": 180.125,
+        "median": 168,
+        "p10": 145.1,
+        "p90": 233.9,
+        "min": 136,
+        "max": 236
+      },
+      "mergesPerLaunch": {
+        "n": 8,
+        "mean": 0.8058097707114348,
+        "median": 0.8085911784068467,
+        "p10": 0.7563186813186814,
+        "p90": 0.8496126482213439,
+        "min": 0.7472527472527473,
+        "max": 0.855072463768116
+      },
+      "maxChain": {
+        "n": 8,
+        "mean": 5.5,
+        "median": 5,
+        "p10": 5,
+        "p90": 6.3,
+        "min": 5,
+        "max": 7
+      },
+      "heat75Count": {
+        "n": 8,
+        "mean": 2.375,
+        "median": 1.5,
+        "p10": 1,
+        "p90": 4.3,
+        "min": 1,
+        "max": 5
+      },
+      "peakHeat": {
+        "n": 8,
+        "mean": 100,
+        "median": 100,
+        "p10": 100,
+        "p90": 100,
+        "min": 100,
+        "max": 100
+      },
+      "overLimitSeconds": {
+        "n": 8,
+        "mean": 28.071875,
+        "median": 25.391666666666666,
+        "p10": 20.92,
+        "p90": 41.285,
+        "min": 17.291666666666668,
+        "max": 42.475
+      },
+      "launches": {
+        "n": 8,
+        "mean": 222.125,
+        "median": 211.5,
+        "p10": 191.8,
+        "p90": 275.3,
+        "min": 182,
+        "max": 276
+      },
+      "supernovas": {
+        "n": 8,
+        "mean": 0,
+        "median": 0,
+        "p10": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rejects": {
+        "n": 8,
+        "mean": 0.5,
+        "median": 0.5,
+        "p10": 0,
+        "p90": 1,
+        "min": 0,
+        "max": 1
+      }
+    },
+    "runs": [
+      {
+        "seed": 1,
+        "ticks": 11754,
+        "seconds": 97.95,
+        "score": 280530,
+        "bestTier": 7,
+        "launches": 196,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 158,
+        "mergesPerLaunch": 0.8061224489795918,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 5,
+        "peakHeat": 100,
+        "overLimitSeconds": 26.433333333333334,
+        "timedOut": false,
+        "overflowNearGrowth": 5,
+        "cooling": 321.4833333333334
+      },
+      {
+        "seed": 2,
+        "ticks": 13704,
+        "seconds": 114.2,
+        "score": 474560,
+        "bestTier": 8,
+        "launches": 229,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 193,
+        "mergesPerLaunch": 0.8427947598253275,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 27.758333333333333,
+        "timedOut": false,
+        "overflowNearGrowth": 11,
+        "cooling": 305.5000000000001
+      },
+      {
+        "seed": 3,
+        "ticks": 10894,
+        "seconds": 90.78333333333333,
+        "score": 200720,
+        "bestTier": 7,
+        "launches": 182,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 136,
+        "mergesPerLaunch": 0.7472527472527473,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 17.291666666666668,
+        "timedOut": false,
+        "overflowNearGrowth": 4,
+        "cooling": 146.23333333333335
+      },
+      {
+        "seed": 4,
+        "ticks": 16459,
+        "seconds": 137.15833333333333,
+        "score": 554590,
+        "bestTier": 8,
+        "launches": 275,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 233,
+        "mergesPerLaunch": 0.8472727272727273,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 4,
+        "peakHeat": 100,
+        "overLimitSeconds": 40.775,
+        "timedOut": false,
+        "overflowNearGrowth": 16,
+        "cooling": 497.6999999999999
+      },
+      {
+        "seed": 5,
+        "ticks": 16525,
+        "seconds": 137.70833333333334,
+        "score": 539880,
+        "bestTier": 8,
+        "launches": 276,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 236,
+        "mergesPerLaunch": 0.855072463768116,
+        "supernovas": 0,
+        "maxChain": 7,
+        "heat75Count": 4,
+        "peakHeat": 100,
+        "overLimitSeconds": 42.475,
+        "timedOut": false,
+        "overflowNearGrowth": 10,
+        "cooling": 553.1833333333333
+      },
+      {
+        "seed": 6,
+        "ticks": 12989,
+        "seconds": 108.24166666666666,
+        "score": 356250,
+        "bestTier": 8,
+        "launches": 217,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 176,
+        "mergesPerLaunch": 0.8110599078341014,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 23.016666666666666,
+        "timedOut": false,
+        "overflowNearGrowth": 8,
+        "cooling": 266.45000000000005
+      },
+      {
+        "seed": 7,
+        "ticks": 11734,
+        "seconds": 97.78333333333333,
+        "score": 198200,
+        "bestTier": 7,
+        "launches": 196,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 149,
+        "mergesPerLaunch": 0.7602040816326531,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 22.475,
+        "timedOut": false,
+        "overflowNearGrowth": 10,
+        "cooling": 205.58333333333334
+      },
+      {
+        "seed": 8,
+        "ticks": 12311,
+        "seconds": 102.59166666666667,
+        "score": 301900,
+        "bestTier": 7,
+        "launches": 206,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 160,
+        "mergesPerLaunch": 0.7766990291262136,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 24.35,
+        "timedOut": false,
+        "overflowNearGrowth": 10,
+        "cooling": 227.16666666666669
+      }
+    ]
+  },
+  {
+    "name": "spiral",
+    "summary": {
+      "seconds": {
+        "n": 8,
+        "mean": 106.33229166666666,
+        "median": 108.725,
+        "p10": 86.52083333333334,
+        "p90": 124.43083333333334,
+        "min": 79.60833333333333,
+        "max": 127.98333333333333
+      },
+      "score": {
+        "n": 8,
+        "mean": 308640,
+        "median": 312670,
+        "p10": 203390.00000000003,
+        "p90": 425868,
+        "min": 136610,
+        "max": 426540
+      },
+      "bestTier": {
+        "n": 8,
+        "mean": 7.25,
+        "median": 7,
+        "p10": 6.7,
+        "p90": 8,
+        "min": 6,
+        "max": 8
+      },
+      "merges": {
+        "n": 8,
+        "mean": 168.25,
+        "median": 172,
+        "p10": 131.8,
+        "p90": 208.6,
+        "min": 115,
+        "max": 210
+      },
+      "mergesPerLaunch": {
+        "n": 8,
+        "mean": 0.7852769752865849,
+        "median": 0.7918556003707693,
+        "p10": 0.7303308823529412,
+        "p90": 0.8305103884372176,
+        "min": 0.71875,
+        "max": 0.8455284552845529
+      },
+      "maxChain": {
+        "n": 8,
+        "mean": 6,
+        "median": 6,
+        "p10": 5,
+        "p90": 7,
+        "min": 5,
+        "max": 7
+      },
+      "heat75Count": {
+        "n": 8,
+        "mean": 1.375,
+        "median": 1,
+        "p10": 1,
+        "p90": 2,
+        "min": 1,
+        "max": 2
+      },
+      "peakHeat": {
+        "n": 8,
+        "mean": 100,
+        "median": 100,
+        "p10": 100,
+        "p90": 100,
+        "min": 100,
+        "max": 100
+      },
+      "overLimitSeconds": {
+        "n": 8,
+        "mean": 23.067708333333332,
+        "median": 22.858333333333334,
+        "p10": 18.259166666666665,
+        "p90": 27.224999999999998,
+        "min": 15.383333333333333,
+        "max": 33.05833333333333
+      },
+      "launches": {
+        "n": 8,
+        "mean": 213,
+        "median": 218,
+        "p10": 173.3,
+        "p90": 249,
+        "min": 160,
+        "max": 256
+      },
+      "supernovas": {
+        "n": 8,
+        "mean": 0,
+        "median": 0,
+        "p10": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rejects": {
+        "n": 8,
+        "mean": 0.75,
+        "median": 0.5,
+        "p10": 0,
+        "p90": 2,
+        "min": 0,
+        "max": 2
+      }
+    },
+    "runs": [
+      {
+        "seed": 1,
+        "ticks": 15358,
+        "seconds": 127.98333333333333,
+        "score": 425580,
+        "bestTier": 8,
+        "launches": 256,
+        "rejects": 2,
+        "rejectsByReason": {
+          "overlap": 2,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 210,
+        "mergesPerLaunch": 0.8203125,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 33.05833333333333,
+        "timedOut": false,
+        "overflowNearGrowth": 11,
+        "cooling": 363.18333333333345
+      },
+      {
+        "seed": 2,
+        "ticks": 10738,
+        "seconds": 89.48333333333333,
+        "score": 232010,
+        "bestTier": 7,
+        "launches": 179,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 139,
+        "mergesPerLaunch": 0.776536312849162,
+        "supernovas": 0,
+        "maxChain": 7,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 23.241666666666667,
+        "timedOut": false,
+        "overflowNearGrowth": 10,
+        "cooling": 250.3833333333326
+      },
+      {
+        "seed": 3,
+        "ticks": 9553,
+        "seconds": 79.60833333333333,
+        "score": 136610,
+        "bestTier": 6,
+        "launches": 160,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 115,
+        "mergesPerLaunch": 0.71875,
+        "supernovas": 0,
+        "maxChain": 5,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 15.383333333333333,
+        "timedOut": false,
+        "overflowNearGrowth": 5,
+        "cooling": 122.71666666666668
+      },
+      {
+        "seed": 4,
+        "ticks": 13350,
+        "seconds": 111.25,
+        "score": 353590,
+        "bestTier": 8,
+        "launches": 223,
+        "rejects": 1,
+        "rejectsByReason": {
+          "overlap": 1,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 180,
+        "mergesPerLaunch": 0.8071748878923767,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 24.725,
+        "timedOut": false,
+        "overflowNearGrowth": 9,
+        "cooling": 290.8333333333335
+      },
+      {
+        "seed": 5,
+        "ticks": 13153,
+        "seconds": 109.60833333333333,
+        "score": 306150,
+        "bestTier": 7,
+        "launches": 220,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 166,
+        "mergesPerLaunch": 0.7545454545454545,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 22.475,
+        "timedOut": false,
+        "overflowNearGrowth": 9,
+        "cooling": 217.18333333333297
+      },
+      {
+        "seed": 6,
+        "ticks": 14749,
+        "seconds": 122.90833333333333,
+        "score": 426540,
+        "bestTier": 8,
+        "launches": 246,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 208,
+        "mergesPerLaunch": 0.8455284552845529,
+        "supernovas": 0,
+        "maxChain": 7,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 24.225,
+        "timedOut": false,
+        "overflowNearGrowth": 5,
+        "cooling": 266.33333333333337
+      },
+      {
+        "seed": 7,
+        "ticks": 12237,
+        "seconds": 101.975,
+        "score": 269450,
+        "bestTier": 7,
+        "launches": 204,
+        "rejects": 0,
+        "rejectsByReason": {
+          "overlap": 0,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 150,
+        "mergesPerLaunch": 0.7352941176470589,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 1,
+        "peakHeat": 100,
+        "overLimitSeconds": 19.491666666666667,
+        "timedOut": false,
+        "overflowNearGrowth": 8,
+        "cooling": 173.0166666666664
+      },
+      {
+        "seed": 8,
+        "ticks": 12941,
+        "seconds": 107.84166666666667,
+        "score": 319190,
+        "bestTier": 7,
+        "launches": 216,
+        "rejects": 2,
+        "rejectsByReason": {
+          "overlap": 2,
+          "speed": 0,
+          "cooldown": 0,
+          "gameOver": 0
+        },
+        "merges": 178,
+        "mergesPerLaunch": 0.8240740740740741,
+        "supernovas": 0,
+        "maxChain": 6,
+        "heat75Count": 2,
+        "peakHeat": 100,
+        "overLimitSeconds": 21.941666666666666,
+        "timedOut": false,
+        "overflowNearGrowth": 7,
+        "cooling": 223.83333333333326
+      }
+    ]
+  }
+]

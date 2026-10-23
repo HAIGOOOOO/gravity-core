@@ -1,11 +1,11 @@
 import type { Tier } from '../contracts/game';
-import { BOARD_SIZE, CORE_RADIUS, GAMEOVER_SECONDS } from '../game/constants';
+import { BOARD_SIZE, CORE_RADIUS, GAMEOVER_SECONDS, LIMIT_RADIUS } from '../game/constants';
 import { VISUAL } from './appearance';
 import { lifeProgress, safeDelta } from './motion';
 import type { EffectTheme } from './theme';
 
 const SHAKE_SECONDS = 0.1;
-const END_RADIUS = 120;
+const END_RADIUS = LIMIT_RADIUS * 0.85;
 const END_DIM = 0.6;
 
 export function shakeSize(tier: Tier, nova: boolean): number {

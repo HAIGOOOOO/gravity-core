@@ -6,6 +6,7 @@
 
 import type {
   BodyId,
+  ChainStage,
   GameEvent,
   GameSnapshot,
   GravityCommand,
@@ -19,6 +20,7 @@ import type {
 } from '../contracts/game';
 import {
   CHAIN_MULT_MAX,
+  CHAIN_STAGE_MAX,
   CHAIN_STEP,
   CHAIN_GRACE_SECONDS,
   CHAIN_WINDOW_SECONDS,
@@ -31,24 +33,27 @@ import {
   HEAT_MAX,
   HEAT_RISE_PER_SECOND,
   HEAT_START,
-  HEAT_SUPERNOVA,
+  INTERVENTION_UNLOCK_TIER,
+  INTERVENTION_WINDOW_SECONDS,
   LAUNCH_COOLDOWN,
   LAUNCH_RADIUS,
   LIMIT_GRACE_SECONDS,
   LIMIT_HYSTERESIS,
   LIMIT_RADIUS,
   SLEEP_SPEED,
-  SOLVER_ITERATIONS,
   START_BODY,
   TICK_HZ,
   TIER_BASE_SCORE,
   TIER_RADIUS,
 } from './constants';
-import { createGravity, type GravityState, type GravityTuning } from './gravity';
+import { solveContacts } from './contacts';
+import { driftBoard } from './board-drift';
+import { createGravity, defaultGravityTuning, type GravityState, type GravityTuning } from './gravity';
+import { fusionCooling } from './heat';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
 import { createRng, createRngFromState } from './rng';
-import { drawTier } from './spawner';
+import { createTierBag, type TierBagState } from './spawner';
 
 type Body = {
   id: BodyId;
@@ -89,7 +94,7 @@ export type SimulationSetup = {
  * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
  */
 export type SimulationState = Readonly<{
-  format: 1;
+  format: 4;
   seed: number;
   rngState: number;
   tick: number;
@@ -104,10 +109,13 @@ export type SimulationState = Readonly<{
   pendingEvents: readonly GameEvent[];
   bodies: readonly Readonly<Body>[];
   queue: readonly [Tier, Tier, Tier];
+  bag: TierBagState;
   inputLog: readonly LaunchInput[];
   stats: Readonly<GameSnapshot['stats']>;
   /** 重力操作（試作）の状態。重力操作が無効の計算では null */
   gravity: GravityState | null;
+  gravityPrototype: boolean;
+  interventionCooling: number;
 }>;
 
 /** createSimulation が返す物。SimulationPort に、途中の盤面の書き出しを足した物。 */
@@ -132,8 +140,7 @@ export function chainMultiplier(chain: number): number {
 }
 
 /**
- * @param gravityTuning 重力操作（試作）の数値。渡したときだけ submitGravity が効く。
- *   渡さなければ、今までとまったく同じ計算になる。
+ * @param gravityTuning 渡したときは試作の全操作を使える。通常は崩壊だけを射出後の一手にする。
  */
 export function createSimulation(seed: number, setup?: SimulationSetup, gravityTuning?: GravityTuning): Simulation {
   return build(seed, setup, null, gravityTuning);
@@ -141,7 +148,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup, gravityT
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
 export function restoreSimulation(state: SimulationState): Simulation {
-  if (state.format !== 1) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
+  if (state.format !== 4) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
   return build(state.seed, undefined, state, undefined);
 }
 
@@ -152,13 +159,11 @@ function build(
   gravityTuning: GravityTuning | undefined,
 ): Simulation {
   const rng = saved ? createRngFromState(saved.rngState) : createRng(seed);
-  const gravity = saved
-    ? saved.gravity
-      ? createGravity({ ...saved.gravity.tuning }, saved.gravity)
-      : null
-    : gravityTuning
-      ? createGravity(gravityTuning)
-      : null;
+  const bag = createTierBag(rng, saved?.bag);
+  const gravityPrototype = saved?.gravityPrototype ?? gravityTuning !== undefined;
+  const gravity = saved?.gravity
+    ? createGravity({ ...saved.gravity.tuning }, saved.gravity)
+    : createGravity(gravityTuning ?? defaultGravityTuning());
   let tick = saved?.tick ?? 0;
   let nextId = saved?.nextId ?? 1;
   let sequence = saved?.sequence ?? 0;
@@ -168,6 +173,7 @@ function build(
   let over = saved?.over ?? false;
   let overLimit = saved?.overLimit ?? false;
   let cooldown = saved?.cooldown ?? 0;
+  let interventionCooling = saved?.interventionCooling ?? 0;
   let pendingEvents: GameEvent[] = saved ? saved.pendingEvents.map(copyEvent) : [];
   let snapshotCache: GameSnapshot | null = null;
   const bodies: Body[] = saved ? saved.bodies.map((b) => ({ ...b })) : [];
@@ -175,7 +181,7 @@ function build(
     ? [saved.queue[0], saved.queue[1], saved.queue[2]]
     : setup?.queue
       ? [...setup.queue]
-      : [0, 0, drawTier(0, rng)];
+      : [0, 0, bag.draw(0)];
   const inputLog: LaunchInput[] = saved ? saved.inputLog.map((i) => ({ ...i })) : [];
   const stats = saved ? { ...saved.stats } : { launches: 0, merges: 0, supernovas: 0, maxChain: 0 };
 
@@ -219,6 +225,10 @@ function build(
 
   function getSnapshot(): GameSnapshot {
     if (snapshotCache) return snapshotCache;
+    const lastShot = inputLog.at(-1), g = gravity.view();
+    const windowLeft = lastShot ? Math.max(0, INTERVENTION_WINDOW_SECONDS - (tick - lastShot.tick) / TICK_HZ) : 0;
+    const used = lastShot?.collapseTick !== undefined;
+    const unlocked = bestTier >= INTERVENTION_UNLOCK_TIER;
     snapshotCache = {
       tick,
       phase: over ? 'over' : 'active',
@@ -243,7 +253,10 @@ function build(
       launchCooldownLeftSeconds: Math.max(0, cooldown),
       seed,
       stats: { ...stats },
-      ...(gravity ? { gravity: gravity.view() } : {}),
+      intervention: { unlocked, charge: g.burst.value, max: g.burst.max,
+        ready: !over && unlocked && !used && windowLeft > 0 && g.burst.ready && g.collapseLeftSeconds === 0,
+        windowLeftSeconds: windowLeft, activeLeftSeconds: g.collapseLeftSeconds, used, coolingThisTick: interventionCooling },
+      ...(gravityPrototype ? { gravity: g } : {}),
     };
     return snapshotCache;
   }
@@ -256,7 +269,7 @@ function build(
     const tier = queue[0];
     queue[0] = queue[1];
     queue[1] = queue[2];
-    queue[2] = drawTier(bestTier, rng);
+    queue[2] = bag.draw(bestTier);
 
     const body = addBody(
       tier,
@@ -267,7 +280,7 @@ function build(
       false,
     );
     // 重力弾は、重力操作が有効の計算だけで効く
-    if (command.charged && gravity) body.charged = true;
+    if (command.charged && gravityPrototype) body.charged = true;
     cooldown = LAUNCH_COOLDOWN;
     stats.launches++;
     inputLog.push({
@@ -294,15 +307,19 @@ function build(
     const chainA = tick <= a.chainUntilTick + CHAIN_GRACE_TICKS ? a.chain : 0;
     const chainB = tick <= b.chainUntilTick + CHAIN_GRACE_TICKS ? b.chain : 0;
     const chain = Math.max(chainA, chainB) + 1;
+    const chainStage = Math.min(CHAIN_STAGE_MAX, chain) as ChainStage;
+    const stageAdvanced = chain <= CHAIN_STAGE_MAX;
     gravity?.onMerge(chain);
     stats.maxChain = Math.max(stats.maxChain, chain);
     const gained = Math.round(TIER_BASE_SCORE[a.tier] * chainMultiplier(chain));
     score += gained;
+    const cooling = fusionCooling(heat, chain, a.tier === 8);
+    heat -= cooling;
+    const heatDelta = 0 - cooling;
 
     if (a.tier === 8) {
       stats.supernovas++;
-      heat = Math.max(0, heat - HEAT_SUPERNOVA);
-      emit({ kind: 'supernova', x, y, bodyIds: [a.id, b.id], sourceTier: 8, scoreDelta: gained, heatDelta: -HEAT_SUPERNOVA, chain });
+      emit({ kind: 'supernova', x, y, bodyIds: [a.id, b.id], sourceTier: 8, scoreDelta: gained, heatDelta, chain, chainStage, stageAdvanced });
       return;
     }
 
@@ -331,7 +348,7 @@ function build(
       dead: false,
     };
     born.push(child);
-    emit({ kind: 'merge', x, y, bodyIds: [a.id, b.id, child.id], sourceTier: a.tier, resultTier: tier, scoreDelta: gained, chain });
+    emit({ kind: 'merge', x, y, bodyIds: [a.id, b.id, child.id], sourceTier: a.tier, resultTier: tier, scoreDelta: gained, heatDelta, chain, chainStage, stageAdvanced });
   }
 
   function stepFixed(): readonly GameEvent[] {
@@ -382,53 +399,24 @@ function build(
     bodies.length = write;
     for (const b of born) bodies.push(b);
 
-    // 4. 重なりを押し戻す（重い天体ほど動かない）
-    for (let it = 0; it < SOLVER_ITERATIONS; it++) {
-      for (let i = 0; i < bodies.length; i++) {
-        const a = bodies[i]!;
-        for (let j = i + 1; j < bodies.length; j++) {
-          const b = bodies[j]!;
-          const dx = b.px - a.px;
-          const dy = b.py - a.py;
-          const reach = a.radius + b.radius;
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= (reach + CONTACT_SLOP) * (reach + CONTACT_SLOP)) continue;
-          a.touching = true;
-          b.touching = true;
-          if (d2 >= reach * reach) continue;
-          const d = Math.sqrt(d2) || 1e-6;
-          const overlap = reach - d;
-          const wa = 1 / (a.radius * a.radius);
-          const wb = 1 / (b.radius * b.radius);
-          const nx = dx / d;
-          const ny = dy / d;
-          a.px -= (nx * overlap * wa) / (wa + wb);
-          a.py -= (ny * overlap * wa) / (wa + wb);
-          b.px += (nx * overlap * wb) / (wa + wb);
-          b.py += (ny * overlap * wb) / (wa + wb);
-        }
-      }
-      for (const b of bodies) {
-        const r = Math.hypot(b.px, b.py);
-        const min = CORE_RADIUS + b.radius;
-        if (r < min + CONTACT_SLOP) b.touching = true;
-        if (r < min) {
-          const k = r > 1e-6 ? min / r : 0;
-          if (k === 0) b.py = -min;
-          else {
-            b.px *= k;
-            b.py *= k;
-          }
-        }
-      }
-    }
+    // 4. 重なりを押し戻し、成長が伝えた位置補正を分ける
+    const growth = solveContacts(bodies);
 
     // 5. 動いた結果から速度を求め直す
     const pileCap = gravity && bent ? gravity.pileSpeedCap(MAX_SPEED) : MAX_SPEED;
     for (const b of bodies) {
       const before = Math.hypot(b.vx, b.vy);
+      const radial = Math.hypot(b.px, b.py);
+      const outwardBefore = radial > 0 ? Math.max(0, (b.vx * b.px + b.vy * b.py) / radial) : 0;
       b.vx = (b.px - b.x) / DT;
       b.vy = (b.py - b.y) / DT;
+      if (growth.has(b.id) && radial > 0) {
+        // 押しのけに接線方向へ転がる動きは残し、外へ飛ぶ速さだけ増やさない。
+        const outward = (b.vx * b.px + b.vy * b.py) / radial;
+        const extra = Math.max(0, outward - outwardBefore);
+        b.vx -= extra * b.px / radial;
+        b.vy -= extra * b.py / radial;
+      }
       b.x = b.px;
       b.y = b.py;
       if (b.touching) {
@@ -456,6 +444,8 @@ function build(
       }
     }
 
+    driftBoard(bodies);
+
     // 6. 限界リングと熱量
     // 重力操作で山が動いている間だけ、すでに越えている天体には少し幅を持たせる（判定のちらつき防止）
     const slack = bent ? LIMIT_HYSTERESIS : 0;
@@ -470,12 +460,15 @@ function build(
       emit({ kind: anyOver ? 'overLimitStart' : 'overLimitEnd' });
     }
     let rate = anyOver ? HEAT_RISE_PER_SECOND : -HEAT_COOL_PER_SECOND;
+    let extraRate = 0;
     if (gravity && bent) {
       // 重力操作の代償: 効いている間は冷めず、操作ごとの熱量が足される
       if (!anyOver && gravity.coolingBlocked()) rate = 0;
-      rate += gravity.heatPerSecond();
+      extraRate = gravity.heatPerSecond();
     }
-    heat = Math.min(HEAT_MAX, Math.max(0, heat + rate * DT));
+    const withoutIntervention = Math.min(HEAT_MAX, Math.max(0, heat + rate * DT));
+    heat = Math.min(HEAT_MAX, Math.max(0, heat + (rate + extraRate) * DT));
+    interventionCooling = extraRate < 0 ? Math.max(0, withoutIntervention - heat) : 0;
 
     // 7. 終了判定
     if (heat >= HEAT_MAX) {
@@ -491,20 +484,35 @@ function build(
   function predict(command: LaunchCommand): Prediction {
     // 照準の線と実際の射出が食い違わないよう、同じ丸めを通す
     const q = quantizeLaunch(command);
-    if (gravity && gravity.active()) return predictLaunch(getSnapshot(), q, gravity.flight());
+    if (gravity.active()) return predictLaunch(getSnapshot(), q, gravity.flight());
     return predictLaunch(getSnapshot(), q);
   }
 
   function submitGravity(command: GravityCommand): GravityResult {
-    if (!gravity) return { accepted: false, reason: 'disabled' };
+    if (!gravityPrototype) {
+      if (command.kind !== 'collapse') return { accepted: false, reason: 'disabled' };
+      if (over) return { accepted: false, reason: 'gameOver' };
+      if (bestTier < INTERVENTION_UNLOCK_TIER) return { accepted: false, reason: 'locked' };
+      const shot = inputLog.at(-1);
+      if (!shot) return { accepted: false, reason: 'noShot' };
+      if (shot.collapseTick !== undefined) return { accepted: false, reason: 'alreadyUsed' };
+      if ((tick - shot.tick) / TICK_HZ >= INTERVENTION_WINDOW_SECONDS) return { accepted: false, reason: 'expired' };
+    }
     const result = gravity.submit(command, tick, over);
-    if (result.accepted) snapshotCache = null;
+    if (result.accepted) {
+      if (!gravityPrototype && command.kind === 'collapse') {
+        const index = inputLog.length - 1;
+        inputLog[index] = { ...inputLog[index]!, collapseTick: tick };
+        emit({ kind: 'collapse', x: 0, y: 0 });
+      }
+      snapshotCache = null;
+    }
     return result;
   }
 
   function exportState(): SimulationState {
     return {
-      format: 1,
+      format: 4,
       seed,
       rngState: rng.state(),
       tick,
@@ -519,9 +527,12 @@ function build(
       pendingEvents: pendingEvents.map(copyEvent),
       bodies: bodies.map((b) => ({ ...b })),
       queue: [queue[0], queue[1], queue[2]],
+      bag: bag.exportState(),
       inputLog: inputLog.map((i) => ({ ...i })),
       stats: { ...stats },
       gravity: gravity ? gravity.exportState() : null,
+      gravityPrototype,
+      interventionCooling,
     };
   }
 

@@ -5,6 +5,8 @@ export type Tier = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type BodyId = number;
 /** 1 tick = 1/120 秒 */
 export type Tick = number;
+/** 連鎖の演出段階。5で上限、連鎖数そのものは上限を付けない。 */
+export type ChainStage = 1 | 2 | 3 | 4 | 5;
 
 export type BodyView = Readonly<{
   id: BodyId;
@@ -42,6 +44,13 @@ export type GameSnapshot = Readonly<{
   launchCooldownLeftSeconds: number;
   seed: number;
   stats: RunStats;
+  /** 本番の「撃った後に一度だけ使う崩壊」。試作の連続操作とは分ける。 */
+  intervention?: Readonly<{
+    unlocked: boolean; charge: number; max: number; ready: boolean;
+    windowLeftSeconds: number; activeLeftSeconds: number; used: boolean;
+    /** 直前のtickで崩壊が実際に冷やした量。熱0以下を架空の冷却にしない。 */
+    coolingThisTick: number;
+  }>;
   /** 重力操作の今の状態。重力操作が無効の計算では付かない（試作: dev/gravity-lab.html） */
   gravity?: GravityView;
 }>;
@@ -74,6 +83,8 @@ export type GameEventKind =
   | 'overLimitStart'
   /** 越えた天体がなくなった（熱量が下がり始めた） */
   | 'overLimitEnd'
+  /** 撃った後に崩壊を使った。冷却は続くtickの実熱量へ反映される。 */
+  | 'collapse'
   | 'gameOver';
 
 export type GameEvent = Readonly<{
@@ -88,13 +99,17 @@ export type GameEvent = Readonly<{
   scoreDelta?: number;
   heatDelta?: number;
   chain?: number;
+  /** merge / supernova: 判定側が確定した演出段階。表示側で連鎖を数え直さない。 */
+  chainStage?: ChainStage;
+  /** この合体で次の段へ進んだ。5段目を越えて繋いだ場合はfalse。 */
+  stageAdvanced?: boolean;
   /** land のとき: ぶつかった速さ（音や演出の強さに使う） */
   impactSpeed?: number;
 }>;
 
 export type PathPoint = Readonly<{ x: number; y: number; t: number }>;
 
-/** いまの盤面が止まっていると仮定して、撃った天体が最初に何かへ触れるまでの道すじ。 */
+/** 他の天体の相対配置を固定し、全体の回転を含めて最初の接触まで描く道すじ。 */
 export type Prediction = Readonly<{
   valid: boolean;
   rejectReason?: LaunchRejectReason;
@@ -107,6 +122,11 @@ export type Prediction = Readonly<{
   willMerge: boolean;
   /** 重力操作で山が動いていて、当たり先を言い切れない。このとき hitBodyId は null（道すじは全長） */
   uncertain?: boolean;
+  /** 相対配置を固定した山での成長後の目安。全体の回転以外の運動・連鎖・限界猶予は含まない。 */
+  mergePreview?: Readonly<{
+    x: number; y: number; radius: number; tier: Tier; mayCrossLimit: boolean;
+    pushed: readonly Readonly<{ id: BodyId; x: number; y: number; radius: number }>[];
+  }>;
 }>;
 
 export type LaunchInput = Readonly<{
@@ -116,10 +136,12 @@ export type LaunchInput = Readonly<{
   vy: number;
   /** 重力弾（試作）。共有の文字列にはまだ入らない */
   charged?: boolean;
+  /** この射出の後に崩壊を受け付けたtick。次の射出より前（同tickなら崩壊が先）。 */
+  collapseTick?: Tick;
 }>;
 
 // ───────── 重力操作（試作）─────────
-// 射出とは別の入力。射出の記録（LaunchInput）の形は変えず、別の記録（GravityInput）に残す。
+// 試作の連続操作はGravityInputに残す。通常の崩壊はLaunchInput.collapseTickで再生する。
 
 export type GravityCommand =
   /** 握る: on で握り始め、off で離す */
@@ -135,6 +157,10 @@ export type GravityRejectReason =
   /** 重力操作が無効の計算 */
   | 'disabled'
   | 'gameOver'
+  | 'locked'
+  | 'noShot'
+  | 'expired'
+  | 'alreadyUsed'
   /** すでにその状態（握っている最中にもう一度握る、など）。記録には残さない */
   | 'noChange'
   /** 握り: 締まっている途中 / 井戸: 前の井戸がまだある */

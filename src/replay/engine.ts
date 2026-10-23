@@ -18,6 +18,7 @@
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
 import { createSimulation } from '../game/simulation';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import { rulesVersion, snapshotHash, type ReplayRecord } from './record';
 
 export type ReplayFailure =
@@ -99,7 +100,8 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
         'seed・setup・初期キューのどれかが元の開始を再現していない',
     };
   }
-  const inputs = record.inputs;
+  const inputs = expandLaunchInputs(record.inputs, record.endTick);
+  if (!inputs) return { ok: false, reason: 'diverged', detail: '介入の時刻が射出の窓と合わない' };
   let nextInput = 0;
   const events: IndexedEvent[] = [];
   const checkpoints: GameSnapshot[] = [];
@@ -112,7 +114,7 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
       const idx = nextInput;
       const input = inputs[idx]!;
       nextInput++;
-      const res = sim.submitLaunch(input);
+      const res = input.kind === 'launch' ? sim.submitLaunch(input.input) : sim.submitGravity({ kind: 'collapse' });
       if (!res.accepted) return `入力 #${idx}（tick ${tick}）が受理されなかった: ${res.reason}`;
     }
     if (nextInput < inputs.length && inputs[nextInput]!.tick < tick) {

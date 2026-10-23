@@ -30,14 +30,20 @@ describe('音の高さ・長さと上限', () => {
     gate.reset();
     expect(gate.accept(0.251)).toBe(true);
   });
-  it('速い着地を強め、合体・超新星の発振器数と無音の間を守る', () => {
+  it('速い着地を強め、連鎖を積み上げても発音の上限と超新星の無音を守る', () => {
     const low = eventTones({ ...sampleEvent('land'), impactSpeed: 100 })[0];
     const high = eventTones({ ...sampleEvent('land'), impactSpeed: 600 })[0];
     expect(high.gain).toBeGreaterThan(low.gain);
-    expect(eventTones(sampleEvent('merge', 2, 0, 0, 1))).toHaveLength(2);
-    expect(eventTones(sampleEvent('merge', 2, 0, 0, 3))).toHaveLength(3);
+    const small = eventTones(sampleEvent('merge', 2, 0, 0, 1));
+    const chain = eventTones(sampleEvent('merge', 2, 0, 0, 3));
+    const maximum = eventTones(sampleEvent('merge', 2, 0, 0, 5));
+    expect(small.some(tone => tone.wave === 'noise')).toBe(true);
+    expect(chain.length).toBeGreaterThan(small.length);
+    expect(maximum.length).toBeGreaterThan(chain.length);
+    expect(maximum.length).toBeLessThanOrEqual(AUDIO.maxVoices);
     const nova = eventTones(sampleEvent('supernova'));
-    expect(nova).toHaveLength(4);
-    expect(nova.every((tone) => tone.delay === 0.15 && tone.seconds === 1.2)).toBe(true);
+    expect(nova.length).toBeLessThanOrEqual(AUDIO.maxVoices);
+    expect(nova.every((tone) => tone.delay >= AUDIO.novaSilence)).toBe(true);
+    expect(nova.some(tone => (tone.endFrequency ?? 100) < 40)).toBe(true);
   });
 });
