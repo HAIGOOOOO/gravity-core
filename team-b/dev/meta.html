@@ -6,15 +6,20 @@
     <title>プレイを見返す — GRAVITY CORE</title>
     <script type="module" crossorigin src="../assets/bodies-CptjCEtv.js"></script>
     <script type="module" crossorigin src="../assets/render-DNwkCQTg.js"></script>
-    <script type="module" crossorigin src="../assets/replay-BtQWH71O.js"></script>
+    <script type="module" crossorigin src="../assets/replay-DvNrR5mA.js"></script>
     <script type="module" crossorigin src="../assets/fixtures-CbNCl200.js"></script>
-    <script type="module" crossorigin src="../assets/replay-demo-CtnkuOBN.js"></script>
-    <link rel="stylesheet" crossorigin href="../assets/replay-demo-BB8MUhXw.css">
+    <script type="module" crossorigin src="../assets/replay-demo-DjWbAQAH.js"></script>
+    <link rel="stylesheet" crossorigin href="../assets/replay-demo-CJ96V6tf.css">
   </head>
   <body>
     <main class="replay-page">
       <header><p class="eyebrow">担当 B・再生の見本</p><h1>プレイを見返す</h1></header>
-      <div id="demo-controls" aria-label="見本の操作"></div>
+      <div id="demo-controls" aria-label="見本の操作">
+        <div><p class="control-label">記録を選ぶ</p><div id="sample-controls"></div></div>
+        <div><p class="control-label">選んだ記録を見返す</p><div id="record-jumps"></div><p id="cause-availability"></p></div>
+        <div id="preparation-controls"></div>
+      </div>
+      <p id="preparation-note" role="status"></p>
       <div class="replay-layout">
         <section aria-label="再生する盤面">
           <p id="sample-name"></p>
@@ -23,7 +28,11 @@
           <div class="readout"><span id="score"></span><span id="heat"></span></div>
           <p id="cause-context" role="status"></p>
           <label class="timeline">再生位置 <output id="time"></output><input id="timeline" type="range" min="0" max="0" value="0" step="1" /></label>
-          <div id="transport" aria-label="再生操作"></div>
+          <p id="timeline-window"></p>
+          <p class="control-label">見どころの印（件数を押すと周辺へ移動して拡大）</p>
+          <div id="timeline-markers" aria-label="見どころの位置"></div>
+          <p id="selected-highlight"></p>
+          <div id="transport" aria-label="再生操作"></div><div id="highlight-nav"></div>
           <p id="status"></p>
         </section>
         <aside>
