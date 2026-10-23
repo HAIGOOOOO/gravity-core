@@ -1,37 +1,19 @@
-// 記録を再生するプレイヤー。作るときに 1 回全部計算し直し、
-// 出来事の索引・一定間隔の盤面・記録との照合を終えてから返す。
-//
-// seek の速さの設計（詳しい理由は docs/notes/B/swe-replay.md）:
-//   シミュレーションの中身は外から複製・復元できない。ある tick の状態を
-//   正確に作るには「シードと入力からその tick まで計算し直す」しかない。
-//   そこで速さを 3 段に分ける。
-//     1. キーフレーム: 計算し直した盤面を一定 tick ごとに覚えておく。
-//        その tick への seek と peek（つまみの表示）は一瞬で返る。
-//        記録が長いほど取る間隔を広げて、面数が KEYFRAME_CAP を越えないようにする。
-//     2. 行った所: seek した先の盤面も覚える（上限つきで古い物から捨てる）。
-//        同じ所への再 seek は一瞬。peek もここを引くので、
-//        一度止まった tick へつまみを戻すと正確な盤面が出る。
-//     3. カーソル: 前にしか進めないシミュレーションを数本持ち、
-//        目的地に一番近い（手前にいる）ものを選んで進める。
-//        行き来するほどカーソルが散って、戻る距離が短くなる。
-//   最悪の場合（後ろへ大きく飛んで、使えるカーソルがない）は
-//   tick 0 からの計算し直しになる。これは仕組み上避けられないので、
-//   ツマミの途中表示は peek（近いキーフレームを即返す）を使う想定。
-//   覚えている物の量は player.memory で計れる。
+// 検証時に取った内部状態から再開し、巻き戻しも最寄りの保存点から計算する。
 
-import type { GameEvent, GameSnapshot, SimulationPort, Tick } from '../contracts/game';
+import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
-import { createSimulation } from '../game/simulation';
-import { runReplay, type ReplayFailure } from './engine';
-import { copySetup, type ReplayRecord } from './record';
+import { runReplay, type ReplayFailure, type ReplayRun } from './engine';
+import type { ReplayRecord } from './record';
+import { createReplayCursor } from './cursor';
+import { highlightsFromRun, type ReplayHighlight } from './highlights';
+import { causeFromRun, type DefeatCause } from './cause';
 
 /** キーフレーム・キャッシュを取る間隔（60 tick = 0.5 秒）。 */
 const KEYFRAME_EVERY = 60;
 /**
  * キーフレームの最大数。記録が長いほど取る間隔を広げて、覚える盤面の数を抑える。
  * 間隔を広げないと、2 時間の記録（864,000 tick）で 1 万面を越えてメモリを食う。
- * （盤面からシミュレーションを復元はできないので、広げても seek の計算量は
- *   変わらない。細かく影響するのは peek の粒度だけ）
+ * 復元する状態も同じ間隔で取るため、間隔を広げると seek の最大計算量も増える。
  */
 const KEYFRAME_CAP = 720;
 
@@ -42,11 +24,10 @@ const KEYFRAME_CAP = 720;
  */
 export function keyframeInterval(endTick: Tick, cap: number = KEYFRAME_CAP): Tick {
   // cap が 0 以下だと間隔が Infinity になって peek の割り算が壊れるので、1 未満は 1 に丸める
-  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / Math.max(1, cap)));
+  const safeCap = Number.isFinite(cap) ? Math.max(1, Math.floor(cap)) : KEYFRAME_CAP;
+  return Math.max(KEYFRAME_EVERY, Math.ceil(endTick / safeCap));
 }
 
-/** 同時に持つシミュレーションの本数。増やすと戻り seek が速くなる代わりにメモリを使う */
-const CURSOR_MAX = 4;
 /** 「行った所」の記憶の上限（キーフレームとは別枠）。往復し続けても増え続けないようにする */
 const VISITED_CAP = 240;
 
@@ -55,6 +36,8 @@ export type ReplayPlayer = {
   readonly record: ReplayRecord;
   /** 記録の最後の tick */
   readonly endTick: Tick;
+  readonly highlights: readonly ReplayHighlight[];
+  readonly cause: DefeatCause | null;
   /** 記録の長さ（秒） */
   readonly durationSeconds: number;
   /** いま表示している tick */
@@ -96,12 +79,6 @@ export type ReplayPlayer = {
 
 export type ReplayStart = Readonly<{ ok: true; player: ReplayPlayer }> | ReplayFailure;
 
-/** 前にしか進めないシミュレーション。入力の次の位置を覚えておく。 */
-type Cursor = {
-  sim: SimulationPort;
-  nextInput: number;
-};
-
 export function createReplayPlayer(
   record: ReplayRecord,
   options: { keyframeCap?: number; maxTicks?: Tick } = {},
@@ -109,13 +86,18 @@ export function createReplayPlayer(
   // まず全部計算し直して、記録と合うか確かめる。合わなければここで止める。
   // 検証で取る盤面の間隔はそのままキーフレーム間隔にする（長い記録では広がる）。
   const every = keyframeInterval(record.endTick, options.keyframeCap ?? KEYFRAME_CAP);
-  const run = runReplay(record, { checkpointEvery: every, maxTicks: options.maxTicks });
+  const run = runReplay(record, { checkpointEvery: every, captureStates: true, maxTicks: options.maxTicks });
   if (!run.ok) return run;
+  return playerFromRun(record, run);
+}
+
+/** 同じコードで計算したWorkerの検証結果を受け取る内部口。外部の保存値は渡さない。 */
+export function playerFromRun(record: ReplayRecord, run: ReplayRun): ReplayStart {
+  const every = run.checkpointEvery;
   const { endTick } = record;
   // 呼び出し側があとで記録の中身を書き換えても、カーソルの再計算が腐らないよう
   // 入力と開始状態は作るときに複製して持つ（record.ts と同じ考え方）。
   const inputs = record.inputs.map((i) => ({ ...i }));
-  const setup = record.setup === undefined ? undefined : copySetup(record.setup);
   // run の中身は必要な物だけ取り出し、配列ごとの参照をクロージャに残さない
   // （checkpoints の配列自体はキーフレームへ移したあと手放す）。
   const runEvents = run.events;
@@ -147,68 +129,7 @@ export function createReplayPlayer(
     }
   };
 
-  const cursors: Cursor[] = [];
-  const newCursor = (): Cursor => ({ sim: createSimulation(record.seed, setup), nextInput: 0 });
-
-  /** いまの tick に届いている入力を順に投入する（記録は照合済みなので受理されるはず）。 */
-  const applyDue = (c: Cursor): void => {
-    const tick = c.sim.getSnapshot().tick;
-    while (c.nextInput < inputs.length && inputs[c.nextInput]!.tick === tick) {
-      const input = inputs[c.nextInput]!;
-      c.nextInput++;
-      c.sim.submitLaunch(input);
-    }
-  };
-
-  /**
-   * カーソルを target まで進める。途中の盤面はここでは覚えない:
-   * キーフレーム間隔の倍数の盤面は、検証の再計算ですべて keyframes に
-   * 入っている（同じ間隔で同じ計算をした結果なので、重ねて取る意味がない）。
-   * 終端の盤面も書かない。keyframes[endTick] は「endTick の入力も反映した」
-   * 検証済みの盤面で初期化済みなので、入力反映前の面を書くと
-   * seek(endTick) が記録と違う盤面を返してしまう。
-   * target ちょうどの入力はここでは投入しない: 「tick T の盤面」は
-   * tick T の入力が撃たれる前に取られる物なので、反映すると本物より先に進んだ絵になる。
-   * （その入力は次にカーソルを進めるとき、T→T+1 のステップ前に投入される）
-   * 盤面の tick はローカルで数えず毎回 snapshot から取る:
-   * 終了して進めなくなった sim を回し続けず、実際の tick をキーにするため。
-   */
-  const advance = (c: Cursor, target: Tick): void => {
-    let snap = c.sim.getSnapshot();
-    while (snap.tick < target && snap.phase === 'active') {
-      applyDue(c);
-      c.sim.stepFixed();
-      snap = c.sim.getSnapshot();
-    }
-    // 終端に止まった時は、終端ちょうどの入力（記録の直前に撃たれた分）も反映する。
-    // runReplay が最終盤面で同じ事をするので、ここで揃えないと
-    // 同じ endTick の盤面が経路によって違う物になってしまう。
-    if (snap.tick === endTick) applyDue(c);
-  };
-
-  /** target 以下で一番近い所にいるカーソル。無ければ足すか、一番手前のものを作り直す。 */
-  const cursorFor = (target: Tick): Cursor => {
-    let best: Cursor | null = null;
-    let rearmost: Cursor | null = null;
-    for (const c of cursors) {
-      const tick = c.sim.getSnapshot().tick;
-      if (tick <= target && (!best || tick > best.sim.getSnapshot().tick)) best = c;
-      if (!rearmost || tick < rearmost.sim.getSnapshot().tick) rearmost = c;
-    }
-    if (best) return best;
-    if (cursors.length < CURSOR_MAX) {
-      const c = newCursor();
-      cursors.push(c);
-      return c;
-    }
-    // 全部が target より先にいる。どれを選んでも 0 から作り直しなので、
-    // 一番手前（= そこまでの計算が一番少なく、失う物が小さい）を捨てる。
-    const c = rearmost!;
-    cursors.splice(cursors.indexOf(c), 1);
-    const fresh = newCursor();
-    cursors.push(fresh);
-    return fresh;
-  };
+  const cursor = createReplayCursor(run.states, inputs, endTick);
 
   /** (a, b] の区間に返った出来事を起きた順で取る（a > b なら同じ区間をそのまま返す）。 */
   const eventsBetween = (a: Tick, b: Tick): readonly GameEvent[] => {
@@ -254,9 +175,7 @@ export function createReplayPlayer(
     const prev = currentTick;
     let snap = keyframes.get(t) ?? getVisited(t);
     if (!snap) {
-      const c = cursorFor(t);
-      advance(c, t);
-      snap = c.sim.getSnapshot();
+      snap = cursor.at(t);
       // 検証済みの記録では必ず snap.tick === t に辿り着く。進めなかった異例では
       // 実際に辿り着いた tick をキーにして覚え、表示位置もそこに合わせる。
       // 間隔の倍数の盤面は検証ですべて keyframes に入っているので、ここで
@@ -296,6 +215,8 @@ export function createReplayPlayer(
     player: {
       record,
       endTick,
+      highlights: highlightsFromRun(run),
+      cause: causeFromRun(run),
       durationSeconds: endTick / TICK_HZ,
       get tick() {
         return currentTick;
@@ -309,11 +230,12 @@ export function createReplayPlayer(
         let approxBytes = JSON.stringify(inputs).length + JSON.stringify(runEvents).length;
         for (const s of keyframes.values()) approxBytes += JSON.stringify(s).length;
         for (const s of visited.values()) approxBytes += JSON.stringify(s).length;
-        for (const c of cursors) approxBytes += JSON.stringify(c.sim.getSnapshot()).length;
+        for (const checkpoint of run.states) approxBytes += JSON.stringify(checkpoint).length;
+        approxBytes += cursor.approxBytes;
         return {
           keyframes: keyframes.size,
           visited: visited.size,
-          cursors: cursors.length,
+          cursors: cursor.count,
           events: runEvents.length,
           approxBytes,
         };
