@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import type { Tier } from '../contracts/game';
 import { CORE_RADIUS, TICK_HZ } from '../game/constants';
 import { at, createAutoPlay, dropAt } from '../fixtures/index';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 import { analyzeCause } from './cause';
+import { runReplay } from './engine';
 import { findHighlights } from './highlights';
 import { createReplayPlayer } from './player';
 import {
@@ -16,23 +17,31 @@ import {
 import { recordAutoPlay, recordSetup, UP } from './testkit';
 
 describe('記録と再生', () => {
-  it(
-    '自動プレイ 30 回ぶんを記録して再生すると、最後の得点と天体の数が元と一致する',
-    { timeout: 120_000 },
-    () => {
-      for (let seed = 1; seed <= 30; seed++) {
-        const { record, final } = recordAutoPlay(seed, 1_800);
-        const start = createReplayPlayer(record);
-        expect(start.ok, `seed ${seed}`).toBe(true);
-        if (!start.ok) continue;
-        const snap = start.player.seek(record.endTick);
-        expect(snap.score).toBe(final.score);
-        expect(snap.bodies).toHaveLength(final.bodies.length);
-        // 得点と数だけでなく、盤面そのものが一致する
-        expect(JSON.stringify(snap)).toBe(JSON.stringify(final));
-      }
+  let minTicks = Infinity;
+  let maxTicks = 0;
+  let completed = 0;
+  it.each(Array.from({ length: 100 }, (_, index) => index + 1))(
+    '自動プレイ seed %i を終了まで保存して再生すると最後の盤面が一致する',
+    { timeout: 60_000 },
+    (seed) => {
+      const { record, final } = recordAutoPlay(seed, 10 * 60 * TICK_HZ);
+      expect(record.phase).toBe('over');
+      const saved = parseReplay(serializeReplay(record));
+      expect(saved).not.toBeNull();
+      if (!saved) return;
+      // 100件の照合だけにUI用の保存点を積まない。seekの照合は別の試験が担う。
+      const replayed = runReplay(saved, { checkpointEvery: 0 });
+      expect(replayed.ok).toBe(true);
+      if (!replayed.ok) return;
+      expect(replayed.final.score).toBe(final.score);
+      expect(JSON.stringify(replayed.final)).toBe(JSON.stringify(final));
+      minTicks = Math.min(minTicks, record.endTick);
+      maxTicks = Math.max(maxTicks, record.endTick);
+      completed++;
+      if (completed % 10 === 0) console.log(`[replay] complete runs ${completed}/100`);
     },
   );
+  afterAll(() => console.log(`[replay] ${completed} complete runs: min=${minTicks}tick max=${maxTicks}tick, saved and replayed`));
 
   it('seek で好きな tick に飛んだ盤面が、最初から順に進めた盤面と一致する', { timeout: 60_000 }, () => {
     const maxTicks = 3_000;
