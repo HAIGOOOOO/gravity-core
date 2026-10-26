@@ -94,6 +94,12 @@ export const HEAT_SUPERNOVA = 40;
 export const HEAT_MERGE_COOL = 2;
 export const HEAT_CHAIN_COOL_STEP = 3;
 export const HEAT_CHAIN_COOL_MAX_STEPS = 4;
+/** 衛星を作るまでは連投で加熱しない。最初の2投も同じ方向へ狙える。 */
+export const REPEAT_LAUNCH_UNLOCK_TIER = 3;
+export const REPEAT_LAUNCH_MEMORY = 8;
+export const REPEAT_LAUNCH_ANGLE = Math.PI / 12;
+export const REPEAT_LAUNCH_FREE_PREVIOUS = 1;
+export const REPEAT_LAUNCH_HEAT_STEP = 2;
 /** 安定 | 上昇 | 過熱 | 臨界 の境目 */
 export const HEAT_STATE_LIMITS = [25, 50, 75] as const;
 

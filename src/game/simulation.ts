@@ -40,6 +40,7 @@ import {
   LIMIT_GRACE_SECONDS,
   LIMIT_HYSTERESIS,
   LIMIT_RADIUS,
+  REPEAT_LAUNCH_MEMORY,
   SLEEP_SPEED,
   START_BODY,
   TICK_HZ,
@@ -50,6 +51,7 @@ import { solveContacts } from './contacts';
 import { driftBoard } from './board-drift';
 import { createGravity, defaultGravityTuning, type GravityState, type GravityTuning } from './gravity';
 import { fusionCooling } from './heat';
+import { launchHeating } from './launch-heat';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
 import { createRng, createRngFromState } from './rng';
@@ -94,7 +96,7 @@ export type SimulationSetup = {
  * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
  */
 export type SimulationState = Readonly<{
-  format: 5;
+  format: 6;
   seed: number;
   rngState: number;
   tick: number;
@@ -148,7 +150,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup, gravityT
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
 export function restoreSimulation(state: SimulationState): Simulation {
-  if (state.format !== 5) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
+  if (state.format !== 6) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
   return build(state.seed, undefined, state, undefined);
 }
 
@@ -253,6 +255,7 @@ function build(
       launchCooldownLeftSeconds: Math.max(0, cooldown),
       seed,
       stats: { ...stats },
+      recentLaunches: inputLog.slice(-REPEAT_LAUNCH_MEMORY).map(({ tick, originAngleRadians }) => ({ tick, originAngleRadians })),
       intervention: { unlocked, charge: g.burst.value, max: g.burst.max,
         ready: !over && unlocked && !used && windowLeft > 0 && g.burst.ready && g.collapseLeftSeconds === 0,
         windowLeftSeconds: windowLeft, activeLeftSeconds: g.collapseLeftSeconds, used, coolingThisTick: interventionCooling },
@@ -265,6 +268,9 @@ function build(
     const command = quantizeLaunch(raw);
     const reason = launchRejectReason(getSnapshot(), command);
     if (reason !== null) return { accepted: false, reason };
+
+    const addedHeat = Math.min(HEAT_MAX - heat, launchHeating(tick, bestTier, inputLog, command.originAngleRadians));
+    heat += addedHeat;
 
     const tier = queue[0];
     queue[0] = queue[1];
@@ -290,9 +296,11 @@ function build(
       vy: command.vy,
       ...(body.charged ? { charged: true } : {}),
     });
-    emit({ kind: 'launch', x: body.x, y: body.y, bodyIds: [body.id], sourceTier: tier });
+    emit({ kind: 'launch', x: body.x, y: body.y, bodyIds: [body.id], sourceTier: tier,
+      ...(addedHeat > 0 ? { heatDelta: addedHeat } : {}) });
+    if (heat >= HEAT_MAX) { over = true; emit({ kind: 'gameOver', x: body.x, y: body.y }); }
     snapshotCache = null;
-    return { accepted: true, bodyId: body.id };
+    return { accepted: true, bodyId: body.id, ...(addedHeat > 0 ? { heatDelta: addedHeat } : {}) };
   }
 
   function merge(a: Body, b: Body, born: Body[]): void {
@@ -352,7 +360,10 @@ function build(
   }
 
   function stepFixed(): readonly GameEvent[] {
-    if (over) return [];
+    if (over) {
+      // 射出の加熱で終わった時も、その射出と終了の出来事を一度だけ届ける。
+      const events = pendingEvents; pendingEvents = []; return events;
+    }
     snapshotCache = null;
 
     // 1. 時間を進める
@@ -512,7 +523,7 @@ function build(
 
   function exportState(): SimulationState {
     return {
-      format: 5,
+      format: 6,
       seed,
       rngState: rng.state(),
       tick,

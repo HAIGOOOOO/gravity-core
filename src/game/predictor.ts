@@ -5,6 +5,7 @@ import type { GameSnapshot, LaunchCommand, LaunchRejectReason, PathPoint, Predic
 import {
   CORE_RADIUS,
   DT,
+  HEAT_MAX,
   LAUNCH_OVERLAP_MARGIN,
   LAUNCH_RADIUS,
   PREDICT_SAMPLE_SECONDS,
@@ -17,6 +18,7 @@ import type { FlightModel } from './gravity';
 import { stepFree, type Mover } from './physics';
 import { mergePreview } from './merge-preview';
 import { driftPrediction } from './board-drift';
+import { launchHeating } from './launch-heat';
 
 // 丸め（quantizeLaunch）で速さは最大 √2/2 ≈ 0.71 ずれるので、それを越える余裕を持たせる
 const SPEED_TOLERANCE = 1;
@@ -113,7 +115,8 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand, fl
     if (i % sampleEvery === 0 || end !== 'timeLimit') points.push({ x: shot.x, y: shot.y, t: i * DT });
   }
 
-  const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points };
+  const launchHeat = Math.min(HEAT_MAX - snapshot.heat, launchHeating(snapshot.tick, snapshot.bestTierThisRun, snapshot.recentLaunches ?? [], command.originAngleRadians));
+  const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points, launchHeat };
   // 山が動いているときは、線と終わり方は出すが「何に当たるか」は答えない（終点は「不確か」の見た目で描く）
   if (uncertain) return driftPrediction({ ...base, end, hitBodyId: null, willMerge: false, uncertain: true });
   const path = { ...base, end, hitBodyId, willMerge };

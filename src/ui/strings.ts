@@ -78,6 +78,7 @@ export const STRINGS = {
 
 export function rankLabel(rank: number): string { return `この端末で ${rank} 位`; }
 export function chainTargetLabel(next: number, cooling: number): string { return `${next}連鎖へ・最大−${cooling}`; }
+export function launchHeatLabel(amount: number): string { return `連投で熱 ＋${amount.toFixed(1)}`; }
 
 /** 「連鎖 ×3（2.0 倍）」 */
 export function chainLabel(chain: number, multiplier: number): string {

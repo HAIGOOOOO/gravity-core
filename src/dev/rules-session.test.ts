@@ -15,6 +15,7 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(result.finished).toBe('chain'); expect(result.mergeCooling).toBe(7);
     expect(result.score).toBe(430); expect(body.radius).toBe(TIER_RADIUS[body.tier]);
     expect(result.passiveChange).toBeGreaterThan(0);
+    expect(result.lastFusion!.before - result.lastFusion!.after).toBeCloseTo(5);
     expect(result.curr.heat).toBeCloseTo(lesson.before.heat - result.mergeCooling + result.passiveChange);
     const tick = result.curr.tick; lesson.step(); expect(lesson.read().curr.tick).toBe(tick);
   });

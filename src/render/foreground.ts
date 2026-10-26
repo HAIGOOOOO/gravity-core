@@ -1,7 +1,7 @@
 import type { BoardFrame } from '../contracts/app';
 import { BOARD_ROTATION_RADIANS_PER_SECOND, CHAIN_WINDOW_SECONDS, HEAT_MAX, LAUNCH_RADIUS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
 import { fusionCooling } from '../game/heat';
-import { chainTargetLabel, STRINGS } from '../ui/strings';
+import { chainTargetLabel, launchHeatLabel, STRINGS } from '../ui/strings';
 import { drawBody } from './bodies';
 import { drawPlayingBodies } from './playing-bodies';
 
@@ -41,6 +41,13 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
     const ox = LAUNCH_RADIUS * Math.cos(aim.originAngleRadians), oy = LAUNCH_RADIUS * Math.sin(aim.originAngleRadians);
     drawBody(ctx, aim.tier, ox, oy, TIER_RADIUS[aim.tier], { alpha: 0.8 });
     const prediction = aim.prediction;
+    if (prediction && (prediction.launchHeat ?? 0) > 0) {
+      const label = launchHeatLabel(prediction.launchHeat!);
+      const x = Math.max(-260, Math.min(260, ox * .65)), y = Math.max(-360, Math.min(360, oy * .82));
+      ctx.font = '700 25px system-ui,sans-serif'; ctx.textAlign = 'center';
+      ctx.strokeStyle = '#101b1a'; ctx.lineWidth = 7; ctx.strokeText(label, x, y);
+      ctx.fillStyle = '#ffbf85'; ctx.fillText(label, x, y);
+    }
     const growth = frame.aimGuide ? prediction?.mergePreview : undefined;
     if (growth) {
       ctx.setLineDash([7, 5]); ctx.lineWidth = 5;

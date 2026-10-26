@@ -44,6 +44,8 @@ export type GameSnapshot = Readonly<{
   launchCooldownLeftSeconds: number;
   seed: number;
   stats: RunStats;
+  /** 照準が連投の加熱を見積もるための、直近の受理済み射出だけ。 */
+  recentLaunches?: readonly Readonly<Pick<LaunchInput, 'tick' | 'originAngleRadians'>>[];
   /** 本番の「撃った後に一度だけ使う崩壊」。試作の連続操作とは分ける。 */
   intervention?: Readonly<{
     unlocked: boolean; charge: number; max: number; ready: boolean;
@@ -67,7 +69,7 @@ export type LaunchCommand = Readonly<{
 export type LaunchRejectReason = 'cooldown' | 'overlap' | 'speed' | 'gameOver';
 
 export type LaunchResult =
-  | { accepted: true; bodyId: BodyId }
+  | { accepted: true; bodyId: BodyId; heatDelta?: number }
   | { accepted: false; reason: LaunchRejectReason };
 
 export type GameEventKind =
@@ -112,6 +114,8 @@ export type PathPoint = Readonly<{ x: number; y: number; t: number }>;
 /** 他の天体の相対配置を固定し、全体の回転を含めて最初の接触まで描く道すじ。 */
 export type Prediction = Readonly<{
   valid: boolean;
+  /** この一投で実際に加算される熱量の見積もり（上限100で止める）。 */
+  launchHeat?: number;
   rejectReason?: LaunchRejectReason;
   points: readonly PathPoint[];
   /** core: 核に着く / body: 天体に当たる / timeLimit: 時間内にどこにも着かない */
