@@ -10,6 +10,7 @@ import { BURST_MAX, DT, DROP_SPEED, INTERVENTION_WINDOW_SECONDS, LIMIT_RADIUS, T
 import { GROWTH_PREVIEW_COMMAND } from '../fixtures/growth-preview';
 import { createRuleSession, type RuleMode } from './rules-session';
 import { drawRuleTrace } from './rules-trace';
+import { lossMessage } from '../ui/strings';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 const text = (id: string, value: string) => { const node = el(id); if (node.textContent !== value) node.textContent = value; };
@@ -18,7 +19,7 @@ const renderer = createBoardRenderer(board), effects = createEffectsLayer(el<HTM
 const sound = el<HTMLInputElement>('sound'), compare = el<HTMLInputElement>('compare');
 let study = createRuleSession(), aim: AimView | null = null, bank = 0, last = performance.now(), time = 0, tail = 0, dirty = true;
 let profile = false, paints: number[] = [], intervals: number[] = [], maxBodies = 0;
-const names = { learn: '一投から、2連鎖へ', collapse: '撃った後に、山を締める', growth: '成長前と、動いた結果', repeat: '同じ方角と、別の方角', play: '自由プレイ' };
+const names = { learn: '一投から、2連鎖へ', collapse: '撃った後に、山を締める', growth: '成長前と、動いた結果', repeat: '同じ方角と、別の方角', loss: '限界外の山による終了', 'loss-repeat': '連投の加熱による終了', play: '自由プレイ' };
 const queueIcons = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; c.setAttribute('role', 'img'); el('queue').append(c); return c; });
 let queueKey = '';
 function unlock(): void { if (sound.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 65 }); audio.resume(); } }
@@ -33,7 +34,12 @@ function begin(mode: RuleMode, navigate = false): void {
   el('learn-actions').hidden = mode !== 'learn'; el('collapse-actions').hidden = mode !== 'collapse'; el('growth-actions').hidden = mode !== 'growth';
   el('free-actions').hidden = mode !== 'play'; el('restart-play').hidden = mode !== 'play';
   el('repeat-actions').hidden = mode !== 'repeat';
-  if (mode === 'repeat') {
+  el('loss-actions').hidden = mode !== 'loss' && mode !== 'loss-repeat';
+  if (mode === 'loss' || mode === 'loss-repeat') {
+    text('mode', mode === 'loss' ? '終了直前の途中盤面です。時間を進めると、どの山が熱を上げていたかを示します。' : '熱99の途中盤面です。照準の加熱を見てから同じ方角へ投げ、限界外の山とは別の敗因を確認します。');
+    text('loss-start', mode === 'loss' ? '時間を進めて確認' : '同じ方角に一投する');
+  }
+  if (mode === 'repeat' || mode === 'loss-repeat') {
     const same = study.predict({ originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 });
     const other = study.predict({ originAngleRadians: Math.PI, vx: DROP_SPEED, vy: 0 });
     text('repeat-same', `同じ方角へ（熱＋${(same.launchHeat ?? 0).toFixed(1)}）`);
@@ -49,8 +55,9 @@ function draw(): void {
   const s = study.read(), i = s.curr.intervention;
   renderer.draw({ prev: s.prev, curr: s.curr, alpha: s.running ? Math.min(1, bank / DT) : 1, timeSeconds: time, aim, reducedMotion: false, aimGuide: !s.finished, dimmed: false });
   effects.draw(); drawRuleTrace(trace.getContext('2d')!, study, compare.checked);
-  text('heat', s.curr.heat.toFixed(1)); el<HTMLMeterElement>('meter').value = s.curr.heat;
-  text('mobile-heat', `熱 ${s.curr.heat.toFixed(1)} / 100`);
+  text('heat', s.curr.heat.toFixed(0)); el<HTMLMeterElement>('meter').value = s.curr.heat;
+  text('mobile-heat', `熱 ${s.curr.heat.toFixed(0)} / 100`);
+  el('heat-panel').hidden = study.mode === 'growth';
   text('mobile-queue', `次: ${s.curr.nextQueue.map(tier => TIER_NAMES[tier]).join(' → ')}`);
   text('cooling', `合体で −${s.mergeCooling.toFixed(1)}`);
   text('shot-heating', `連投で ＋${s.shotHeating.toFixed(1)}`);
@@ -59,6 +66,8 @@ function draw(): void {
   text('balance', `開始 ${study.before.heat.toFixed(1)} ＋ 連投 ${s.shotHeating.toFixed(1)} − 合体 ${s.mergeCooling.toFixed(1)} − 崩壊 ${s.interventionCooling.toFixed(1)} ${s.passiveChange < 0 ? '−' : '＋'} 自然 ${Math.abs(s.passiveChange).toFixed(1)} ＝ ${s.curr.heat.toFixed(1)}`);
   text('facts', `今回 ${s.score.toLocaleString()}点 / 合体 ${s.merges}回 / 最長 ${s.maxChain}連鎖`);
   const finished = s.finished !== null;
+  el('defeat-panel').hidden = !s.curr.loss;
+  if (s.curr.loss) text('defeat-panel', lossMessage(s.curr.loss));
   el('mode').hidden = finished; el('practice-actions').hidden = finished; el('queue-panel').hidden = finished;
   el('free-actions').hidden = study.mode !== 'play' || finished;
   const fusion = s.lastFusion;
@@ -67,6 +76,7 @@ function draw(): void {
   text('lesson-result', s.finished === 'expired' ? '時間切れ。もう一度、一投から試せます。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '合体後の成長が終わりました。動いた結果と予告を比べてください。' : s.finished === 'repeat' ? `この一投の加熱は ＋${s.shotHeating.toFixed(1)}。もう一度で同じ盤面へ戻り、別の方角と比べられます。` : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖。今回の合体冷却の合計 −${s.mergeCooling.toFixed(1)}。` : s.finished === 'over' ? '熱量100で終了。' : s.waiting ? '操作するまで、時間は止まっています。' : '');
   el('result-actions').hidden = !finished; el('trace-controls').hidden = study.mode !== 'growth' || !finished;
   el<HTMLButtonElement>('learn-launch').disabled = !s.waiting;
+  el<HTMLButtonElement>('loss-start').disabled = !s.waiting;
   el<HTMLButtonElement>('repeat-same').disabled = !s.waiting; el<HTMLButtonElement>('repeat-other').disabled = !s.waiting;
   el<HTMLButtonElement>('practice-shot').disabled = !s.waiting && ((!s.running && !s.armed) || !i?.ready || finished);
   text('practice-shot', s.waiting ? '練習ボタンで一投する' : i?.ready ? '崩壊を使う' : i?.used ? '崩壊を使いました' : '受付が終わりました');
@@ -77,7 +87,7 @@ function draw(): void {
   const clock = el<HTMLProgressElement>('window-left'); clock.max = INTERVENTION_WINDOW_SECONDS; clock.value = i?.used ? 0 : i?.windowLeftSeconds ?? 0;
   text('intervention-status', s.waiting ? '一投すると受付開始' : s.armed ? '練習のため時間を止めています。崩壊を押すと動きます。' : s.finished === 'expired' ? '受付終了・時間切れ' : i?.used ? `受付終了・崩壊${i.activeLeftSeconds > 0 ? '中' : '完了'} / 実冷却 −${s.interventionCooling.toFixed(1)}` : i?.ready ? `あと ${i.windowLeftSeconds.toFixed(1)}秒 / ゲージ ${i.charge}/${i.max}` : '受付終了');
   const pause = el<HTMLButtonElement>('pause'); pause.disabled = s.waiting || finished || s.armed; pause.textContent = s.running ? '一時停止' : '再開';
-  input.setEnabled((s.running || s.waiting) && study.mode !== 'growth' && typeof study.mode !== 'number' && !finished);
+  input.setEnabled((s.running || s.waiting) && study.mode !== 'growth' && study.mode !== 'loss' && typeof study.mode !== 'number' && !finished && !s.armed);
   const key = s.curr.nextQueue.join(',');
   if (key !== queueKey) { queueKey = key; s.curr.nextQueue.forEach((tier, n) => {
     const c = queueIcons[n]!, ctx = c.getContext('2d')!; ctx.clearRect(0, 0, 64, 64);
@@ -103,6 +113,7 @@ el('restart-play').addEventListener('click', () => begin('play', true));
 el('guided-collapse').addEventListener('change', () => { if (study.mode === 'collapse') begin('collapse'); });
 el('repeat-same').addEventListener('click', () => launch({ originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 }));
 el('repeat-other').addEventListener('click', () => launch({ originAngleRadians: Math.PI, vx: DROP_SPEED, vy: 0 }));
+el('loss-start').addEventListener('click', () => { if (study.mode === 'loss') { study.startLoss(); dirty = true; } else launch({ originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 }); });
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });
 el('try-again').addEventListener('click', () => begin(study.mode, true));
 el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : study.mode === 'growth' ? 'repeat' : 'play', true));

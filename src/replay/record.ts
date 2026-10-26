@@ -9,7 +9,7 @@ import * as RULE_CONSTANTS from '../game/constants';
 import { createSimulation, type SimulationSetup } from '../game/simulation';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 11; // 11: 敗因と終端の終了イベント（2026-10-26）
+export const REPLAY_FORMAT = 12; // 12: 射出の加熱も固定刻みで終了（2026-10-26）
 
 export type ReplayRecord = Readonly<{
   format: typeof REPLAY_FORMAT;

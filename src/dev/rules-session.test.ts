@@ -58,4 +58,13 @@ describe('ルールの練習も同じ計算を使う', () => {
     for (let n = 0; n < 300; n++) lesson.step();
     expect(lesson.read().finished).toBe('collapse'); expect(lesson.read().interventionCooling).toBeGreaterThan(0);
   });
+  it('敗因の見本も実際の限界上昇と射出加熱で終了し、原因を取り違えない', () => {
+    const pile = createRuleSession('loss'); pile.startLoss();
+    for (let n = 0; n < 300; n++) pile.step();
+    expect(pile.read().finished).toBe('over'); expect(pile.read().curr.loss?.kind).toBe('overLimit');
+    const repeat = createRuleSession('loss-repeat');
+    expect(repeat.predict(dropAt(0)).launchHeat).toBe(1);
+    repeat.launch(dropAt(0)); repeat.step();
+    expect(repeat.read().finished).toBe('over'); expect(repeat.read().curr.loss).toMatchObject({ kind: 'repeatLaunch', heatAdded: 1 });
+  });
 });

@@ -4,6 +4,7 @@ import { fusionCooling } from '../game/heat';
 import { chainTargetLabel, launchHeatLabel, STRINGS } from '../ui/strings';
 import { drawBody } from './bodies';
 import { drawPlayingBodies } from './playing-bodies';
+import { drawLossMarker } from './loss';
 
 /** 操作の線は光の面と混ぜず、暗い下縁を付けて最前面へ置く。 */
 export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardFrame): void {
@@ -23,6 +24,7 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
   ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = frame.curr.overLimit ? '#FF7D83' : 'rgba(145,160,184,0.85)';
   ctx.lineWidth = frame.curr.overLimit ? 3 : 1.5; ctx.setLineDash([10, 8]); ctx.stroke(); ctx.setLineDash([]);
+  drawLossMarker(ctx, frame.curr);
   const targets = frame.aimGuide ? frame.curr.bodies.filter((b) => b.chain > 0 && b.chainUntilTick > frame.curr.tick) : [];
   const hero = targets.reduce<(typeof targets)[number] | null>((best, b) => !best || b.chain > best.chain ? b : best, null);
   for (const b of targets) {

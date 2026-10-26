@@ -4,7 +4,7 @@ import { createSimulation, restoreSimulation } from '../game/simulation';
 import { GROWTH_PREVIEW_COMMAND, setupGrowthPreview } from '../fixtures/growth-preview';
 import { createPressurePractice } from './rules-practice';
 
-export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 1 | 3 | 5;
+export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
 type Finish = 'chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'over' | null;
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
@@ -15,7 +15,8 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     const state = createSimulation(seed, { heat: 80, bodies: [{ tier: 0, x: 130, y: -r }, { tier: 0, x: 130, y: r }] }).exportState();
     sim = restoreSimulation({ ...state, bodies: state.bodies.map((b, i) => i ? b : { ...b, chain: mode - 1, chainUntilTick: 300 }) });
   }
-  if (mode === 'repeat') {
+  if (mode === 'loss') sim = restoreSimulation({ ...createPressurePractice(seed, true).exportState(), heat: 99 });
+  if (mode === 'repeat' || mode === 'loss-repeat') {
     // 実際に同じ方角へ投げて衛星まで育てる。練習開始前の得点は後で差し引く。
     for (let n = 0; n < 20 * TICK_HZ && sim.getSnapshot().phase === 'active'; n++) {
       const s = sim.getSnapshot();
@@ -25,6 +26,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
       }
       sim.stepFixed();
     }
+    if (mode === 'loss-repeat') sim = restoreSimulation({ ...sim.exportState(), heat: 99 });
   }
   const before = sim.getSnapshot();
   const prediction = mode === 'growth' ? sim.predict(GROWTH_PREVIEW_COMMAND) : null;
@@ -82,6 +84,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     launch,
     collapse() { const result = sim.submitGravity({ kind: 'collapse' }); curr = sim.getSnapshot(); if (result.accepted) { armed = false; running = true; } return result; },
     predict: (command: LaunchCommand) => sim.predict(command),
+    startLoss() { if (mode === 'loss' && waiting) { waiting = false; running = true; } },
     step,
     togglePause() { if (!waiting && !finished && !armed) running = !running; },
   };

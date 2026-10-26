@@ -36,22 +36,24 @@ describe('同じ方角への連投の熱', () => {
     expect(ready.submitLaunch({ originAngleRadians: 0, vx: 0, vy: 0 }).accepted).toBe(false);
     expect(ready.getSnapshot()).toEqual(before); expect(ready.getInputLog()).toEqual(log);
     expect(ready.submitLaunch(dropAt(0)).accepted).toBe(true);
-    expect(ready.getSnapshot()).toMatchObject({ phase: 'over', heat: 100, tick: before.tick });
+    expect(ready.getSnapshot()).toMatchObject({ phase: 'active', heat: 100, tick: before.tick });
     const events = ready.stepFixed();
+    expect(ready.getSnapshot()).toMatchObject({ phase: 'over', heat: 100, tick: before.tick + 1 });
     expect(events.filter(e => e.kind === 'launch' && e.heatDelta === 1)).toHaveLength(1);
     expect(events.filter(e => e.kind === 'gameOver')).toHaveLength(1);
     expect(ready.stepFixed()).toEqual([]);
   });
   it('実プレイの加熱による終了を、圧縮保存・巻戻し・共有でも同じ結果へ戻す', () => {
-    const sim = createSimulation(31); let heating = 0;
+    const sim = createSimulation(31); let heating = 0, steps = 0;
     for (let n = 0; n < 3 * 60 * TICK_HZ && sim.getSnapshot().phase === 'active'; n++) {
       if (sim.getSnapshot().launchCooldownLeftSeconds <= 0) {
         const before = sim.getSnapshot().heat;
         const shot = sim.submitLaunch(dropAt(0)); if (shot.accepted) heating += sim.getSnapshot().heat - before;
       }
-      sim.stepFixed();
+      sim.stepFixed(); steps++;
     }
     expect(heating).toBeGreaterThan(0); expect(sim.getSnapshot().phase).toBe('over');
+    expect(steps).toBe(sim.getSnapshot().tick);
     const record = createReplayRecord(sim), parsed = parseReplay(serializeReplay(record))!;
     expect(parsed).toEqual(record);
     const replay = createReplayPlayer(parsed); expect(replay.ok).toBe(true);

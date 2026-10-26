@@ -98,7 +98,7 @@ export type SimulationSetup = {
  * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
  */
 export type SimulationState = Readonly<{
-  format: 7;
+  format: 8;
   seed: number;
   rngState: number;
   tick: number;
@@ -154,7 +154,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup, gravityT
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
 export function restoreSimulation(state: SimulationState): Simulation {
-  if (state.format !== 7) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
+  if (state.format !== 8) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
   return build(state.seed, undefined, state, undefined);
 }
 
@@ -263,7 +263,7 @@ function build(
       ...(loss ? { loss: copyLoss(loss) } : {}),
       recentLaunches: inputLog.slice(-REPEAT_LAUNCH_MEMORY).map(({ tick, originAngleRadians }) => ({ tick, originAngleRadians })),
       intervention: { unlocked, charge: g.burst.value, max: g.burst.max,
-        ready: !over && unlocked && !used && windowLeft > 0 && g.burst.ready && g.collapseLeftSeconds === 0,
+        ready: !over && heat < HEAT_MAX && unlocked && !used && windowLeft > 0 && g.burst.ready && g.collapseLeftSeconds === 0,
         windowLeftSeconds: windowLeft, activeLeftSeconds: g.collapseLeftSeconds, used, coolingThisTick: interventionCooling },
       ...(gravityPrototype ? { gravity: g } : {}),
     };
@@ -304,10 +304,6 @@ function build(
     });
     emit({ kind: 'launch', x: body.x, y: body.y, bodyIds: [body.id], sourceTier: tier,
       ...(addedHeat > 0 ? { heatDelta: addedHeat } : {}) });
-    if (heat >= HEAT_MAX) {
-      over = true; loss = { kind: 'repeatLaunch', tick, angleRadians: command.originAngleRadians, heatAdded: addedHeat };
-      emit({ kind: 'gameOver', x: body.x, y: body.y, loss: copyLoss(loss) });
-    }
     snapshotCache = null;
     return { accepted: true, bodyId: body.id };
   }
@@ -377,6 +373,13 @@ function build(
 
     // 1. 時間を進める
     tick++;
+    // 射出の加熱も次の固定刻みで終了させ、観測回数と経過tickを揃える。
+    const heatedLaunch = heat >= HEAT_MAX ? pendingEvents.find(e => e.kind === 'launch' && (e.heatDelta ?? 0) > 0) : undefined;
+    if (heatedLaunch) {
+      over = true; loss = { kind: 'repeatLaunch', tick, angleRadians: inputLog.at(-1)!.originAngleRadians, heatAdded: heatedLaunch.heatDelta! };
+      emit({ kind: 'gameOver', x: heatedLaunch.x, y: heatedLaunch.y, loss: copyLoss(loss) });
+      const events = pendingEvents; pendingEvents = []; return events;
+    }
     if (cooldown > 0) cooldown -= DT;
     gravity?.advance();
     // 重力操作が何も効いていない tick は、元の計算をそのまま通す
@@ -513,14 +516,14 @@ function build(
   function submitGravity(command: GravityCommand): GravityResult {
     if (!gravityPrototype) {
       if (command.kind !== 'collapse') return { accepted: false, reason: 'disabled' };
-      if (over) return { accepted: false, reason: 'gameOver' };
+      if (over || heat >= HEAT_MAX) return { accepted: false, reason: 'gameOver' };
       if (bestTier < INTERVENTION_UNLOCK_TIER) return { accepted: false, reason: 'locked' };
       const shot = inputLog.at(-1);
       if (!shot) return { accepted: false, reason: 'noShot' };
       if (shot.collapseTick !== undefined) return { accepted: false, reason: 'alreadyUsed' };
       if ((tick - shot.tick) / TICK_HZ >= INTERVENTION_WINDOW_SECONDS) return { accepted: false, reason: 'expired' };
     }
-    const result = gravity.submit(command, tick, over);
+    const result = gravity.submit(command, tick, over || heat >= HEAT_MAX);
     if (result.accepted) {
       if (!gravityPrototype && command.kind === 'collapse') {
         const index = inputLog.length - 1;
@@ -534,7 +537,7 @@ function build(
 
   function exportState(): SimulationState {
     return {
-      format: 7,
+      format: 8,
       seed,
       rngState: rng.state(),
       tick,

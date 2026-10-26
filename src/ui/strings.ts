@@ -1,3 +1,6 @@
+import type { LossSummary } from '../contracts/game';
+import { TIER_NAMES } from '../game/constants';
+
 // 画面の文字はすべてここに集める。担当 D が管理する。
 // 既にあるキーはアプリ（src/app/）が使っているので、名前を変えたり消したりしないこと。足すのは自由。
 
@@ -79,6 +82,12 @@ export const STRINGS = {
 export function rankLabel(rank: number): string { return `この端末で ${rank} 位`; }
 export function chainTargetLabel(next: number, cooling: number): string { return `${next}連鎖へ・最大−${cooling}`; }
 export function launchHeatLabel(amount: number): string { return `連投で熱 ＋${amount.toFixed(1)}`; }
+export function lossMessage(loss: LossSummary): string {
+  if (loss.kind === 'repeatLaunch') return `連投の加熱で100に達しました。最後の一投は熱 ＋${loss.heatAdded.toFixed(1)}。`;
+  if (loss.kind === 'gravity') return '重力操作の加熱が続き、100に達しました。';
+  const near = loss.nearFusion ? ` すぐ隣に、同じ${TIER_NAMES[loss.nearFusion.tier]}が残っていました。` : '';
+  return `${TIER_NAMES[loss.culprit.tier]}が限界外に残り、熱量が100に達しました。${near}`;
+}
 
 /** 「連鎖 ×3（2.0 倍）」 */
 export function chainLabel(chain: number, multiplier: number): string {
