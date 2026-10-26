@@ -16,9 +16,9 @@
 <body><main>
 <p class="sub"><a href="../">全体の一覧へ</a></p>
 <h1>担当 C: 感じる（演出・音・曲）</h1>
-<p class="sub">更新 2026-10-22 17:46（55af85b　WIP: 担当C 回転案の検証途中を中断保存）</p>
+<p class="sub">更新 2026-10-26 15:52（bf138be　WIP: 担当C 30度の比較と熱の上がる練習を保存）</p>
 
-<h2>いま</h2><div class="card">方針の版9、担当C。題目000・1周目途中。2026-10-22 17:45、本人の中断指示で停止。練習の操作前と結果での停止、成長の前・予告・実結果の比較、崩壊の受付と実冷却、履歴読込の高速化を保存。6番は全体回転を試作したが、未使用16シードの固定/ランダム中央値比は12度1.355、18度1.196で基準1.1未達。現在の18度はWIPで、採用・提出ではない。7は未実装。694テストと停止時のbuild通過。利用枠30％到達による停止ではなく、本人の指示による中断。自動再開なし。</div>
+<h2>いま</h2><div class="card">方針の版9、担当C。2026-10-26再開、題目000・1周目途中。main79c3578の再生高速化・圧縮保存を統合し、崩壊の入力と保存点を両立。701テスト・型検査・build・担当範囲検査通過。6番は12度・18度が独立検証で未達だったため案を再比較。30度が初期4シードで固定/ランダム比1.078、4方向/ランダム比1.081となり、未使用301〜332の32シードで固定比0.869・4方向比0.894、打切り0/128。401〜432の方角・ぶれ・速度違いを追加検証中。まだ採用確定・提出ではない。7未実装。崩壊は本人の選択どおりデモまで。自動再開なし。</div>
 <h2>つぎ</h2><div class="card">6番の案を見直す。12度・18度の未使用シードでも固定戦法の基準を満たさなかったため、回転だけで解決したと扱わない。固定の方角違い・遅い固定投げ、デモ修正の2役の再審査と高密度の速度計測も未実施。6の検証後に7の敗因イベントへ。崩壊は本人の選択どおりデモまで。最低3周・★修正は未完。</div>
 
 <h2>触ってみる</h2>
@@ -28,6 +28,7 @@
   <a href="dev/screens.html">見本: 画面（担当 D）</a>
   <a href="dev/effects.html">見本: 演出（担当 C）</a>
   <a href="dev/sound.html">見本: 音の画像と数字（担当 C）</a>
+  <a href="dev/meta.html">見本: 再生・図鑑・記録（担当 B）</a>
   <a href="ranking.html">ランキング</a>
 </p>
 <p class="note">その場で動きます。音は、ここで実際に触ると聞けます（動画には入りません）。</p>
@@ -39,5 +40,6 @@
   <figure style="margin:0"><video src="videos/board.webm" poster="videos/board.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 盤面と照準（担当 D）</figcaption></figure>
   <figure style="margin:0"><video src="videos/screens.webm" poster="videos/screens.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 画面（担当 D）</figcaption></figure>
   <figure style="margin:0"><video src="videos/sound.webm" poster="videos/sound.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 音の画像と数字（担当 C）</figcaption></figure>
+  <figure style="margin:0"><video src="videos/meta.webm" poster="videos/meta.png" controls muted playsinline preload="none"></video><figcaption class="note">見本: 再生・図鑑・記録（担当 B）</figcaption></figure>
 </div>
 </main></body></html>
