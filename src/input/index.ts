@@ -1,5 +1,4 @@
-// 【仮実装】担当 B が作り直す（docs/tasks/B.md）。
-// いまは「押す・動かす・離す」の最小だけ（取り消し、2 本目の指、計算の間引きなどは未対応）。
+// 押す・動かす・離す間の照準を扱う。山が動く時は指が止まっていても予測を更新する。
 // 関数名と引数は変えないこと。
 
 import type { AimView, PointerInput, PointerInputDeps } from '../contracts/app';
@@ -11,6 +10,18 @@ export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInput
   let enabled = false;
   let active: { id: number; startX: number; startY: number; angle: number } | null = null;
   let aimFrame = 0, latestX = 0, latestY = 0;
+  let aimDirty = false, predictedTick = -1;
+
+  function refreshAim(): void {
+    aimFrame = 0;
+    if (!active) return;
+    const tick = deps.getSnapshot().tick;
+    if (aimDirty || tick !== predictedTick) {
+      aimDirty = false; predictedTick = tick;
+      deps.onAim(build(latestX, latestY));
+    }
+    if (active) aimFrame = requestAnimationFrame(refreshAim);
+  }
 
   function build(clientX: number, clientY: number): AimView {
     const a = active!;
@@ -42,18 +53,17 @@ export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInput
     const p = clientToLogical(canvas, e.clientX, e.clientY);
     if (Math.hypot(p.x, p.y) < AIM_MIN_RADIUS) return;
     active = { id: e.pointerId, startX: e.clientX, startY: e.clientY, angle: Math.atan2(p.y, p.x) };
+    latestX = e.clientX; latestY = e.clientY; aimDirty = false; predictedTick = deps.getSnapshot().tick;
     canvas.setPointerCapture(e.pointerId);
     deps.onAim(build(e.clientX, e.clientY));
+    if (active) aimFrame = requestAnimationFrame(refreshAim);
   }
 
   function onMove(e: PointerEvent): void {
     if (!active || e.pointerId !== active.id) return;
     latestX = e.clientX; latestY = e.clientY;
-    // 成長の目安も計算するので、移動イベントを一描画につき一回へまとめる。
-    if (!aimFrame) aimFrame = requestAnimationFrame(() => {
-      aimFrame = 0;
-      if (active) deps.onAim(build(latestX, latestY));
-    });
+    // 移動と盤面の進行を同じ一描画へまとめる。停止中は移動した時だけ計算する。
+    aimDirty = true;
   }
 
   function onUp(e: PointerEvent): void {
@@ -79,6 +89,8 @@ export function createPointerInput(canvas: HTMLCanvasElement, deps: PointerInput
     },
     cancel: onCancel,
     dispose() {
+      enabled = false;
+      onCancel();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);

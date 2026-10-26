@@ -1,11 +1,14 @@
 // 比較専用。候補の計算は一時ファイルへ分離し、本番へ採用する前に同じ入力方針で測る。
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { execFileSync } from 'node:child_process';
 
 const phase = process.argv[2] ?? 'screen';
-const seeds = phase.startsWith('screen') ? [1,2,3,4] : Array.from({ length: 16 }, (_, i) => i + (phase === 'holdout18' ? 201 : 101));
-const server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+const seeds = phase.startsWith('screen') ? [1,2,3,4] : Array.from({ length: phase === 'holdout30' || phase === 'stress30' ? 32 : 16 }, (_, i) => i + (phase === 'stress30' ? 401 : phase === 'holdout30' ? 301 : phase === 'holdout18' ? 201 : 101));
+const scratch = resolve('../work/strategy-variants');
+mkdirSync(scratch, { recursive: true });
+const server = await createServer({ server: { middlewareMode: true, fs: { allow: [process.cwd(), scratch] } }, appType: 'custom' });
 const source = execFileSync('git', ['show', '02e0994:src/game/simulation.ts'], { encoding: 'utf8' }), generated = [];
 const inject = (s, from, to) => { if (!s.includes(from)) throw new Error(`missing anchor ${from}`); return s.replace(from, to); };
 const variants = {
@@ -27,35 +30,63 @@ const variants = {
 };
 variants['rotation-all-12'] = variants['rotation-12'].replace('for (const b of bodies) if (b.landed)', 'for (const b of bodies)');
 variants['rotation-all-18'] = variants['rotation-all-12'].replaceAll('Math.PI / 15 * DT', 'Math.PI / 10 * DT');
-const selected = phase === 'screen-all' ? ['baseline','rotation-all-12','rotation-all-18'] : phase === 'holdout' ? ['baseline','rotation-all-12'] : phase === 'holdout18' ? ['baseline','rotation-all-18'] : ['baseline','heat-4','rotation-12','damping-1-5'];
+variants['rotation-all-30'] = variants['rotation-all-12'].replaceAll('Math.PI / 15 * DT', 'Math.PI / 6 * DT');
+variants['heat-05'] = variants['heat-4'].replace('heat + hits * 4', 'heat + hits * 0.5');
+variants['heat-1'] = variants['heat-4'].replace('heat + hits * 4', 'heat + hits * 1');
+const selected = phase === 'stress30' ? ['production-30'] : phase === 'holdout30' ? ['rotation-all-30'] : phase === 'screen-refine' ? ['baseline','heat-05','heat-1','rotation-all-30'] : phase === 'screen-all' ? ['baseline','rotation-all-12','rotation-all-18'] : phase === 'holdout' ? ['baseline','rotation-all-12'] : phase === 'holdout18' ? ['baseline','rotation-all-18'] : ['baseline','heat-4','rotation-12','damping-1-5'];
 const median = values => { const a = [...values].sort((a,b)=>a-b); return (a[Math.floor((a.length-1)/2)]+a[Math.floor(a.length/2)])/2; };
 try {
   const { randomBot, spiralBot } = await server.ssrLoadModule('/src/tools/bots.ts');
   const { DROP_SPEED, TICK_HZ } = await server.ssrLoadModule('/src/game/constants.ts');
+  const { createRng } = await server.ssrLoadModule('/src/game/rng.ts');
   const factories = {
     fixed: () => ({ decide: () => ({ originAngleRadians: -Math.PI/2, vx: 0, vy: DROP_SPEED }) }),
     four: () => { let shot=0; return { decide: () => { const a=-Math.PI/2+(shot++%4)*Math.PI/2; return { originAngleRadians:a,vx:-Math.cos(a)*DROP_SPEED,vy:-Math.sin(a)*DROP_SPEED }; } }; },
     random: randomBot, spiral: spiralBot,
   };
+  if (phase === 'stress30') {
+    const drop = (a, speed = DROP_SPEED) => ({ originAngleRadians:a, vx:-Math.cos(a)*speed, vy:-Math.sin(a)*speed });
+    for (let n = 0; n < 4; n++) {
+      const a = -Math.PI/2 + n*Math.PI/2;
+      factories[`fixed-${n*90}`] = () => ({ decide: () => drop(a) });
+      factories[`jitter-${n*90}`] = seed => { const rng=createRng(seed+701); return { decide: () => drop(a+(rng()*2-1)*Math.PI/90) }; };
+    }
+    delete factories.fixed;
+    factories['fixed-slow'] = () => ({ spacingTicks: TICK_HZ, decide: () => drop(-Math.PI/2) });
+    factories['random-slow'] = seed => ({ ...randomBot(seed), spacingTicks: TICK_HZ });
+    factories['fixed-fast'] = () => ({ decide: () => drop(-Math.PI/2,620) });
+    factories['random-fast'] = seed => { const rng=createRng(seed+101); return { decide: () => drop(rng()*Math.PI*2,620) }; };
+    factories['fixed-with-flow'] = () => ({ decide: s => drop(-Math.PI/2+s.tick/TICK_HZ*Math.PI/6) });
+  }
   const reports = [];
   for (const label of selected) {
-    const variant = variants[label];
-    const file = `src/game/simulation-${label}.dev.ts`; writeFileSync(file, variant); generated.push(file);
-    const { createSimulation } = await server.ssrLoadModule(`/${file}`), runs=[];
-    for (const [strategy, factory] of Object.entries(factories)) for (const seed of seeds) {
-      const sim=createSimulation(seed), bot=factory(seed); let rejects=0;
+    let modulePath = '/src/game/simulation.ts';
+    if (!label.startsWith('production')) {
+      const variant = variants[label].replace(/(from\s+['"])(\.\.?\/[^'"]+)(['"])/g, (_, a, path, b) => a + '/@fs/' + resolve('src/game', path + '.ts').replaceAll('\\', '/') + b);
+      const file = resolve(scratch, `simulation-${label}.ts`); writeFileSync(file, variant); generated.push(file);
+      modulePath = '/@fs/' + file.replaceAll('\\', '/');
+    }
+    const { createSimulation } = await server.ssrLoadModule(modulePath), runs=[];
+    const report = {label,seeds,complete:false,plannedStrategies:Object.keys(factories),summary:[],runs}; reports.push(report);
+    for (const [strategy, factory] of Object.entries(factories)) {
+      for (const seed of seeds) {
+      const sim=createSimulation(seed), bot=factory(seed); let rejects=0, nextLaunch=0;
       while (sim.getSnapshot().phase==='active' && sim.getSnapshot().tick < 5*60*TICK_HZ) {
         const s=sim.getSnapshot();
-        if (s.launchCooldownLeftSeconds<=0) {
+        if (s.launchCooldownLeftSeconds<=0 && s.tick>=nextLaunch) {
           const result=sim.submitLaunch(bot.decide(s,c=>sim.predict(c)));
           if (!result.accepted) { rejects++; for(let n=0;n<12 && sim.getSnapshot().phase==='active';n++) sim.stepFixed(); continue; }
+          nextLaunch=s.tick+(bot.spacingTicks ?? 0);
         }
         sim.stepFixed();
       }
       const s=sim.getSnapshot(); runs.push({strategy,seed,score:s.score,seconds:s.tick/TICK_HZ,bestTier:s.bestTierThisRun,launches:s.stats.launches,rejects,timedOut:s.phase==='active'});
+      }
+      report.summary.push({strategy,score:median(runs.filter(r=>r.strategy===strategy).map(r=>r.score)),seconds:median(runs.filter(r=>r.strategy===strategy).map(r=>r.seconds)),timedOut:runs.filter(r=>r.strategy===strategy&&r.timedOut).length});
+      console.log(JSON.stringify({label,...report.summary.at(-1)}));
+      writeFileSync(`docs/notes/C/strategy-${phase}.json`,JSON.stringify(reports,null,2)+'\n');
     }
-    const summary=Object.keys(factories).map(strategy=>({strategy,score:median(runs.filter(r=>r.strategy===strategy).map(r=>r.score)),seconds:median(runs.filter(r=>r.strategy===strategy).map(r=>r.seconds)),timedOut:runs.filter(r=>r.strategy===strategy&&r.timedOut).length}));
-    reports.push({label,seeds,summary,runs}); console.log(JSON.stringify({label,summary}));
+    report.complete=true;
     writeFileSync(`docs/notes/C/strategy-${phase}.json`,JSON.stringify(reports,null,2)+'\n');
   }
 } finally { await server.close(); for(const file of generated) unlinkSync(file); }

@@ -22,14 +22,14 @@ const names = { learn: '一投から、2連鎖へ', collapse: '撃った後に�
 const queueIcons = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; c.setAttribute('role', 'img'); el('queue').append(c); return c; });
 let queueKey = '';
 function unlock(): void { if (sound.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 65 }); audio.resume(); } }
-function launch(command: LaunchCommand): void { unlock(); study.launch(command); dirty = true; }
+function launch(command: LaunchCommand): void { unlock(); if (study.launch(command)?.accepted) aim = null; dirty = true; }
 const input = createPointerInput(board, { getSnapshot: () => study.read().curr, predict: (c) => study.predict(c), onAim: (a) => { aim = a; dirty = true; }, onLaunch: launch });
 function begin(mode: RuleMode): void {
   study = createRuleSession(mode); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
   audio.suspend(); el('events').replaceChildren(); text('latest-event', ''); compare.checked = true;
   text('mode-title', typeof mode === 'number' ? `${mode}回目の合体だけを再生` : names[mode]);
-  text('mode', mode === 'learn' ? '同じ天体が触れると合体します。盤面の真上で押して離すと、生まれた天体が隣へつながります。' : mode === 'collapse' ? 'ゲージ満タンの練習です。一投したら、受付バーが消える前に崩壊を押してください。' : mode === 'growth' ? '赤い破線は、静止した山での成長の目安。撃った後、成長が終わった所で止まります。' : mode === 'play' ? '押して離すと核へ落とします。引いて離すと曲げて投げます。' : '途中からの冷却見本です。この合体の結果だけを確認します。');
-  el('collapse-actions').hidden = mode !== 'collapse'; el('growth-actions').hidden = mode !== 'growth';
+  text('mode', mode === 'learn' ? '同じ天体が触れると合体します。下の山が限界を越え、待つだけでは熱が上がる途中盤面です。真上から一投すると2連鎖になります。' : mode === 'collapse' ? '熱70・ゲージ満タンの途中盤面です。一投したら、同じボタンをもう一度押すと崩壊。受付は1.2秒です。' : mode === 'growth' ? '赤い破線は、山が静止していると仮定した目安です。実際の山は落下・転がるため、結果を断定する線ではありません。' : mode === 'play' ? '押して離すと核へ落とします。引いて離すと曲げて投げます。' : '途中からの冷却見本です。この合体の結果だけを確認します。');
+  el('learn-actions').hidden = mode !== 'learn'; el('collapse-actions').hidden = mode !== 'collapse'; el('growth-actions').hidden = mode !== 'growth';
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === String(mode)));
   if (mode === 'growth') aim = { ...GROWTH_PREVIEW_COMMAND, tier: study.before.nextQueue[0], dragPx: 80, speed: Math.hypot(GROWTH_PREVIEW_COMMAND.vx, GROWTH_PREVIEW_COMMAND.vy), straight: false, invalid: false, prediction: study.prediction };
   unlock();
@@ -47,8 +47,9 @@ function draw(): void {
   const finished = s.finished !== null;
   text('lesson-result', s.finished === 'expired' ? '時間切れ。もう一度、一投から試せます。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '合体後の成長が終わりました。動いた結果と予告を比べてください。' : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖。合体で −${s.mergeCooling.toFixed(1)}、結果の天体を残して停止。` : s.finished === 'over' ? '熱量100で終了。' : s.waiting ? '操作するまで、時間は止まっています。' : '');
   el('result-actions').hidden = !finished; el('trace-controls').hidden = study.mode !== 'growth' || !finished;
-  el<HTMLButtonElement>('collapse').disabled = !s.running || !i?.ready;
-  el<HTMLButtonElement>('practice-shot').disabled = !s.waiting && (s.running || finished);
+  el<HTMLButtonElement>('learn-launch').disabled = !s.waiting;
+  el<HTMLButtonElement>('practice-shot').disabled = !s.waiting && (!s.running || !i?.ready || finished);
+  text('practice-shot', s.waiting ? '1. 一投する' : i?.ready ? '2. 今、もう一度押して崩壊' : i?.used ? '崩壊を使いました' : '受付が終わりました');
   el<HTMLButtonElement>('growth-launch').disabled = !s.waiting;
   const clock = el<HTMLProgressElement>('window-left'); clock.max = INTERVENTION_WINDOW_SECONDS; clock.value = i?.used ? 0 : i?.windowLeftSeconds ?? 0;
   text('intervention-status', s.waiting ? '一投すると受付開始' : s.finished === 'expired' ? '受付終了・時間切れ' : i?.used ? `受付終了・崩壊${i.activeLeftSeconds > 0 ? '中' : '完了'} / 実冷却 −${s.interventionCooling.toFixed(1)}` : i?.ready ? `あと ${i.windowLeftSeconds.toFixed(1)}秒 / ゲージ ${i.charge}/${i.max}` : '受付終了');
@@ -60,11 +61,20 @@ function draw(): void {
     drawBody(ctx, tier, 32, 32, Math.min(25, 25 * TIER_RADIUS[tier] / TIER_RADIUS[4])); c.setAttribute('aria-label', `次の${n + 1}個目: ${TIER_NAMES[tier]}`); c.title = TIER_NAMES[tier];
   }); }
   const pushed = study.prediction?.mergePreview?.pushed[0];
-  if (pushed && finished) { const actual = s.curr.bodies.find((b) => b.id === pushed.id); text('comparison', `押される天体の外縁: 予告 ${Math.hypot(pushed.x, pushed.y) + pushed.radius > LIMIT_RADIUS ? '限界外' : '限界内'} / 実結果 ${actual && Math.hypot(actual.x, actual.y) + actual.radius > LIMIT_RADIUS ? '限界外' : '限界内'}。予告は静止時の目安で、動いた位置とは異なります。`); }
+  if (pushed && finished) {
+    const actual = s.curr.bodies.find(b => b.id === pushed.id), before = study.before.bodies.find(b => b.id === pushed.id);
+    const predictedEdge = Math.hypot(pushed.x, pushed.y) + pushed.radius;
+    const actualEdge = actual ? Math.hypot(actual.x, actual.y) + actual.radius : null;
+    const inward = before && actual ? Math.hypot(before.x, before.y) - Math.hypot(actual.x, actual.y) : 0;
+    text('comparison', `外縁の距離: 予告 ${predictedEdge.toFixed(0)} / 実際 ${actualEdge?.toFixed(0) ?? '合体で消失'} / 限界 ${LIMIT_RADIUS}。${inward > 0 ? `山が中心寄りへ${inward.toFixed(0)}動いたため、静止した目安より内側に残りました。` : '山が動くため、静止した目安とはずれます。'} 限界に近い時は、別の方角も比べてください。`);
+  }
 }
 for (const b of document.querySelectorAll<HTMLButtonElement>('[data-mode]')) b.addEventListener('click', () => { const m = b.dataset.mode!; begin(/^\d$/.test(m) ? Number(m) as 1 | 3 | 5 : m as RuleMode); });
-el('practice-shot').addEventListener('click', () => launch({ originAngleRadians: -Math.PI / 2, vx: 0, vy: DROP_SPEED }));
-el('collapse').addEventListener('click', () => { unlock(); study.collapse(); dirty = true; });
+el('learn-launch').addEventListener('click', () => launch({ originAngleRadians: -Math.PI / 2, vx: 0, vy: DROP_SPEED }));
+el('practice-shot').addEventListener('click', () => {
+  if (study.read().waiting) launch({ originAngleRadians: -Math.PI / 2, vx: 0, vy: DROP_SPEED });
+  else { unlock(); study.collapse(); dirty = true; }
+});
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });
 el('try-again').addEventListener('click', () => begin(study.mode));
 el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : 'play'));
@@ -79,7 +89,7 @@ function frame(now: number): void {
   if (study.read().running) { bank += dt; time += dt; while (bank >= DT && study.read().running) {
     const events = study.step(), s = study.read(); bank -= DT; effects.handleEvents(events, s.curr); if (sound.checked) audio.handleEvents(events, s.curr);
     for (const e of events) if (e.kind === 'merge' || e.kind === 'supernova' || e.kind === 'collapse') {
-      const li = document.createElement('li'); li.textContent = e.kind === 'collapse' ? '崩壊を使用' : `${e.chain}連鎖 / 合体冷却 ${e.heatDelta} / +${e.scoreDelta}点`; el('events').prepend(li); if (el('events').childElementCount > 8) el('events').lastElementChild!.remove(); text('latest-event', li.textContent);
+      const li = document.createElement('li'); li.textContent = e.kind === 'collapse' ? '崩壊を使用' : `${e.chain}連鎖 / 合体冷却 −${Math.abs(e.heatDelta ?? 0).toFixed(1)} / +${e.scoreDelta}点`; el('events').prepend(li); if (el('events').childElementCount > 8) el('events').lastElementChild!.remove(); text('latest-event', li.textContent);
     }
     if (s.finished) { tail = 6; dirty = true; input.setEnabled(false); }
   } }

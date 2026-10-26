@@ -14,6 +14,7 @@ describe('ルールの練習も同じ計算を使う', () => {
     const result = lesson.read(), body = result.curr.bodies.find((b) => b.id === result.resultBodyId)!;
     expect(result.finished).toBe('chain'); expect(result.mergeCooling).toBe(7);
     expect(result.score).toBe(430); expect(body.radius).toBe(TIER_RADIUS[body.tier]);
+    expect(result.passiveChange).toBeGreaterThan(0);
     expect(result.curr.heat).toBeCloseTo(lesson.before.heat - result.mergeCooling + result.passiveChange);
     const tick = result.curr.tick; lesson.step(); expect(lesson.read().curr.tick).toBe(tick);
   });
@@ -34,6 +35,7 @@ describe('ルールの練習も同じ計算を使う', () => {
     lesson.launch(dropAt(-Math.PI / 2)); expect(lesson.collapse().accepted).toBe(true);
     for (let i = 0; i < 3 * TICK_HZ; i++) lesson.step();
     const r = lesson.read(); expect(r.finished).toBe('collapse'); expect(r.interventionCooling).toBeGreaterThan(0);
+    expect(r.curr.heat).toBeGreaterThan(0);
     expect(r.interventionCooling).toBeLessThanOrEqual(COLLAPSE_COOL_PER_SECOND * COLLAPSE_SECONDS);
     expect(r.curr.heat).toBeCloseTo(lesson.before.heat - r.mergeCooling - r.interventionCooling + r.passiveChange);
   });
@@ -41,6 +43,7 @@ describe('ルールの練習も同じ計算を使う', () => {
     const lesson = createRuleSession('collapse'); lesson.launch(dropAt(0));
     for (let i = 0; i < 3 * TICK_HZ; i++) lesson.step();
     expect(lesson.read().finished).toBe('expired'); expect(lesson.collapse().accepted).toBe(false);
+    expect(lesson.read().curr.heat).toBeGreaterThan(70);
     expect(lesson.launch(dropAt(1))).toBeNull();
   });
 });

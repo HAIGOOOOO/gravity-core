@@ -43,7 +43,7 @@ import {
 /** この文字列形式の版。形を変えたら +1 する。 */
 export const SHARE_FORMAT_VERSION = 3;
 /** いまのルールの版。RULES.md のルールが変わったら +1 する（リーダー管理）。 */
-export const SHARE_RULES_VERSION = 7; // 7: 盤面全体の流れ（2026-10-22）
+export const SHARE_RULES_VERSION = 8; // 8: 毎秒30度の流れ（2026-10-26）
 
 /**
  * 文字列の長さの上限。4 時間ぶんの「まっすぐ落とし」連打（約 2.9 万入力）でも十分入る大きさ。

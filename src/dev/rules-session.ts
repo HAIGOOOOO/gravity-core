@@ -1,22 +1,20 @@
 import type { GameEvent, LaunchCommand } from '../contracts/game';
 import { GROW_SECONDS, TICK_HZ, TIER_RADIUS } from '../game/constants';
 import { createSimulation, restoreSimulation } from '../game/simulation';
-import { setupTwoChain } from '../fixtures/chains';
-import { setupInterventionPractice } from '../fixtures/intervention';
 import { GROWTH_PREVIEW_COMMAND, setupGrowthPreview } from '../fixtures/growth-preview';
+import { createPressurePractice } from './rules-practice';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 1 | 3 | 5;
 type Finish = 'chain' | 'growth' | 'collapse' | 'expired' | 'over' | null;
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
 export function createRuleSession(mode: RuleMode = 'learn', seed = 21) {
-  let sim = createSimulation(seed, mode === 'growth' ? setupGrowthPreview() : mode === 'collapse' ? setupInterventionPractice() : mode === 'learn' ? setupTwoChain() : undefined);
+  let sim = mode === 'learn' || mode === 'collapse' ? createPressurePractice(seed, mode === 'collapse') : createSimulation(seed, mode === 'growth' ? setupGrowthPreview() : undefined);
   if (typeof mode === 'number') {
     const r = TIER_RADIUS[0];
     const state = createSimulation(seed, { heat: 80, bodies: [{ tier: 0, x: 130, y: -r }, { tier: 0, x: 130, y: r }] }).exportState();
     sim = restoreSimulation({ ...state, bodies: state.bodies.map((b, i) => i ? b : { ...b, chain: mode - 1, chainUntilTick: 300 }) });
   }
-  if (mode === 'collapse') sim.stepFixed();
   const before = sim.getSnapshot();
   const prediction = mode === 'growth' ? sim.predict(GROWTH_PREVIEW_COMMAND) : null;
   let prev = before, curr = before;
