@@ -44,7 +44,14 @@ variants['rotation30-pressure1'] = inject(variants['rotation-all-30'], '    stat
     }`);
 variants['rotation30-pressure2'] = variants['rotation30-pressure1'].replace('Math.max(world,moving)-2)', 'Math.max(world,moving)-2)*2');
 variants['rotation30-pressure3'] = variants['rotation30-pressure2'].replace('Math.max(world,moving)-2)', 'Math.max(world,moving)-1)');
+variants['still-pressure2'] = variants['rotation30-pressure3']
+  .replace(/    const ca = Math\.cos\(Math\.PI \/ 6 \* DT\),[\s\S]*?(?=    \/\/ 6\. 限界リングと熱量)/, '')
+  .replace('i.originAngleRadians+Math.PI/6*(tick-i.tick)/TICK_HZ', 'i.originAngleRadians');
+variants['still-pressure3'] = variants['still-pressure2'].replace('Math.max(world,moving)-1)*2', 'Math.max(world,moving)-1)*3');
+variants['still-capped'] = variants['still-pressure3'].replace('Math.max(0,Math.max(world,moving)-1)*3', 'Math.min(10,Math.max(0,Math.max(world,moving)-1)*3)');
 const groups = {
+  'screen-capped': ['still-capped'],
+  'screen-still': ['still-pressure2','still-pressure3'],
   'holdout-pressure': ['rotation30-pressure2'], 'screen-check': ['baseline','rotation-all-30'],
   'stress-pressure': ['rotation30-pressure3'],
   'screen-pressure': ['rotation-all-30','rotation30-pressure1','rotation30-pressure2'],

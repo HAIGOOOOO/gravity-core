@@ -43,7 +43,7 @@ import {
 /** この文字列形式の版。形を変えたら +1 する。 */
 export const SHARE_FORMAT_VERSION = 3;
 /** いまのルールの版。RULES.md のルールが変わったら +1 する（リーダー管理）。 */
-export const SHARE_RULES_VERSION = 9; // 9: 連投の加熱（2026-10-26）
+export const SHARE_RULES_VERSION = 10; // 10: 敗因の受渡し（2026-10-26）
 
 /**
  * 文字列の長さの上限。4 時間ぶんの「まっすぐ落とし」連打（約 2.9 万入力）でも十分入る大きさ。

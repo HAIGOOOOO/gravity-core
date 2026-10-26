@@ -14,6 +14,7 @@ import type {
   LaunchCommand,
   LaunchInput,
   LaunchResult,
+  LossSummary,
   Prediction,
   SimulationPort,
   Tier,
@@ -52,6 +53,7 @@ import { driftBoard } from './board-drift';
 import { createGravity, defaultGravityTuning, type GravityState, type GravityTuning } from './gravity';
 import { fusionCooling } from './heat';
 import { launchHeating } from './launch-heat';
+import { copyLoss, lossFromOverflow } from './loss';
 import { applyGravity } from './physics';
 import { launchRejectReason, predictLaunch, quantizeLaunch } from './predictor';
 import { createRng, createRngFromState } from './rng';
@@ -96,7 +98,7 @@ export type SimulationSetup = {
  * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
  */
 export type SimulationState = Readonly<{
-  format: 6;
+  format: 7;
   seed: number;
   rngState: number;
   tick: number;
@@ -106,6 +108,7 @@ export type SimulationState = Readonly<{
   score: number;
   bestTier: Tier;
   over: boolean;
+  loss: LossSummary | null;
   overLimit: boolean;
   cooldown: number;
   pendingEvents: readonly GameEvent[];
@@ -128,7 +131,8 @@ export type Simulation = SimulationPort & {
 
 /** イベントを中の配列ごと写す（書き出した物と動いている盤面が配列を共有しないように） */
 function copyEvent(e: GameEvent): GameEvent {
-  return e.bodyIds ? { ...e, bodyIds: [...e.bodyIds] } : { ...e };
+  const event = e.bodyIds ? { ...e, bodyIds: [...e.bodyIds] } : { ...e };
+  return e.loss ? { ...event, loss: copyLoss(e.loss) } : event;
 }
 
 const CHAIN_WINDOW_TICKS = Math.round(CHAIN_WINDOW_SECONDS * TICK_HZ);
@@ -150,7 +154,7 @@ export function createSimulation(seed: number, setup?: SimulationSetup, gravityT
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
 export function restoreSimulation(state: SimulationState): Simulation {
-  if (state.format !== 6) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
+  if (state.format !== 7) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
   return build(state.seed, undefined, state, undefined);
 }
 
@@ -173,6 +177,7 @@ function build(
   let score = saved?.score ?? 0;
   let bestTier: Tier = saved?.bestTier ?? setup?.bestTier ?? 0;
   let over = saved?.over ?? false;
+  let loss = saved?.loss ? copyLoss(saved.loss) : null;
   let overLimit = saved?.overLimit ?? false;
   let cooldown = saved?.cooldown ?? 0;
   let interventionCooling = saved?.interventionCooling ?? 0;
@@ -255,6 +260,7 @@ function build(
       launchCooldownLeftSeconds: Math.max(0, cooldown),
       seed,
       stats: { ...stats },
+      ...(loss ? { loss: copyLoss(loss) } : {}),
       recentLaunches: inputLog.slice(-REPEAT_LAUNCH_MEMORY).map(({ tick, originAngleRadians }) => ({ tick, originAngleRadians })),
       intervention: { unlocked, charge: g.burst.value, max: g.burst.max,
         ready: !over && unlocked && !used && windowLeft > 0 && g.burst.ready && g.collapseLeftSeconds === 0,
@@ -298,9 +304,12 @@ function build(
     });
     emit({ kind: 'launch', x: body.x, y: body.y, bodyIds: [body.id], sourceTier: tier,
       ...(addedHeat > 0 ? { heatDelta: addedHeat } : {}) });
-    if (heat >= HEAT_MAX) { over = true; emit({ kind: 'gameOver', x: body.x, y: body.y }); }
+    if (heat >= HEAT_MAX) {
+      over = true; loss = { kind: 'repeatLaunch', tick, angleRadians: command.originAngleRadians, heatAdded: addedHeat };
+      emit({ kind: 'gameOver', x: body.x, y: body.y, loss: copyLoss(loss) });
+    }
     snapshotCache = null;
-    return { accepted: true, bodyId: body.id, ...(addedHeat > 0 ? { heatDelta: addedHeat } : {}) };
+    return { accepted: true, bodyId: body.id };
   }
 
   function merge(a: Body, b: Body, born: Body[]): void {
@@ -484,7 +493,9 @@ function build(
     // 7. 終了判定
     if (heat >= HEAT_MAX) {
       over = true;
-      emit({ kind: 'gameOver' });
+      loss = lossFromOverflow(bodies, tick) ?? { kind: 'gravity', tick, heatPerSecond: Math.max(0, extraRate) };
+      emit({ kind: 'gameOver', loss: copyLoss(loss), ...(loss.kind === 'overLimit'
+        ? { x: loss.culprit.x, y: loss.culprit.y, bodyIds: [loss.culprit.id] } : {}) });
     }
 
     const events = pendingEvents;
@@ -523,7 +534,7 @@ function build(
 
   function exportState(): SimulationState {
     return {
-      format: 6,
+      format: 7,
       seed,
       rngState: rng.state(),
       tick,
@@ -533,6 +544,7 @@ function build(
       score,
       bestTier,
       over,
+      loss: loss ? copyLoss(loss) : null,
       overLimit,
       cooldown,
       pendingEvents: pendingEvents.map(copyEvent),

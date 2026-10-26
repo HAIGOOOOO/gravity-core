@@ -163,6 +163,12 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   if (badEnd) return { ok: false, reason: 'diverged', detail: badEnd };
 
   const final = sim.getSnapshot();
+  // 射出時の加熱で終了した場合、終端の入力が持つ終了イベントも失わない。
+  if (final.phase === 'over') {
+    const trailing = sim.stepFixed();
+    for (const event of trailing) events.push({ at: final.tick, event });
+    if (trailing.length > 0) observe(final, trailing);
+  }
   const diverged = (detail: string): ReplayFailure => ({ ok: false, reason: 'diverged', detail });
   if (nextInput < inputs.length) {
     return diverged(

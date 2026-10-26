@@ -15,6 +15,7 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(result.finished).toBe('chain'); expect(result.mergeCooling).toBe(7);
     expect(result.score).toBe(430); expect(body.radius).toBe(TIER_RADIUS[body.tier]);
     expect(result.passiveChange).toBeGreaterThan(0);
+    expect(result.curr.heat).toBeLessThan(lesson.before.heat);
     expect(result.lastFusion!.before - result.lastFusion!.after).toBeCloseTo(5);
     expect(result.curr.heat).toBeCloseTo(lesson.before.heat - result.mergeCooling + result.passiveChange);
     const tick = result.curr.tick; lesson.step(); expect(lesson.read().curr.tick).toBe(tick);
@@ -46,5 +47,15 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(lesson.read().finished).toBe('expired'); expect(lesson.collapse().accepted).toBe(false);
     expect(lesson.read().curr.heat).toBeGreaterThan(70);
     expect(lesson.launch(dropAt(1))).toBeNull();
+  });
+  it('初回の崩壊は射出後に停止して操作を待ち、押したら本物の計算を再開する', () => {
+    const lesson = createRuleSession('collapse', 21, true); lesson.launch(dropAt(0));
+    const tick = lesson.read().curr.tick;
+    for (let n = 0; n < 300; n++) lesson.step();
+    expect(lesson.read().curr.tick).toBe(tick); expect(lesson.read().armed).toBe(true);
+    expect(lesson.read().curr.intervention?.ready).toBe(true);
+    expect(lesson.collapse().accepted).toBe(true);
+    for (let n = 0; n < 300; n++) lesson.step();
+    expect(lesson.read().finished).toBe('collapse'); expect(lesson.read().interventionCooling).toBeGreaterThan(0);
   });
 });

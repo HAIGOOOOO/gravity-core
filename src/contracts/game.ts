@@ -31,6 +31,16 @@ export type RunStats = Readonly<{
   maxChain: number;
 }>;
 
+/** 敗北の原因は判定側で確定する。近い相手は距離の事実で、勝てたという保証ではない。 */
+export type LossSummary = Readonly<
+  | { kind: 'overLimit'; tick: Tick;
+      culprit: Readonly<{ id: BodyId; tier: Tier; x: number; y: number; radius: number }>;
+      overflowPx: number;
+      nearFusion?: Readonly<{ bodyIds: readonly [BodyId, BodyId]; tier: Tier; gapPx: number; chain: number }> }
+  | { kind: 'repeatLaunch'; tick: Tick; angleRadians: number; heatAdded: number }
+  | { kind: 'gravity'; tick: Tick; heatPerSecond: number }
+>;
+
 export type GameSnapshot = Readonly<{
   tick: Tick;
   phase: 'active' | 'over';
@@ -44,6 +54,8 @@ export type GameSnapshot = Readonly<{
   launchCooldownLeftSeconds: number;
   seed: number;
   stats: RunStats;
+  /** 終了したときだけ付く。表示側が位置や熱から敗因を推測し直さない。 */
+  loss?: LossSummary;
   /** 照準が連投の加熱を見積もるための、直近の受理済み射出だけ。 */
   recentLaunches?: readonly Readonly<Pick<LaunchInput, 'tick' | 'originAngleRadians'>>[];
   /** 本番の「撃った後に一度だけ使う崩壊」。試作の連続操作とは分ける。 */
@@ -69,7 +81,7 @@ export type LaunchCommand = Readonly<{
 export type LaunchRejectReason = 'cooldown' | 'overlap' | 'speed' | 'gameOver';
 
 export type LaunchResult =
-  | { accepted: true; bodyId: BodyId; heatDelta?: number }
+  | { accepted: true; bodyId: BodyId }
   | { accepted: false; reason: LaunchRejectReason };
 
 export type GameEventKind =
@@ -107,6 +119,8 @@ export type GameEvent = Readonly<{
   stageAdvanced?: boolean;
   /** land のとき: ぶつかった速さ（音や演出の強さに使う） */
   impactSpeed?: number;
+  /** gameOver: 終了した瞬間に確定した代表的な原因。 */
+  loss?: LossSummary;
 }>;
 
 export type PathPoint = Readonly<{ x: number; y: number; t: number }>;

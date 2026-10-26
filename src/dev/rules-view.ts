@@ -25,10 +25,11 @@ function unlock(): void { if (sound.checked) { audio.unlock(); audio.setSettings
 function launch(command: LaunchCommand): void { unlock(); if (study.launch(command)?.accepted) aim = null; dirty = true; }
 const input = createPointerInput(board, { getSnapshot: () => study.read().curr, predict: (c) => study.predict(c), onAim: (a) => { aim = a; dirty = true; }, onLaunch: launch });
 function begin(mode: RuleMode, navigate = false): void {
-  study = createRuleSession(mode); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
+  study = createRuleSession(mode, 21, mode === 'collapse' && el<HTMLInputElement>('guided-collapse').checked); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
+  el('study-panel').scrollTop = 0;
   audio.suspend(); el('events').replaceChildren(); text('latest-event', ''); compare.checked = true;
   text('mode-title', typeof mode === 'number' ? `${mode}回目の合体だけを再生` : names[mode]);
-  text('mode', mode === 'learn' ? '同じ天体が触れると合体します。下の山が限界を越え、待つだけでは熱が上がる途中盤面です。真上から一投すると2連鎖になります。' : mode === 'collapse' ? '熱70・ゲージ満タンの途中盤面です。一投したら、同じボタンをもう一度押すと崩壊。受付は1.2秒です。' : mode === 'growth' ? '赤い破線は、山が静止していると仮定した目安です。実際の山は落下・転がるため、結果を断定する線ではありません。' : mode === 'repeat' ? '衛星を作ると、同じ狭い方角への3投目から加熱します。盤面の流れを追いかけた連投も同じです。準備した途中盤面から、一投だけ比べます。' : mode === 'play' ? '押して離すと核へ落とします。引いて離すと曲げて投げます。' : '途中からの冷却見本です。この合体の結果だけを確認します。');
+  text('mode', mode === 'learn' ? '同じ天体が触れると合体します。下の山は成長直後の猶予が切れると熱を上げます。真上から一投し、2連鎖の冷却を見てください。' : mode === 'collapse' ? '盤面で一投し、崩壊を使います。練習ボタンでも投げられます。初回は射出後に止めて確認でき、自由プレイでは1.2秒の受付です。' : mode === 'growth' ? '赤い破線は、山が静止していると仮定した目安です。実際の山は落下・転がるため、結果を断定する線ではありません。' : mode === 'repeat' ? '衛星を作ると、同じ狭い方角への3投目から加熱します。盤面の流れを追いかけた連投も同じです。準備した途中盤面から、一投だけ比べます。' : mode === 'play' ? '押して離すと核へ落とします。引いて離すと曲げて投げます。' : '途中からの冷却見本です。この合体の結果だけを確認します。');
   el('learn-actions').hidden = mode !== 'learn'; el('collapse-actions').hidden = mode !== 'collapse'; el('growth-actions').hidden = mode !== 'growth';
   el('free-actions').hidden = mode !== 'play'; el('restart-play').hidden = mode !== 'play';
   el('repeat-actions').hidden = mode !== 'repeat';
@@ -58,6 +59,8 @@ function draw(): void {
   text('balance', `開始 ${study.before.heat.toFixed(1)} ＋ 連投 ${s.shotHeating.toFixed(1)} − 合体 ${s.mergeCooling.toFixed(1)} − 崩壊 ${s.interventionCooling.toFixed(1)} ${s.passiveChange < 0 ? '−' : '＋'} 自然 ${Math.abs(s.passiveChange).toFixed(1)} ＝ ${s.curr.heat.toFixed(1)}`);
   text('facts', `今回 ${s.score.toLocaleString()}点 / 合体 ${s.merges}回 / 最長 ${s.maxChain}連鎖`);
   const finished = s.finished !== null;
+  el('mode').hidden = finished; el('practice-actions').hidden = finished; el('queue-panel').hidden = finished;
+  el('free-actions').hidden = study.mode !== 'play' || finished;
   const fusion = s.lastFusion;
   text('fusion-change', fusion ? `合体直前 ${fusion.before.toFixed(1)} → 直後 ${fusion.after.toFixed(1)}（−${fusion.cooling.toFixed(1)}）` : '');
   el('fusion-change').hidden = !fusion;
@@ -65,15 +68,15 @@ function draw(): void {
   el('result-actions').hidden = !finished; el('trace-controls').hidden = study.mode !== 'growth' || !finished;
   el<HTMLButtonElement>('learn-launch').disabled = !s.waiting;
   el<HTMLButtonElement>('repeat-same').disabled = !s.waiting; el<HTMLButtonElement>('repeat-other').disabled = !s.waiting;
-  el<HTMLButtonElement>('practice-shot').disabled = !s.waiting && (!s.running || !i?.ready || finished);
-  text('practice-shot', s.waiting ? '1. 一投する' : i?.ready ? '2. 今、もう一度押して崩壊' : i?.used ? '崩壊を使いました' : '受付が終わりました');
+  el<HTMLButtonElement>('practice-shot').disabled = !s.waiting && ((!s.running && !s.armed) || !i?.ready || finished);
+  text('practice-shot', s.waiting ? '練習ボタンで一投する' : i?.ready ? '崩壊を使う' : i?.used ? '崩壊を使いました' : '受付が終わりました');
   el<HTMLButtonElement>('free-collapse').disabled = !i?.ready || !s.running;
   text('free-collapse', i?.ready ? `崩壊を使う（あと${i.windowLeftSeconds.toFixed(1)}秒）` : `崩壊 ${i?.charge ?? 0}/${i?.max ?? BURST_MAX}`);
   text('free-intervention', !i?.unlocked ? '衛星を作ると解放。合体で力をためます。' : i.ready ? '撃った後の一手を使えます。' : i.charge < i.max ? '合体で満タンにしてから、撃った直後に使えます。同じ方角への連投は加熱します。' : '満タン。次に撃つと1.2秒間使えます。');
   el<HTMLButtonElement>('growth-launch').disabled = !s.waiting;
   const clock = el<HTMLProgressElement>('window-left'); clock.max = INTERVENTION_WINDOW_SECONDS; clock.value = i?.used ? 0 : i?.windowLeftSeconds ?? 0;
-  text('intervention-status', s.waiting ? '一投すると受付開始' : s.finished === 'expired' ? '受付終了・時間切れ' : i?.used ? `受付終了・崩壊${i.activeLeftSeconds > 0 ? '中' : '完了'} / 実冷却 −${s.interventionCooling.toFixed(1)}` : i?.ready ? `あと ${i.windowLeftSeconds.toFixed(1)}秒 / ゲージ ${i.charge}/${i.max}` : '受付終了');
-  const pause = el<HTMLButtonElement>('pause'); pause.disabled = s.waiting || finished; pause.textContent = s.running ? '一時停止' : '再開';
+  text('intervention-status', s.waiting ? '一投すると受付開始' : s.armed ? '練習のため時間を止めています。崩壊を押すと動きます。' : s.finished === 'expired' ? '受付終了・時間切れ' : i?.used ? `受付終了・崩壊${i.activeLeftSeconds > 0 ? '中' : '完了'} / 実冷却 −${s.interventionCooling.toFixed(1)}` : i?.ready ? `あと ${i.windowLeftSeconds.toFixed(1)}秒 / ゲージ ${i.charge}/${i.max}` : '受付終了');
+  const pause = el<HTMLButtonElement>('pause'); pause.disabled = s.waiting || finished || s.armed; pause.textContent = s.running ? '一時停止' : '再開';
   input.setEnabled((s.running || s.waiting) && study.mode !== 'growth' && typeof study.mode !== 'number' && !finished);
   const key = s.curr.nextQueue.join(',');
   if (key !== queueKey) { queueKey = key; s.curr.nextQueue.forEach((tier, n) => {
@@ -97,6 +100,7 @@ el('practice-shot').addEventListener('click', () => {
 });
 el('free-collapse').addEventListener('click', () => { unlock(); study.collapse(); dirty = true; });
 el('restart-play').addEventListener('click', () => begin('play', true));
+el('guided-collapse').addEventListener('change', () => { if (study.mode === 'collapse') begin('collapse'); });
 el('repeat-same').addEventListener('click', () => launch({ originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 }));
 el('repeat-other').addEventListener('click', () => launch({ originAngleRadians: Math.PI, vx: DROP_SPEED, vy: 0 }));
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });

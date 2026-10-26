@@ -8,7 +8,7 @@ export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 1 |
 type Finish = 'chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'over' | null;
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
-export function createRuleSession(mode: RuleMode = 'learn', seed = 21) {
+export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForIntervention = false) {
   let sim = mode === 'learn' || mode === 'collapse' ? createPressurePractice(seed, mode === 'collapse') : createSimulation(seed, mode === 'growth' ? setupGrowthPreview() : undefined);
   if (typeof mode === 'number') {
     const r = TIER_RADIUS[0];
@@ -33,13 +33,19 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21) {
   let waiting = !running, finished: Finish = null, finishAt = Infinity;
   let mergeCooling = 0, interventionCooling = 0, passiveChange = 0, maxChain = 0;
   let shotHeating = 0;
+  let armed = false;
   let resultBodyId: number | null = null;
   let lastFusion: { before: number; after: number; cooling: number } | null = null;
 
   function launch(command: LaunchCommand) {
     if (finished) return null;
+    const heatBefore = sim.getSnapshot().heat;
     const result = sim.submitLaunch(command);
-    if (result.accepted) { running = true; waiting = false; curr = sim.getSnapshot(); shotHeating += result.heatDelta ?? 0; if (mode === 'repeat') finishAt = curr.tick + 1; }
+    if (result.accepted) {
+      armed = mode === 'collapse' && pauseForIntervention;
+      running = !armed; waiting = false; curr = sim.getSnapshot(); shotHeating += curr.heat - heatBefore;
+      if (mode === 'repeat') finishAt = curr.tick + 1;
+    }
     return result;
   }
   function step(): readonly GameEvent[] {
@@ -71,13 +77,13 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21) {
   }
   return {
     mode, before, prediction,
-    read: () => ({ prev, curr, running, waiting, finished, resultBodyId, lastFusion, shotHeating, mergeCooling, interventionCooling, passiveChange, maxChain,
+    read: () => ({ prev, curr, running, waiting, armed, finished, resultBodyId, lastFusion, shotHeating, mergeCooling, interventionCooling, passiveChange, maxChain,
       score: curr.score - before.score, merges: curr.stats.merges - before.stats.merges }),
     launch,
-    collapse() { const result = sim.submitGravity({ kind: 'collapse' }); curr = sim.getSnapshot(); return result; },
+    collapse() { const result = sim.submitGravity({ kind: 'collapse' }); curr = sim.getSnapshot(); if (result.accepted) { armed = false; running = true; } return result; },
     predict: (command: LaunchCommand) => sim.predict(command),
     step,
-    togglePause() { if (!waiting && !finished) running = !running; },
+    togglePause() { if (!waiting && !finished && !armed) running = !running; },
   };
 }
 export type RuleSession = ReturnType<typeof createRuleSession>;

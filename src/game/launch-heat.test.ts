@@ -35,7 +35,7 @@ describe('同じ方角への連投の熱', () => {
     expect(ready.predict(dropAt(0)).launchHeat).toBe(1);
     expect(ready.submitLaunch({ originAngleRadians: 0, vx: 0, vy: 0 }).accepted).toBe(false);
     expect(ready.getSnapshot()).toEqual(before); expect(ready.getInputLog()).toEqual(log);
-    expect(ready.submitLaunch(dropAt(0))).toMatchObject({ accepted: true, heatDelta: 1 });
+    expect(ready.submitLaunch(dropAt(0)).accepted).toBe(true);
     expect(ready.getSnapshot()).toMatchObject({ phase: 'over', heat: 100, tick: before.tick });
     const events = ready.stepFixed();
     expect(events.filter(e => e.kind === 'launch' && e.heatDelta === 1)).toHaveLength(1);
@@ -46,7 +46,8 @@ describe('同じ方角への連投の熱', () => {
     const sim = createSimulation(31); let heating = 0;
     for (let n = 0; n < 3 * 60 * TICK_HZ && sim.getSnapshot().phase === 'active'; n++) {
       if (sim.getSnapshot().launchCooldownLeftSeconds <= 0) {
-        const shot = sim.submitLaunch(dropAt(0)); if (shot.accepted) heating += shot.heatDelta ?? 0;
+        const before = sim.getSnapshot().heat;
+        const shot = sim.submitLaunch(dropAt(0)); if (shot.accepted) heating += sim.getSnapshot().heat - before;
       }
       sim.stepFixed();
     }

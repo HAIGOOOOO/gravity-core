@@ -100,6 +100,9 @@ export const REPEAT_LAUNCH_MEMORY = 8;
 export const REPEAT_LAUNCH_ANGLE = Math.PI / 12;
 export const REPEAT_LAUNCH_FREE_PREVIOUS = 1;
 export const REPEAT_LAUNCH_HEAT_STEP = 2;
+/** 敗北時の「近い合体相手」は、育ち切った衛星以上・実際の隙間4px以内だけ。 */
+export const LOSS_NEAR_FUSION_GAP = 4;
+export const LOSS_NEAR_FUSION_MIN_TIER = 3;
 /** 安定 | 上昇 | 過熱 | 臨界 の境目 */
 export const HEAT_STATE_LIMITS = [25, 50, 75] as const;
 

@@ -21,9 +21,11 @@ export function createPressurePractice(seed: number, collapse: boolean) {
   const preparation = createSimulation(seed, setupInterventionPractice());
   if (collapse) preparation.stepFixed();
   const burst = preparation.exportState().gravity!.burst;
-  return restoreSimulation({ ...state, overLimit: true,
+  // 連鎖は成長直後の猶予が0.4秒残る場面。自然変化が正でも、合体で開始時より冷える。
+  const graceLeft = collapse ? 0 : .4;
+  return restoreSimulation({ ...state, overLimit: collapse,
     gravity: { ...state.gravity!, burst },
-    bodies: state.bodies.map(b => ({ ...b, bornTick: -Math.ceil(LIMIT_GRACE_SECONDS * TICK_HZ),
-      overLimit: Math.hypot(b.x, b.y) + b.radius > LIMIT_RADIUS })),
+    bodies: state.bodies.map(b => ({ ...b, bornTick: -Math.ceil((LIMIT_GRACE_SECONDS - graceLeft) * TICK_HZ),
+      overLimit: collapse && Math.hypot(b.x, b.y) + b.radius > LIMIT_RADIUS })),
   });
 }
