@@ -1,4 +1,4 @@
-import { CORE_RADIUS, LIMIT_GRACE_SECONDS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
+import { BURST_MAX, CORE_RADIUS, LIMIT_GRACE_SECONDS, LIMIT_RADIUS, TICK_HZ, TIER_RADIUS } from '../game/constants';
 import { createSimulation, restoreSimulation, type SimulationSetup } from '../game/simulation';
 import { setupTwoChain } from '../fixtures/chains';
 import { setupInterventionPractice } from '../fixtures/intervention';
@@ -28,4 +28,20 @@ export function createPressurePractice(seed: number, collapse: boolean) {
     bodies: state.bodies.map(b => ({ ...b, bornTick: -Math.ceil((LIMIT_GRACE_SECONDS - graceLeft) * TICK_HZ),
       overLimit: collapse && Math.hypot(b.x, b.y) + b.radius > LIMIT_RADIUS })),
   });
+}
+
+/** 衛星の解放、合体による蓄積、射出を同じ盤面の時間軸で確かめる。 */
+export function createInterventionPreparation(seed: number) {
+  const bodies: NonNullable<SimulationSetup['bodies']>[number][] = [
+    { tier: 2, x: -TIER_RADIUS[2], y: -CORE_RADIUS - TIER_RADIUS[2] },
+    { tier: 2, x: TIER_RADIUS[2], y: -CORE_RADIUS - TIER_RADIUS[2] },
+  ];
+  for (let pair = 0; pair < BURST_MAX - 1; pair++) {
+    const angle = pair * Math.PI * 2 / (BURST_MAX - 1), radius = 220;
+    for (const side of [-1, 1]) bodies.push({ tier: 0,
+      x: Math.cos(angle) * radius - Math.sin(angle) * side * 22,
+      y: Math.sin(angle) * radius + Math.cos(angle) * side * 22,
+    });
+  }
+  return createSimulation(seed, { bodies, bestTier: 2, heat: 95, queue: [0, 0, 0] });
 }

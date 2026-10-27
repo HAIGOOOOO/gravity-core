@@ -58,6 +58,28 @@ describe('ルールの練習も同じ計算を使う', () => {
     for (let n = 0; n < 300; n++) lesson.step();
     expect(lesson.read().finished).toBe('collapse'); expect(lesson.read().interventionCooling).toBeGreaterThan(0);
   });
+  it('崩壊の準備は解放前から同じ盤面で合体を進め、満タンにしてから一投する', () => {
+    const lesson = createRuleSession('collapse', 21, true, true);
+    expect(lesson.before.intervention).toMatchObject({ unlocked: false, charge: 0 });
+    expect(lesson.launch(dropAt(0))).toBeNull();
+    lesson.advancePreparation();
+    for (let n = 0; n < TICK_HZ; n++) lesson.step();
+    expect(lesson.read().preparation).toBe('charge');
+    expect(lesson.read().curr.intervention).toMatchObject({ unlocked: true, charge: 1 });
+    const unlockedTick = lesson.read().curr.tick;
+    lesson.advancePreparation();
+    for (let n = 0; n < 5 * TICK_HZ; n++) lesson.step();
+    expect(lesson.read().preparation).toBe('ready');
+    expect(lesson.read().curr.tick).toBeGreaterThan(unlockedTick);
+    expect(lesson.read().curr.intervention?.charge).toBe(BURST_MAX);
+    expect(lesson.read().curr.heat).toBeGreaterThan(0);
+    expect(lesson.launch(dropAt(-Math.PI / 2))?.accepted).toBe(true);
+    expect(lesson.read().armed).toBe(true);
+    expect(lesson.collapse().accepted).toBe(true);
+    for (let n = 0; n < 3 * TICK_HZ; n++) lesson.step();
+    expect(lesson.read().finished).toBe('collapse');
+    expect(lesson.read().interventionCooling).toBeGreaterThan(0);
+  });
   it('敗因の見本も実際の限界上昇と射出加熱で終了し、原因を取り違えない', () => {
     const pile = createRuleSession('loss'); pile.startLoss();
     for (let n = 0; n < 300; n++) pile.step();
@@ -66,5 +88,31 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(repeat.predict(dropAt(0)).launchHeat).toBe(1);
     repeat.launch(dropAt(0)); repeat.step();
     expect(repeat.read().finished).toBe('over'); expect(repeat.read().curr.loss).toMatchObject({ kind: 'repeatLaunch', heatAdded: 1 });
+  });
+  it('連投は本人の最初の2投を加熱せず、3投目で実加熱し、待機中は進まない', () => {
+    const lesson = createRuleSession('repeat');
+    expect(lesson.before.recentLaunches).toHaveLength(0);
+    for (let shot = 0; shot < 3; shot++) {
+      const tick = lesson.read().curr.tick;
+      lesson.step(); expect(lesson.read().curr.tick).toBe(tick);
+      expect(lesson.predict(dropAt(0)).launchHeat).toBe(shot === 2 ? 2 : 0);
+      expect(lesson.launch(dropAt(0))?.accepted).toBe(true);
+      expect(lesson.launch(dropAt(0))).toBeNull();
+      for (let n = 0; n < TICK_HZ; n++) lesson.step();
+    }
+    const result = lesson.read();
+    expect(result.finished).toBe('repeat'); expect(result.shots.map(s => s.heat)).toEqual([0, 0, 2]);
+    expect(result.curr.heat).toBeCloseTo(lesson.before.heat + result.shotHeating - result.mergeCooling + result.passiveChange);
+  });
+  it('連投の3投目は、反対側を自分で選ぶと加熱を避けられる', () => {
+    const lesson = createRuleSession('repeat');
+    for (let shot = 0; shot < 2; shot++) {
+      lesson.launch(dropAt(0));
+      for (let n = 0; n < TICK_HZ; n++) lesson.step();
+    }
+    expect(lesson.predict(dropAt(Math.PI)).launchHeat).toBe(0);
+    lesson.launch(dropAt(Math.PI)); lesson.step();
+    expect(lesson.read().finished).toBe('repeat'); expect(lesson.read().shotHeating).toBe(0);
+    expect(lesson.read().shots.map(s => s.heat)).toEqual([0, 0, 0]);
   });
 });
