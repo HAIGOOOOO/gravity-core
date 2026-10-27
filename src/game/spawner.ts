@@ -1,7 +1,7 @@
-// 次の天体の抽選（SPEC.md 4.3）。乱数を使うのはここだけ。
+// 次の天体。固定組の袋を混ぜ、引き切ってから補充する。
 
 import type { Tier } from '../contracts/game';
-import { QUEUE_TABLE } from './constants';
+import { QUEUE_BAG_SIZE, QUEUE_TABLE } from './constants';
 import type { Rng } from './rng';
 
 /** 到達した最高 Tier に対応する確率の並び（添字が Tier）。 */
@@ -22,4 +22,26 @@ export function drawTier(bestTier: number, rng: Rng): Tier {
     if (x < 0) return tier as Tier;
   }
   return 0;
+}
+
+export type TierBagState = readonly Tier[];
+
+/** 到達Tierの変更で残りの袋を捨てない。キューの予告も途中で変えない。 */
+export function createTierBag(rng: Rng, saved: TierBagState = []) {
+  const remaining = [...saved];
+  return {
+    draw(bestTier: number): Tier {
+      if (remaining.length === 0) {
+        queueWeights(bestTier).forEach((weight, tier) => {
+          for (let i = 0; i < Math.round(weight * QUEUE_BAG_SIZE); i++) remaining.push(tier as Tier);
+        });
+        for (let i = remaining.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          [remaining[i], remaining[j]] = [remaining[j]!, remaining[i]!];
+        }
+      }
+      return remaining.pop()!;
+    },
+    exportState: (): TierBagState => [...remaining],
+  };
 }

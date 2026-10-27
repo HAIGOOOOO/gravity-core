@@ -2,6 +2,7 @@
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { TICK_HZ } from '../game/constants';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import { runReplay, type ReplayFailure, type ReplayRun } from './engine';
 import type { ReplayRecord } from './record';
 import { createReplayCursor } from './cursor';
@@ -97,7 +98,7 @@ export function playerFromRun(record: ReplayRecord, run: ReplayRun): ReplayStart
   const { endTick } = record;
   // 呼び出し側があとで記録の中身を書き換えても、カーソルの再計算が腐らないよう
   // 入力と開始状態は作るときに複製して持つ（record.ts と同じ考え方）。
-  const inputs = record.inputs.map((i) => ({ ...i }));
+  const inputs = expandLaunchInputs(record.inputs.map((i) => ({ ...i })), record.endTick)!;
   // run の中身は必要な物だけ取り出し、配列ごとの参照をクロージャに残さない
   // （checkpoints の配列自体はキーフレームへ移したあと手放す）。
   const runEvents = run.events;

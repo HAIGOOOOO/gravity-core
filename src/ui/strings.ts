@@ -1,3 +1,6 @@
+import type { LossSummary } from '../contracts/game';
+import { TIER_NAMES } from '../game/constants';
+
 // 画面の文字はすべてここに集める。担当 D が管理する。
 // 既にあるキーはアプリ（src/app/）が使っているので、名前を変えたり消したりしないこと。足すのは自由。
 
@@ -32,7 +35,7 @@ export const STRINGS = {
   titleNote: 'ひとつ落とす。ふたつが出会う。小さな天体から、星を育てる。',
   howtoSteps: [
     '盤面を押して離すと、その方角から天体が落ちる。',
-    '同じ天体が触れると合体。引っぱって離すと、曲げて投げられる。',
+    '同じ天体が触れると合体して冷却。連鎖するほど熱を多く逃がせます。',
     '山が限界リングを越えると核熱量が上がる。100で終了。',
   ],
   volume: '音量',
@@ -61,9 +64,9 @@ export const STRINGS = {
   date: '日付',
   latestRecord: '直前のプレイ',
 
-  hintStart: '盤面を押すと、その方角から玉が落ちる。同じ玉に当てて合体させよう。',
+  hintStart: '押した方角から玉が落ちます。同じ玉で合体。天体は時計回りへゆっくり流れます。',
   hintThrow: '押したまま横に引っぱると、曲げて投げられます',
-  hintChain: '連鎖！生まれた天体がすぐ合体すると得点が増えます',
+  hintChain: '連鎖！合体をつなぐほど得点が増え、熱が大きく下がります',
   hintLimit: '山が限界リングを越えています。越えている間、核の熱量が上がります',
   hintOverheat: '核が過熱しています',
 
@@ -71,9 +74,20 @@ export const STRINGS = {
   effectChain: '連鎖',
   effectSupernova: '超新星反応',
   effectHeat: '核熱量',
+  effectCollapse: '崩壊',
+  growthPreview: '成長後の目安',
+  growthRisk: '成長後、限界を越す可能性',
 } as const;
 
 export function rankLabel(rank: number): string { return `この端末で ${rank} 位`; }
+export function chainTargetLabel(next: number, cooling: number): string { return `${next}連鎖へ・最大−${cooling}`; }
+export function launchHeatLabel(amount: number): string { return `連投で熱 ＋${amount.toFixed(1)}`; }
+export function lossMessage(loss: LossSummary): string {
+  if (loss.kind === 'repeatLaunch') return `連投の加熱で100に達しました。最後の一投は熱 ＋${loss.heatAdded.toFixed(1)}。`;
+  if (loss.kind === 'gravity') return '重力操作の加熱が続き、100に達しました。';
+  const near = loss.nearFusion ? ` すぐ隣に、同じ${TIER_NAMES[loss.nearFusion.tier]}が残っていました。` : '';
+  return `${TIER_NAMES[loss.culprit.tier]}が限界外に残り、熱量が100に達しました。${near}`;
+}
 
 /** 「連鎖 ×3（2.0 倍）」 */
 export function chainLabel(chain: number, multiplier: number): string {

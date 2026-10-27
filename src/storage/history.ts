@@ -77,7 +77,8 @@ export function createStatsStore(storage: StoragePort | null = browserStorage())
   return {
     load() {
       initialize();
-      return structuredClone(memory);
+      // 検査済みの形はプリミティブと内訳配列だけ。汎用の深い複製を避けても呼び出し元から独立する。
+      return { version: memory.version, runs: memory.runs.map((run) => ({ ...run, mergesByTier: [...run.mergesByTier] })) };
     },
     save(archive) {
       initialize();
