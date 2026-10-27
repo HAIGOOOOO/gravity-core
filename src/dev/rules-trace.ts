@@ -2,11 +2,17 @@ import type { RuleSession } from './rules-session';
 import { applyLogicalTransform } from '../shared/coords';
 import { LAUNCH_RADIUS } from '../game/constants';
 import { repeatHeatingZones } from './rules-repeat-zones';
+import type { LessonFrame } from './rules-replay';
 
 /** 比較の線は見本だけ。実際の天体や入力の位置を書き換えない。 */
-export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession, enabled: boolean): void {
+export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession, enabled: boolean, review: LessonFrame | null = null): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  const snapshot = study.read().curr;
+  const snapshot = review?.curr ?? study.read().curr;
+  if (!review && study.mode === 'learn' && study.read().waiting) {
+    applyLogicalTransform(ctx); ctx.strokeStyle = '#f6e3aa'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(0, -LAUNCH_RADIUS, 28, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -LAUNCH_RADIUS + 35); ctx.lineTo(0, -LAUNCH_RADIUS + 65); ctx.stroke();
+  }
   if (study.mode === 'repeat') {
     applyLogicalTransform(ctx); ctx.lineWidth = 12; ctx.strokeStyle = '#ff9398';
     for (const zone of repeatHeatingZones(snapshot)) {
@@ -25,6 +31,15 @@ export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession,
     for (const body of snapshot.bodies) if (body.overLimit) {
       ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 8, 0, Math.PI * 2); ctx.stroke();
     }
+  }
+  if (review) {
+    applyLogicalTransform(ctx); ctx.lineWidth = 5; ctx.strokeStyle = '#f6e3aa'; ctx.setLineDash([7, 6]);
+    const event = review.events.find(e => e.kind === 'merge' || e.kind === 'supernova');
+    for (const id of event?.bodyIds?.slice(0, 2) ?? []) {
+      const body = review.prev.bodies.find(b => b.id === id);
+      if (body) { ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 3, 0, Math.PI * 2); ctx.stroke(); }
+    }
+    ctx.setLineDash([]); return;
   }
   if (!enabled || study.mode !== 'growth' || !study.read().finished) return;
   applyLogicalTransform(ctx); ctx.lineWidth = 3;

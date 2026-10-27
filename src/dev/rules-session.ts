@@ -3,6 +3,7 @@ import { CORE_RADIUS, DROP_SPEED, GROW_SECONDS, TICK_HZ, TIER_RADIUS } from '../
 import { createSimulation, restoreSimulation } from '../game/simulation';
 import { GROWTH_PREVIEW_COMMAND, setupGrowthPreview } from '../fixtures/growth-preview';
 import { createInterventionPreparation, createPressurePractice } from './rules-practice';
+import { createLessonReplay } from './rules-replay';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
 type Finish = 'chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'over' | null;
@@ -35,6 +36,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     if (mode === 'loss-repeat') sim = restoreSimulation({ ...sim.exportState(), heat: 99 });
   }
   const before = sim.getSnapshot();
+  const review = createLessonReplay(before);
   const prediction = mode === 'growth' ? sim.predict(GROWTH_PREVIEW_COMMAND) : null;
   let prev = before, curr = before;
   let running = mode === 'play' || typeof mode === 'number';
@@ -96,10 +98,11 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
       // 速さの制限を変えず、次の選択ができる時点でだけ教材の時計を止める。
       running = false; waiting = true;
     }
+    if (mode !== 'play') review.record(prev, curr, events);
     return events;
   }
   return {
-    mode, before, prediction,
+    mode, before, prediction, review,
     read: () => ({ prev, curr, running, waiting, armed, finished, preparation, resultBodyId, lastFusion, shotHeating, shots: [...shots], mergeCooling, interventionCooling, passiveChange, overflowHeating, ambientCooling, maxChain,
       score: curr.score - before.score, merges: curr.stats.merges - before.stats.merges }),
     launch,
