@@ -87,7 +87,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     else if (mode === 'collapse' && curr.intervention?.used && curr.intervention.activeLeftSeconds === 0) finished = 'collapse';
     else if (mode === 'collapse' && shots.length > 0 && !waiting && curr.intervention?.windowLeftSeconds === 0 && !curr.intervention.used) finished = 'expired';
     if (finished) running = false;
-    else if (preparation === 'unlock' && curr.intervention?.unlocked) {
+    else if (preparation === 'unlock' && curr.intervention?.unlocked && curr.bodies.some(b => b.tier === 3 && b.radius === TIER_RADIUS[3])) {
       running = false; waiting = true; preparation = 'charge';
     } else if (preparation === 'charge' && curr.intervention && curr.intervention.charge === curr.intervention.max) {
       running = false; waiting = true; preparation = 'ready';

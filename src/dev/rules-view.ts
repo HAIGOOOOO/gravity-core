@@ -23,6 +23,10 @@ let feedbackUntil = 0;
 let repeatLabelsTick = -1;
 const names = { learn: '一投から、2連鎖へ', collapse: '撃った後に、山を締める', growth: '成長前と、動いた結果', repeat: '同じ方角と、別の方角', loss: '限界外の山による終了', 'loss-repeat': '連投の加熱による終了', play: '自由プレイ' };
 const queueIcons = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; c.setAttribute('role', 'img'); el('queue').append(c); return c; });
+for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-tier]')) {
+  const tier = Number(canvas.dataset.tier) as 2 | 3;
+  drawBody(canvas.getContext('2d')!, tier, 24, 24, 20); canvas.setAttribute('aria-label', TIER_NAMES[tier]);
+}
 let queueKey = '';
 function unlock(): void { if (sound.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 65 }); audio.resume(); } }
 function launch(command: LaunchCommand): void {
@@ -55,7 +59,7 @@ function begin(mode: RuleMode, navigate = false): void {
     const same = study.predict({ originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 });
     aim = { originAngleRadians: 0, vx: -DROP_SPEED, vy: 0, tier: study.before.nextQueue[0], dragPx: 0, speed: DROP_SPEED, straight: true, invalid: !same.valid, prediction: same };
   }
-  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === String(mode)));
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === String(mode) || mode === 'loss-repeat' && button.dataset.mode === 'loss'));
   if (mode === 'growth') aim = { ...GROWTH_PREVIEW_COMMAND, tier: study.before.nextQueue[0], dragPx: 80, speed: Math.hypot(GROWTH_PREVIEW_COMMAND.vx, GROWTH_PREVIEW_COMMAND.vy), straight: false, invalid: false, prediction: study.prediction };
   unlock();
   if (navigate && innerWidth <= 760) window.scrollTo({ top: 0 });
@@ -67,7 +71,9 @@ function draw(): void {
   text('heat', s.curr.heat.toFixed(0)); el<HTMLMeterElement>('meter').value = s.curr.heat;
   text('mobile-heat', `熱 ${s.curr.heat.toFixed(0)} / 100`);
   text('heat-cause', finishedHeatCause());
-  el('heat-cause').dataset.state = s.curr.overLimit ? 'rising' : 'cooling';
+  el('heat-cause').dataset.state = s.curr.phase === 'over' || s.curr.overLimit ? 'rising' : 'cooling';
+  text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '盤面の真上を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? '盤面の右か左を押して離す。赤い帯は加熱する方角。' : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '盤面の外側を押して離す →「崩壊を使う」を押す。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : '');
+  el('satellite-guide').hidden = study.mode !== 'collapse' && study.mode !== 'play';
   function finishedHeatCause(): string {
     if (s.curr.phase === 'over') return s.curr.loss?.kind === 'repeatLaunch' ? '終了：同じ方角への連投で加熱' : '終了：限界外の山で加熱';
     if (s.finished) return s.curr.overLimit ? '結果で停止 / 赤い山は限界外' : '結果で停止 / 山は限界内';
@@ -87,6 +93,7 @@ function draw(): void {
   text('balance', `開始 ${study.before.heat.toFixed(1)} ＋ 連投 ${s.shotHeating.toFixed(1)} ＋ 限界外 ${s.overflowHeating.toFixed(1)} − 合体 ${s.mergeCooling.toFixed(1)} − 崩壊 ${s.interventionCooling.toFixed(1)} − 自然冷却 ${s.ambientCooling.toFixed(1)} ＝ ${s.curr.heat.toFixed(1)}`);
   text('facts', `今回 ${s.score.toLocaleString()}点 / 合体 ${s.merges}回 / 最長 ${s.maxChain}連鎖`);
   const finished = s.finished !== null;
+  el('lesson-result').dataset.state = s.finished === 'over' ? 'defeat' : s.finished === 'expired' ? 'warning' : 'success';
   el('repeat-actions').hidden = study.mode !== 'repeat' || finished;
   text('aim-feedback', aim?.prediction?.mergePreview?.mayCrossLimit ? '成長の目安：限界を越す可能性があります' : aim?.prediction?.launchHeat ? `この照準で投げると熱 ＋${aim.prediction.launchHeat.toFixed(0)}` : '');
   el('defeat-panel').hidden = !s.curr.loss;
@@ -152,7 +159,7 @@ el('repeat-other').addEventListener('click', () => launch({ originAngleRadians: 
 el('loss-start').addEventListener('click', () => { if (study.mode === 'loss') { study.startLoss(); dirty = true; } else launch({ originAngleRadians: 0, vx: -DROP_SPEED, vy: 0 }); });
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });
 el('try-again').addEventListener('click', () => begin(study.mode, true));
-el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : study.mode === 'growth' ? 'repeat' : 'play', true));
+el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : study.mode === 'growth' ? 'repeat' : study.mode === 'repeat' ? 'loss' : 'play', true));
 el('pause').addEventListener('click', () => { study.togglePause(); tail = 6; dirty = true; audio.suspend(); if (study.read().running) unlock(); });
 compare.addEventListener('change', () => { dirty = true; }); sound.addEventListener('change', () => { if (sound.checked) unlock(); else audio.suspend(); });
 el('profile').addEventListener('click', () => { profile = true; paints = []; intervals = []; maxBodies = 0; text('profile-result', '計測中…'); });
@@ -161,6 +168,7 @@ function fitBoard(): void { const top = stage.getBoundingClientRect().top + scro
 window.addEventListener('resize', fitBoard); document.fonts.ready.then(fitBoard); fitBoard();
 function frame(now: number): void {
   const elapsed = now - last, dt = Math.min(.05, elapsed / 1000); last = now;
+  if (feedbackUntil > 0 && now >= feedbackUntil) { feedbackUntil = 0; dirty = true; }
   if (study.read().running) { bank += dt; time += dt; while (bank >= DT && study.read().running) {
     const events = study.step(), s = study.read(); bank -= DT; dirty = true; effects.handleEvents(events, s.curr); if (sound.checked) audio.handleEvents(events, s.curr);
     for (const e of events) if (e.kind === 'merge' || e.kind === 'supernova' || e.kind === 'collapse') {
