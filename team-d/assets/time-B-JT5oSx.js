@@ -1,0 +1,1 @@
+import{A as e,S as t,j as n}from"./constants-BSqsUWnw.js";function r(){let r=0,i=0,a=0;return{apply(o,s){if(a>0)return a-=s,r=0,i=0,1;let c=Number.isFinite(o)?Math.min(1,Math.max(0,o)):1;return c>=1?(r=0,i=0,1):c<.05?(r+=s,r>.15?(a=t,r=0,1):0):(r=0,i+=s,i>3?(a=n,i=0,1):Math.max(e,c))},reset(){r=0,i=0,a=0}}}export{r as t};
