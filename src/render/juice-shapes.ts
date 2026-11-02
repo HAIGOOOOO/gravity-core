@@ -2,7 +2,7 @@ import { CORE_RADIUS, LIMIT_RADIUS, TIER_COLOR, TIER_RADIUS } from '../game/cons
 import { juiceEnvelope, type JuiceBurst } from './juice-model';
 
 const TAU=Math.PI*2;
-const AMBER='#f5ab42';
+const AMBER='#ffe3a0';
 const LIGHT='#fff2d8';
 const SHADE='#172022';
 const SCHEDULE=[
@@ -40,7 +40,8 @@ export function drawJuice(ctx:CanvasRenderingContext2D,burst:JuiceBurst,age:numb
       case 1: ctx.fillStyle=SHADE;ctx.save();ctx.rotate(rotation);ctx.scale(1-time*4,1+time*2);disk(ctx,0,0,born*1.5);ctx.fill();ctx.stroke();ctx.restore();break;
       case 2: ctx.fillStyle=LIGHT;disk(ctx,0,0,(12+born*.5)*strength);ctx.fill();break;
       case 3:
-        for(const side of [-1,1]){ctx.save();ctx.rotate(rotation);ctx.translate(side*reach*.5,0);polygon(ctx,[[0,-born*1.5],[side*28,0],[0,born*1.5],[-side*7,0]]);ctx.fill();ctx.restore();}break;
+        ctx.fillStyle=TIER_COLOR[burst.sourceTier];
+        for(const side of [-1,1]){ctx.save();ctx.rotate(rotation+(side<0?Math.PI:0));ctx.translate(reach*.45,0);ctx.beginPath();ctx.arc(0,0,born*1.4,-1.15,1.15);ctx.lineTo(born*.35,born*.45);ctx.lineTo(born*.55,-born*.48);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}break;
       case 4:
         ctx.lineWidth=5;ctx.strokeStyle=AMBER;ctx.beginPath();
         for(let i=0;i<=48;i++){const a=i/48*TAU,r=reach*(echo?(1+Math.sin(a*3+seed)*.12+Math.sin(a*7)*.05):(.87+random(seed,i)*.19));i?ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r):ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);}ctx.closePath();ctx.stroke();break;
@@ -62,14 +63,14 @@ export function drawJuice(ctx:CanvasRenderingContext2D,burst:JuiceBurst,age:numb
       case 9:
         for(let i=0;i<18;i++){const a=direction(i,18),p=reach*(.5+random(seed,i));const x=Math.cos(a)*p-burst.x*travel*.25,y=Math.sin(a)*p-burst.y*travel*.25;disk(ctx,x,y,1.8);ctx.fill();}break;
       case 10:
-        ctx.globalAlpha*=.2;ctx.save();ctx.rotate(rotation);polygon(ctx,[[0,0],[reach*1.7,-reach*.32],[reach*1.3,reach*.3]]);ctx.fill();ctx.restore();break;
+        ctx.globalAlpha*=.32;ctx.save();ctx.rotate(rotation);ctx.beginPath();ctx.moveTo(0,-5);ctx.bezierCurveTo(reach*.5,-reach*.15,reach,-reach*.4,reach*1.7,-reach*.2);ctx.lineTo(reach*1.5,reach*.15);ctx.quadraticCurveTo(reach*.7,reach*.2,0,5);ctx.closePath();ctx.fill();ctx.restore();break;
       case 11: ctx.fillStyle=SHADE;disk(ctx,0,0,born+14);ctx.fill();ctx.globalAlpha*=.4;ctx.stroke();break;
       case 12:
         ctx.lineWidth=1;ctx.strokeStyle=AMBER;for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(-born-28+i*7,born+28);ctx.lineTo(-born+i*7,born+7);ctx.stroke();}break;
       case 13:
         for(let i=0;i<5;i++){const a=direction(i,5);ctx.save();ctx.rotate(a);ctx.beginPath();ctx.moveTo(born,0);ctx.lineTo(reach*.5,7);ctx.lineTo(reach*.7,-4);ctx.lineTo(reach,3);ctx.stroke();ctx.restore();}break;
       case 14:
-        ctx.globalAlpha*=.18;ctx.fillStyle=AMBER;for(let i=0;i<4;i++){const a=direction(i,4);disk(ctx,Math.cos(a)*reach*.5,Math.sin(a)*reach*.5,20+travel*18);ctx.fill();}break;
+        ctx.globalAlpha*=.18;ctx.fillStyle=TIER_COLOR[burst.sourceTier];for(let i=0;i<4;i++){const a=direction(i,4);disk(ctx,Math.cos(a)*reach*.5,Math.sin(a)*reach*.5,20+travel*18);ctx.fill();}break;
       case 15:
         ctx.fillStyle=LIGHT;ctx.save();ctx.rotate(rotation);polygon(ctx,[[-reach*1.6,0],[-8,-3],[reach*1.4,-7],[reach*.7,3],[-8,6]]);ctx.fill();ctx.restore();break;
       case 16: break; // 実際の合体に参加した2体と誕生した1体を、盤面見本が最前面で描く。
@@ -81,7 +82,7 @@ export function drawJuice(ctx:CanvasRenderingContext2D,burst:JuiceBurst,age:numb
   }
   // 段が上がると、粒を増やす代わりに画面を占める別の形を足す。
   if(chain>=3||peak){ctx.save();ctx.globalAlpha*=.28*juiceEnvelope(time,.12,.25,1);ctx.strokeStyle=AMBER;ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(-burst.x,-burst.y);ctx.quadraticCurveTo(-burst.x*.4,reach*2,0,0);ctx.stroke();ctx.restore();}
-  if(chain>=4||peak){ctx.save();ctx.globalAlpha*=.35*juiceEnvelope(time,.1,.22,.6);ctx.fillStyle=AMBER;for(let i=0;i<3;i++){ctx.save();ctx.rotate(rotation+(jet?(i%2)*Math.PI:i/3*TAU)+(random(seed,i+60)-.5)*.3);polygon(ctx,[[reach*.7,-8],[reach*1.8,-35],[reach*2,-24],[reach,4]]);ctx.fill();ctx.restore();}ctx.restore();}
+  if(chain>=4||peak){ctx.save();ctx.globalAlpha*=.7*juiceEnvelope(time,.1,.22,.6);ctx.strokeStyle=TIER_COLOR[burst.sourceTier];ctx.lineWidth=12;for(let i=0;i<3;i++){ctx.save();ctx.rotate(rotation+(jet?(i%2)*Math.PI:i/3*TAU)+(random(seed,i+60)-.5)*.3);ctx.beginPath();ctx.moveTo(reach*.7,-8);ctx.quadraticCurveTo(reach*1.4,-25,reach*2,-24);ctx.stroke();ctx.restore();}ctx.restore();}
   if(peak){
     ctx.save();ctx.globalAlpha*=.7*juiceEnvelope(time,.12,.2,.65);ctx.strokeStyle=LIGHT;ctx.lineWidth=12;
     const arrival=Math.atan2(burst.y,burst.x),spread=Math.max(0,time-.12)*7;

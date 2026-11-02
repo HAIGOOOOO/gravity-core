@@ -12,10 +12,23 @@ export function drawJuiceLabels(ctx: CanvasRenderingContext2D, burst: JuiceBurst
   ctx.font = '900 30px system-ui, sans-serif'; ctx.textAlign = 'left';
   const score = `+${burst.score.toLocaleString('ja-JP')}`;
   const width = Math.max(ctx.measureText(score).width, burst.chain >= 2 ? 118 : 0);
-  ctx.fillStyle = '#070b18'; ctx.fillRect(-8, -30, width + 16, burst.chain >= 2 ? 91 : 61);
+  ctx.fillStyle = '#070b18'; ctx.fillRect(-8, -30, width + 16, 61);
   ctx.fillStyle = '#fff2d8'; ctx.fillText(score, 0, 0);
   ctx.fillStyle = '#f5ab42'; ctx.font = '900 22px system-ui, sans-serif';
-  ctx.fillText(`×${Math.min(CHAIN_MULT_MAX, 1 + CHAIN_STEP * (burst.chain - 1)).toFixed(1)}`, 0, 26);
-  if (burst.chain >= 2) ctx.fillText(`${burst.chain}連鎖`, 0, 52);
+  const multiplier=`×${Math.min(CHAIN_MULT_MAX, 1 + CHAIN_STEP * (burst.chain - 1)).toFixed(1)}`;
+  // ㉞ 最大の倍率だけ、活字の上下が一度割れてから同じ位置へ戻る。
+  const split=burst.chain>=4||burst.supernova?juiceEnvelope(time,.18,.25,.56)*8:0;
+  for(const side of [-1,1]){
+    ctx.save();ctx.beginPath();ctx.rect(-12,side<0?-4:16,width+32,side<0?20:28);ctx.clip();ctx.translate(side*split,0);ctx.fillText(multiplier,0,26);ctx.restore();
+  }
+  ctx.restore();
+  if(burst.chain<2&&!burst.supernova)return;
+  ctx.save();ctx.globalAlpha*=opacity;ctx.fillStyle='#fff2d8';ctx.textAlign='left';
+  const peak=burst.chain>=5||burst.supernova;
+  const digits=['一','二','三','四','五'];
+  ctx.font=`900 ${peak?170:100}px "Yu Mincho","YuMincho",serif`;
+  const crest=burst.supernova?'超':digits[Math.min(5,burst.chain)-1]!;
+  ctx.strokeStyle='#070b18';ctx.lineWidth=3;ctx.strokeText(crest,-370,400);ctx.fillText(crest,-370,400);
+  ctx.font=`700 ${peak?48:32}px "Yu Mincho","YuMincho",serif`;ctx.fillStyle='#f5ab42';ctx.fillText(burst.supernova?'新星':'連鎖',peak?-190:-260,400);
   ctx.restore();
 }

@@ -1,4 +1,4 @@
-import type { BodyView, GameEvent, GameSnapshot, Prediction, Tier } from '../contracts/game';
+import type { BodyView, GameEvent, GameSnapshot, Prediction, SimulationPort, Tier } from '../contracts/game';
 import { TIER_BASE_SCORE, TIER_RADIUS } from '../game/constants';
 import { chainMultiplier, createSimulation } from '../game/simulation';
 import { dropAt } from '../fixtures';
@@ -9,6 +9,8 @@ export type JuiceScene = Readonly<{
   result: BodyView | undefined;
   event: GameEvent;
   prediction: Prediction;
+  simulation: SimulationPort;
+  flashBodies: readonly BodyView[];
 }>;
 
 /** 合体そのものは実際の計算で作り、連鎖数だけ比較用に指定する。 */
@@ -35,5 +37,5 @@ export function createJuiceScene(tier: Tier, chain: number): JuiceScene {
   const event = { ...actual, chain, scoreDelta: Math.round(TIER_BASE_SCORE[tier] * chainMultiplier(chain)) };
   // 参加する天体だけは演出の前面で描く。同じ天体を二重に描かないための表示用の抜き。
   const background = { ...after, bodies: after.bodies.filter(b => b.id !== result?.id) };
-  return { background, sources, result, event, prediction: sim.predict(dropAt(-Math.PI / 2)) };
+  return { background, sources, result, event, prediction: sim.predict(dropAt(-Math.PI / 2)), simulation: sim, flashBodies: after.bodies };
 }

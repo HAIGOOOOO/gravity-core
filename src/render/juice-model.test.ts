@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sampleEvent } from '../fixtures';
-import { JUICE_LAYERS, JUICE_PEAK_LAYERS, juiceDuration, juiceEnvelope, makeJuiceBurst } from './juice-model';
+import { JUICE_LAYERS, JUICE_PEAK_LAYERS, JUICE_WORLD_LAYERS, JUICE_DETAIL_LAYERS, juiceDuration, juiceEnvelope, makeJuiceBurst } from './juice-model';
 
 describe('演出の出来事と時間',()=>{
   it('合体の情報を受け取り、同じ出来事は同じ姿になる',()=>{
@@ -18,6 +18,6 @@ describe('演出の出来事と時間',()=>{
   });
   it('実装済みの20部品を個数で水増ししない',()=>{
     expect(new Set(JUICE_LAYERS).size).toBe(20);
-    expect(new Set([...JUICE_LAYERS,...JUICE_PEAK_LAYERS]).size).toBe(26);
+    expect(new Set([...JUICE_LAYERS,...JUICE_PEAK_LAYERS,...JUICE_WORLD_LAYERS,...JUICE_DETAIL_LAYERS]).size).toBe(42);
   });
 });

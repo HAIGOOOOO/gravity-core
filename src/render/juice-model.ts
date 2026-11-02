@@ -4,7 +4,7 @@ import { grainPose } from './grain-detail';
 export type JuiceDirection = 'fracture' | 'jet' | 'echo';
 export type JuiceBurst = {
   direction: JuiceDirection; x: number; y: number; tier: Tier; chain: number;
-  score: number; seed: number; angle: number; sourceTier: Tier; supernova: boolean;
+  score: number; seed: number; angle: number; sourceTier: Tier; supernova: boolean; heatDelta: number;
 };
 // 同じ部品の個数は層に数えない。20はそれぞれ別の形・情報を描く。
 export const JUICE_LAYERS = [
@@ -14,13 +14,15 @@ export const JUICE_LAYERS = [
   '一方向の閃光','生まれた天体','獲得点','倍率の活字','核の反射',
 ] as const;
 export const JUICE_PEAK_LAYERS = ['連鎖の段数','重力の航跡','外周の圧縮板','画面端の反響','接触点の残像','近傍天体の反射'] as const;
+export const JUICE_WORLD_LAYERS = ['背景の沈み','星の引き流れ','カメラの寄り','方向のある揺れ','衝撃停止','スロー','近隣天体の弾性変形','倍率の活字割れ','核のコロナの逆振れ'] as const;
+export const JUICE_DETAIL_LAYERS = ['得点の活字片','殻が落とす影','全画面の感光','感光した輪郭の残像','連鎖の持ち時間','冷える量','核へ冷やす流路'] as const;
 
-export function makeJuiceBurst(event: GameEvent, direction: JuiceDirection): JuiceBurst | null {
+export function makeJuiceBurst(event: GameEvent, direction: JuiceDirection, appearanceSeed = 0): JuiceBurst | null {
   if (event.kind !== 'merge' && event.kind !== 'supernova') return null;
-  const seed = event.sequence + event.tick * 17;
+  const seed = event.sequence + event.tick * 17 + appearanceSeed * 101;
   return { direction, x: event.x ?? 0, y: event.y ?? 0, tier: event.resultTier ?? event.sourceTier ?? 0,
     chain: Math.max(1,event.chain ?? 1), score: event.scoreDelta ?? 0, seed,
-    angle: grainPose(seed).angle, sourceTier: event.sourceTier ?? 0, supernova: event.kind === 'supernova' };
+    angle: grainPose(seed).angle, sourceTier: event.sourceTier ?? 0, supernova: event.kind === 'supernova', heatDelta: event.heatDelta ?? 0 };
 }
 export function juiceEnvelope(age: number, start: number, crest: number, end: number): number {
   if (age <= start || age >= end) return 0;

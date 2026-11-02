@@ -9,7 +9,7 @@ button { color: inherit; background: #252b25; border: 0; border-bottom: 2px soli
 button[aria-pressed='true'] { color: #11150f; background: #f5ab42; border-color: #f5ab42; }
 button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #fff2d8; outline-offset: 3px; }
 main { display: grid; grid-template-columns: minmax(0,680px) minmax(180px,1fr); gap: 24px; align-items: start; }
-.juice-stage { position: relative; width: 100%; aspect-ratio: 1; background: #070b18; }
+.juice-stage { position: relative; width: 100%; aspect-ratio: 1; background: #070b18; overflow: hidden; }
 .juice-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 aside { border-top: 5px solid #f5ab42; }
 aside h2 { font-size: 24px; }
