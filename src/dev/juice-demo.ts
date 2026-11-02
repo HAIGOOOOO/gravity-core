@@ -27,7 +27,7 @@ const reduced=document.getElementById('juice-reduced') as HTMLInputElement;
 let scene=createJuiceScene(2,3);
 const names:Record<JuiceDirection,string>={fracture:'A 圧縮して割れる',jet:'B 一方向へ噴き出す',echo:'C 遅れて余響が広がる'};
 let direction:JuiceDirection='fracture';let event:GameEvent=scene.event;
-let burst=makeJuiceBurst(event,direction)!;let age=0;let paused=false;let previous=performance.now();
+let burst=makeJuiceBurst(event,direction)!;let age=0;let paused=false;let dirty=true;let previous=performance.now();
 const timing=createJuiceTiming(),governor=createTimeGovernor();
 let live=false,accumulator=0,appearanceSeed=0;
 let stopped=0,longestStop=0,slowest=1;
@@ -38,8 +38,9 @@ function button(name:string,action:()=>void,key?:JuiceDirection):void {
   b.addEventListener('click',action);bar.append(b);
 }
 function announce():void {
+  dirty=true;
   document.getElementById('direction-name')!.textContent=names[direction];
-  status.textContent=`${burst.supernova?'超新星':`${burst.chain}連鎖`}・${age>juiceDuration(burst)?'再生終了':paused?'静止比較':'再生中'}。${live?'実計算の天体を時間の上限を通して進めています。':'演出の見本です。'}`;
+  status.textContent=`${burst.supernova?'超新星':`${burst.chain}連鎖`}・${age>juiceDuration(burst)?'再生終了':paused?'静止比較':'再生中'}。${live?'時間の上限を通した実計算の再生です。':'演出の見本です。'}`;
   bar.querySelectorAll<HTMLElement>('[data-direction]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.direction===direction)));
 }
 function fire(chain:number,tier:Tier=2,nova=false):void {
@@ -57,6 +58,7 @@ button('止めて比べる',()=>freezeAt(Number(slider.value)/1000));
 button('再生',()=>{const wasLive=live;fire(burst.chain,burst.sourceTier,burst.supernova);live=wasLive;announce();});
 button('描画時間を測る',measure);
 slider.addEventListener('input',()=>freezeAt(Number(slider.value)/1000));
+reduced.addEventListener('change',()=>{dirty=true;});
 for(const seconds of [.04,.1,.28,.8]){
   const b=document.createElement('button');b.type='button';b.textContent=`${seconds.toFixed(2)}秒`;
   b.addEventListener('click',()=>freezeAt(seconds));document.getElementById('juice-times')!.append(b);
@@ -119,7 +121,7 @@ function subjects(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number
   }
   target.restore();
 }
-function paint(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number,current:JuiceScene=scene):void {
+function paint(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number,current:JuiceScene=scene,liveScene=false):void {
   const time=reduced.checked?.28:seconds/(item.direction==='echo'?1.6:item.direction==='jet'?.82:1);
   target.save();if(reduced.checked)target.globalAlpha*=Math.max(0,1-seconds/.9);
   drawJuiceAtmosphere(target,item,time);target.restore();
@@ -138,12 +140,13 @@ function paint(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number,cu
   target.save();if(reduced.checked)target.globalAlpha*=Math.max(0,1-seconds/.9);
   drawJuiceCooling(target,item,time);target.restore();
   const visibleResult=juiceParticipants(current,item,seconds,reduced.checked).find(body=>body.id===current.result?.id);
-  drawJuiceDeadline(target,item,visibleResult,current.background,seconds,live);
+  drawJuiceDeadline(target,item,visibleResult,current.background,seconds,liveScene);
   drawJuiceLabels(target,item,seconds,reduced.checked);
   target.save();if(reduced.checked)target.globalAlpha*=Math.max(0,1-seconds/.9);drawJuiceTypeChips(target,item,time);target.restore();
   foreground(target,current,item,seconds);
 }
 function resize():void {
+  dirty=true;
   const size=stage.clientWidth;renderer.resize(size);const pixels=Math.round(size*Math.min(devicePixelRatio,DPR_CAP));effects.width=pixels;effects.height=pixels;
   board.style.width='100%';board.style.height='100%';
 }
@@ -151,7 +154,10 @@ new ResizeObserver(resize).observe(stage);resize();
 const header=document.querySelector('header')!;
 new ResizeObserver(()=>document.documentElement.style.setProperty('--juice-header-height',`${header.getBoundingClientRect().height}px`)).observe(header);
 function frame(now:number):void {
-  const dt=Math.min((now-previous)/1000,MAX_FRAME_SECONDS);previous=now;if(!paused){age+=dt;if(age>juiceDuration(burst)){paused=true;announce();}}
+  const dt=Math.min((now-previous)/1000,MAX_FRAME_SECONDS);previous=now;
+  if(paused&&!dirty){requestAnimationFrame(frame);return;}
+  dirty=false;
+  if(!paused){age+=dt;if(age>juiceDuration(burst)){paused=true;announce();}}
   timing.setReducedMotion(reduced.checked);
   if(live&&!paused){
     const scale=governor.apply(timing.timeScale(),dt);timing.update(dt);accumulator+=dt*scale;
@@ -165,13 +171,14 @@ function frame(now:number):void {
   renderer.draw({prev:snapshot,curr:snapshot,alpha:1,timeSeconds:0,aim:null,reducedMotion:reduced.checked,aimGuide:true,dimmed:false});
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,effects.width,effects.height);
   const scale=effects.width/BOARD_SIZE;ctx.setTransform(scale,0,0,scale,effects.width/2,effects.height/2);
-  if(age<=juiceDuration(burst))paint(ctx,burst,age);else {subjects(ctx,burst,age,scene);foreground(ctx,scene);}
+  if(age<=juiceDuration(burst))paint(ctx,burst,age,scene,live);else {subjects(ctx,burst,age,scene);foreground(ctx,scene);}
   const view=juiceView(burst,age,reduced.checked),ratio=stage.clientWidth/BOARD_SIZE;
   const transform=`translate(${view.x*ratio}px,${view.y*ratio}px) scale(${view.zoom})`;
   board.style.transform=transform;effects.style.transform=transform;
   requestAnimationFrame(frame);
 }
 function compare():void {
+  if(live)freezeAt(Number(slider.value)/1000);
   const out=document.getElementById('juice-frames')!;out.replaceChildren();document.getElementById('juice-comparison')!.hidden=false;
   document.getElementById('juice-comparison-title')!.textContent='同じ出来事の3案';
   for(const key of Object.keys(names) as JuiceDirection[]){
@@ -186,6 +193,7 @@ function compare():void {
   }
 }
 function timeline(nova=false):void {
+  if(live)freezeAt(Number(slider.value)/1000);
   const out=document.getElementById('juice-frames')!;out.replaceChildren();document.getElementById('juice-comparison')!.hidden=false;
   document.getElementById('juice-comparison-title')!.textContent=nova?'超新星の前後':'1・3・5連鎖の時系列';
   for(const chain of nova?[5]:[1,3,5]){
@@ -214,6 +222,7 @@ function transformComparison(canvas:HTMLCanvasElement,item:JuiceBurst,seconds:nu
   context.drawImage(copy,-canvas.width/2,-canvas.height/2);context.restore();
 }
 function measure():void {
+  if(live)freezeAt(Number(slider.value)/1000);
   const canvas=document.createElement('canvas');canvas.width=BOARD_SIZE;canvas.height=BOARD_SIZE;const context=canvas.getContext('2d')!;const samples:number[]=[];
   for(let i=0;i<360;i++){context.setTransform(1,0,0,1,BOARD_SIZE/2,BOARD_SIZE/2);const start=performance.now();context.clearRect(-BOARD_SIZE/2,-BOARD_SIZE/2,BOARD_SIZE,BOARD_SIZE);paint(context,burst,(i%120)/60);if(i>=120)samples.push(performance.now()-start);}
   samples.sort((a,b)=>a-b);document.getElementById('juice-performance')!.textContent=`${burst.supernova?'超新星':`${burst.chain}連鎖`}・240コマのCPU描画：95% ${samples[Math.ceil(samples.length*.95)-1]!.toFixed(2)}ms、最大 ${samples.at(-1)!.toFixed(2)}ms。CanvasのCPU時間のみ。CSS合成・GPU・実機60fpsと動画審査は未確認です。`;
