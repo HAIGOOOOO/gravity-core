@@ -1,7 +1,9 @@
 import type { BodyView, GameSnapshot } from '../contracts/game';
-import { BOARD_SIZE, CHAIN_WINDOW_SECONDS, DT, TIER_RADIUS } from '../game/constants';
+import { CHAIN_WINDOW_SECONDS, DT } from '../game/constants';
 import { juiceEnvelope, type JuiceBurst } from './juice-model';
 import { juiceMatterTime } from './juice-timing';
+import { juiceShards } from './juice-shards';
+import { juiceLabelPosition } from './juice-labels';
 
 export function juiceExposure(burst: JuiceBurst, age: number, reduced: boolean): number {
   if (reduced || (!burst.supernova && burst.chain < 5)) return 0;
@@ -9,33 +11,31 @@ export function juiceExposure(burst: JuiceBurst, age: number, reduced: boolean):
   return .88 * juiceEnvelope(time, .085, .10, .12);
 }
 
-/** ㊳ 広い感光は一度だけ。ガイドと天体は必ずこの後に描く。 */
+/** ㊳ 感光は合体点の周囲に一度だけ。周囲の天体はこの後に戻す。 */
 export function drawJuiceExposure(ctx: CanvasRenderingContext2D, burst: JuiceBurst, age: number, reduced: boolean): void {
   const weight = juiceExposure(burst, age, reduced);
   if (weight <= 0) return;
-  ctx.save(); ctx.globalAlpha *= weight; ctx.fillStyle = '#ffe3a0'; ctx.fillRect(-BOARD_SIZE/2,-BOARD_SIZE/2,BOARD_SIZE,BOARD_SIZE); ctx.restore();
+  ctx.save();ctx.globalAlpha*=weight;ctx.strokeStyle='#ffe3a0';ctx.lineWidth=16;ctx.translate(burst.x,burst.y);ctx.rotate(burst.angle);
+  for(const start of [-.9,1.4,3.8]){ctx.beginPath();ctx.ellipse(0,0,175,110,0,start,start+.75);ctx.stroke();}ctx.restore();
 }
 
-/** ㊲ 飛び出した殻が、光を受けた近傍天体の面へ落とす影。 */
-export function drawJuiceShadows(ctx: CanvasRenderingContext2D, burst: JuiceBurst, bodies: readonly BodyView[], time: number): void {
+/** ㊲ 飛び出した殻そのものの陰面。別の天体に状態のような印を置かない。 */
+export function drawJuiceShadows(ctx: CanvasRenderingContext2D, burst: JuiceBurst, time: number): void {
   if (burst.chain < 5 && !burst.supernova) return;
-  ctx.save(); ctx.globalAlpha *= .55 * juiceEnvelope(time, .12, .2, .5); ctx.fillStyle = '#070b18';
-  for (const body of bodies) {
-    if (Math.hypot(body.x - burst.x, body.y - burst.y) > 300) continue;
-    ctx.save(); ctx.beginPath(); ctx.arc(body.x, body.y, body.radius, 0, Math.PI * 2); ctx.clip();
-    ctx.translate(body.x, body.y); ctx.rotate(Math.atan2(body.y - burst.y, body.x - burst.x));
-    ctx.beginPath(); ctx.moveTo(-body.radius, -body.radius * .3);
-    ctx.lineTo(body.radius, body.radius * .1); ctx.lineTo(body.radius, body.radius * .35); ctx.lineTo(-body.radius, -body.radius * .08); ctx.closePath(); ctx.fill();
-    ctx.restore();
+  ctx.save();ctx.translate(burst.x,burst.y);ctx.globalAlpha*=.75*juiceEnvelope(time,.09,.13,.52);ctx.fillStyle='#25203c';
+  for(const shard of juiceShards(burst,time)){
+    const s=shard.size;ctx.save();ctx.translate(shard.x,shard.y);ctx.rotate(shard.angle);
+    ctx.beginPath();ctx.moveTo(s*.25,-s*.35);ctx.lineTo(s*.85,-s*.22);ctx.lineTo(s*.55,s*.25);ctx.lineTo(s*.15,s*.12);ctx.closePath();ctx.fill();ctx.restore();
   }
   ctx.restore();
 }
 
 /** ㊴ 閃光の時点の輪郭を薄く残す。実計算中も、その後の位置へは追従させない。 */
-export function drawJuiceAfterimage(ctx: CanvasRenderingContext2D, burst: JuiceBurst, bodies: readonly BodyView[], time: number): void {
+export function drawJuiceAfterimage(ctx: CanvasRenderingContext2D, burst: JuiceBurst, time: number): void {
   if (burst.chain < 5 && !burst.supernova) return;
   ctx.save(); ctx.globalAlpha *= .42 * juiceEnvelope(time, .12, .14, .36); ctx.strokeStyle = '#ffe3a0'; ctx.lineWidth = 2;
-  for (const body of bodies) { ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 8, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.translate(burst.x,burst.y);ctx.rotate(burst.angle);
+  for(const start of [-.8,1.8]){ctx.beginPath();ctx.ellipse(0,0,175,110,0,start,start+.7);ctx.stroke();}
   ctx.restore();
 }
 
@@ -66,8 +66,9 @@ export function drawJuiceCooling(ctx: CanvasRenderingContext2D, burst: JuiceBurs
 export function drawJuiceTypeChips(ctx: CanvasRenderingContext2D, burst: JuiceBurst, time: number): void {
   if (burst.chain < 5 && !burst.supernova) return;
   ctx.save(); ctx.globalAlpha *= juiceEnvelope(time, .22, .30, .75); ctx.fillStyle = '#ffe3a0';
+  const label=juiceLabelPosition(burst);
   for (let i = 0; i < 7; i++) {
-    const x = burst.x + 58 + i * 12, y = burst.y + TIER_RADIUS[burst.tier] + 90 + Math.max(0, time - .22) ** 2 * 190 + (i % 3) * 5;
+    const x = label.x + 8 + i * 12, y = label.y + 42 + Math.max(0, time - .22) ** 2 * 190 + (i % 3) * 5;
     ctx.save(); ctx.translate(x, y); ctx.rotate((i - 3) * time * 2); ctx.fillRect(-2, -4, 4, 8); ctx.restore();
   }
   ctx.restore();

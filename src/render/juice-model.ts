@@ -15,7 +15,7 @@ export const JUICE_LAYERS = [
 ] as const;
 export const JUICE_PEAK_LAYERS = ['連鎖の段数','重力の航跡','外周の圧縮板','画面端の反響','接触点の残像','近傍天体の反射'] as const;
 export const JUICE_WORLD_LAYERS = ['背景の沈み','星の引き流れ','カメラの寄り','方向のある揺れ','衝撃停止','スロー','近隣天体の弾性変形','倍率の活字割れ','核のコロナの逆振れ'] as const;
-export const JUICE_DETAIL_LAYERS = ['得点の活字片','殻が落とす影','全画面の感光','感光した輪郭の残像','連鎖の持ち時間','冷える量','核へ冷やす流路'] as const;
+export const JUICE_DETAIL_LAYERS = ['得点の活字片','外殻片の陰面','合体点の感光','感光の抜け跡','連鎖の持ち時間','冷える量','核へ冷やす流路'] as const;
 
 export function makeJuiceBurst(event: GameEvent, direction: JuiceDirection, appearanceSeed = 0): JuiceBurst | null {
   if (event.kind !== 'merge' && event.kind !== 'supernova') return null;

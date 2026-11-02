@@ -2,6 +2,8 @@ import type { BodyView, GameEvent, GameSnapshot, Prediction, SimulationPort, Tie
 import { TIER_BASE_SCORE, TIER_RADIUS } from '../game/constants';
 import { chainMultiplier, createSimulation } from '../game/simulation';
 import { dropAt } from '../fixtures';
+import type { JuiceBurst } from '../render/juice-model';
+import { juiceMatterTime } from '../render/juice-timing';
 
 export type JuiceScene = Readonly<{
   background: GameSnapshot;
@@ -10,7 +12,6 @@ export type JuiceScene = Readonly<{
   event: GameEvent;
   prediction: Prediction;
   simulation: SimulationPort;
-  flashBodies: readonly BodyView[];
 }>;
 
 /** 合体そのものは実際の計算で作り、連鎖数だけ比較用に指定する。 */
@@ -37,5 +38,17 @@ export function createJuiceScene(tier: Tier, chain: number): JuiceScene {
   const event = { ...actual, chain, scoreDelta: Math.round(TIER_BASE_SCORE[tier] * chainMultiplier(chain)) };
   // 参加する天体だけは演出の前面で描く。同じ天体を二重に描かないための表示用の抜き。
   const background = { ...after, bodies: after.bodies.filter(b => b.id !== result?.id) };
-  return { background, sources, result, event, prediction: sim.predict(dropAt(-Math.PI / 2)), simulation: sim, flashBodies: after.bodies };
+  return { background, sources, result, event, prediction: sim.predict(dropAt(-Math.PI / 2)), simulation: sim };
+}
+
+/** 見えている参加天体を一度だけ決め、描画・境界の遮蔽・期限表示で共有する。 */
+export function juiceParticipants(scene:JuiceScene,burst:JuiceBurst,age:number,reduced:boolean):readonly BodyView[] {
+  const time=reduced?.28:juiceMatterTime(burst,age)/(burst.direction==='echo'?1.6:burst.direction==='jet'?.82:1);
+  if(time<.09){
+    const p=Math.min(1,time/.09);
+    return scene.sources.map(body=>({...body,x:body.x+(burst.x-body.x)*p*.55,y:body.y+(burst.y-body.y)*p*.55,radius:body.radius*(1-p*.18)}));
+  }
+  if(!scene.result)return [];
+  const body=scene.result;
+  return [{...body,radius:TIER_RADIUS[body.tier]*(time<.3?1+.12*Math.sin((time-.09)/.21*Math.PI):1)}];
 }

@@ -1,5 +1,6 @@
 import { CORE_RADIUS, LIMIT_RADIUS, TIER_COLOR, TIER_RADIUS } from '../game/constants';
 import { juiceEnvelope, type JuiceBurst } from './juice-model';
+import { juiceShards } from './juice-shards';
 
 const TAU=Math.PI*2;
 const AMBER='#ffe3a0';
@@ -38,19 +39,32 @@ export function drawJuice(ctx:CanvasRenderingContext2D,burst:JuiceBurst,age:numb
       case 0: // 外から内へ流れ、爆発前の向きを反転させる。
         for(let i=0;i<9;i++){const a=direction(i,9),r=(1-time/.16)*75*strength;ctx.beginPath();ctx.moveTo(Math.cos(a)*(r+25),Math.sin(a)*(r+25));ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);ctx.stroke();}break;
       case 1: ctx.fillStyle=SHADE;ctx.save();ctx.rotate(rotation);ctx.scale(1-time*4,1+time*2);disk(ctx,0,0,born*1.5);ctx.fill();ctx.stroke();ctx.restore();break;
-      case 2: ctx.fillStyle=LIGHT;disk(ctx,0,0,(12+born*.5)*strength);ctx.fill();break;
+      case 2: {
+        const r=Math.min((12+born*.5)*strength,130);
+        ctx.fillStyle=LIGHT;ctx.save();ctx.rotate(rotation);polygon(ctx,[[-r,-4],[-r*.15,-r*.3],[r*.9,-8],[r*.4,r*.2],[-r*.6,12]]);ctx.fill();ctx.restore();break;
+      }
       case 3:
         ctx.fillStyle=TIER_COLOR[burst.sourceTier];
         for(const side of [-1,1]){ctx.save();ctx.rotate(rotation+(side<0?Math.PI:0));ctx.translate(reach*.45,0);ctx.beginPath();ctx.arc(0,0,born*1.4,-1.15,1.15);ctx.lineTo(born*.35,born*.45);ctx.lineTo(born*.55,-born*.48);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}break;
       case 4:
-        ctx.lineWidth=5;ctx.strokeStyle=AMBER;ctx.beginPath();
+        ctx.lineWidth=5;ctx.strokeStyle=TIER_COLOR[burst.sourceTier];
+        if(echo){
+          ctx.save();ctx.rotate(rotation);
+          for(let band=0;band<3;band++){
+            ctx.beginPath();
+            for(let j=0;j<=14;j++){
+              const y=(j/14-.5)*reach*2,x=reach*(.75+band*.17)-y*y/Math.max(1,reach*3)+Math.sin(j*.7+seed)*reach*.04;
+              j?ctx.lineTo(x,y):ctx.moveTo(x,y);
+            }ctx.stroke();
+          }ctx.restore();break;
+        }
+        ctx.beginPath();
         for(let i=0;i<=48;i++){const a=i/48*TAU,r=reach*(echo?(1+Math.sin(a*3+seed)*.12+Math.sin(a*7)*.05):(.87+random(seed,i)*.19));i?ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r):ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);}ctx.closePath();ctx.stroke();break;
       case 5:
-        {const count=peak?20:7;ctx.fillStyle=TIER_COLOR[burst.sourceTier];ctx.lineWidth=1.5;
-          for(let i=0;i<count;i++){
-            const a=direction(i,count),r=reach*(echo?.35:1)*(.65+random(seed,i)*.65);
-            const s=(7+random(seed,i+2)*9)*(peak?2.8:1);
-            ctx.save();ctx.translate(Math.cos(a)*r,Math.sin(a)*r);ctx.rotate(a+travel*2);
+        {ctx.fillStyle=TIER_COLOR[burst.sourceTier];ctx.lineWidth=1.5;
+          for(const shard of juiceShards(burst,time)){
+            const s=shard.size;
+            ctx.save();ctx.translate(shard.x,shard.y);ctx.rotate(shard.angle);
             // 外周の丸みと内側の割れ目を残し、球から剥がれた破片にする。
             ctx.beginPath();ctx.arc(0,0,s,-.85,.85);ctx.lineTo(s*.15,s*.35);ctx.lineTo(-s*.28,-s*.12);ctx.lineTo(s*.24,-s*.42);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
           }}break;
@@ -59,18 +73,33 @@ export function drawJuice(ctx:CanvasRenderingContext2D,burst:JuiceBurst,age:numb
       case 7:
         for(let i=0;i<20;i++){const a=direction(i,20),r=reach*(1+random(seed,i)*.7);ctx.beginPath();ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);ctx.lineTo(Math.cos(a)*(r+9),Math.sin(a)*(r+9));ctx.stroke();}break;
       case 8:
+        if(echo){
+          for(let i=0;i<3;i++){ctx.save();ctx.rotate(rotation);ctx.beginPath();ctx.moveTo(reach*(.8+i*.17),reach*(i-1)*.4);ctx.lineTo(reach*(.8+i*.17)-15,reach*(i-1)*.4+8);ctx.stroke();ctx.restore();}break;
+        }
         for(let i=0;i<3;i++){const a=rotation+i/3*TAU;ctx.beginPath();ctx.arc(Math.cos(a)*reach*.35,Math.sin(a)*reach*.35,reach*.55,a,a+1.4);ctx.stroke();}break;
       case 9:
         for(let i=0;i<18;i++){const a=direction(i,18),p=reach*(.5+random(seed,i));const x=Math.cos(a)*p-burst.x*travel*.25,y=Math.sin(a)*p-burst.y*travel*.25;disk(ctx,x,y,1.8);ctx.fill();}break;
       case 10:
         ctx.globalAlpha*=.32;ctx.save();ctx.rotate(rotation);ctx.beginPath();ctx.moveTo(0,-5);ctx.bezierCurveTo(reach*.5,-reach*.15,reach,-reach*.4,reach*1.7,-reach*.2);ctx.lineTo(reach*1.5,reach*.15);ctx.quadraticCurveTo(reach*.7,reach*.2,0,5);ctx.closePath();ctx.fill();ctx.restore();break;
-      case 11: ctx.fillStyle=SHADE;disk(ctx,0,0,born+14);ctx.fill();ctx.globalAlpha*=.4;ctx.stroke();break;
+      case 11:
+        ctx.globalCompositeOperation='destination-out';disk(ctx,0,0,born+14);ctx.fill();
+        ctx.globalCompositeOperation='source-over';ctx.globalAlpha*=.4;
+        for(const a of [rotation,rotation+Math.PI]){ctx.beginPath();ctx.arc(0,0,born+14,a,a+.6);ctx.stroke();}break;
       case 12:
-        ctx.lineWidth=1;ctx.strokeStyle=AMBER;for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(-born-28+i*7,born+28);ctx.lineTo(-born+i*7,born+7);ctx.stroke();}break;
+        ctx.lineWidth=1;ctx.strokeStyle=TIER_COLOR[burst.sourceTier];for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(-born-28+i*7,born+28);ctx.lineTo(-born+i*7,born+7);ctx.stroke();}break;
       case 13:
+        ctx.strokeStyle=TIER_COLOR[burst.sourceTier];
+        if(echo){
+          ctx.save();ctx.rotate(rotation);
+          for(let i=0;i<4;i++){const y=(i-1.5)*reach*.32,x=reach*.9-y*y/Math.max(1,reach*3);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+14,y+4);ctx.lineTo(x+23,y-5);ctx.stroke();}ctx.restore();break;
+        }
         for(let i=0;i<5;i++){const a=direction(i,5);ctx.save();ctx.rotate(a);ctx.beginPath();ctx.moveTo(born,0);ctx.lineTo(reach*.5,7);ctx.lineTo(reach*.7,-4);ctx.lineTo(reach,3);ctx.stroke();ctx.restore();}break;
       case 14:
-        ctx.globalAlpha*=.18;ctx.fillStyle=TIER_COLOR[burst.sourceTier];for(let i=0;i<4;i++){const a=direction(i,4);disk(ctx,Math.cos(a)*reach*.5,Math.sin(a)*reach*.5,20+travel*18);ctx.fill();}break;
+        ctx.globalAlpha*=.38;ctx.strokeStyle=TIER_COLOR[burst.sourceTier];ctx.lineWidth=3;
+        for(let i=0;i<4;i++){
+          const a=direction(i,4),x=Math.cos(a)*reach*.5,y=Math.sin(a)*reach*.5;
+          ctx.beginPath();ctx.moveTo(x,y);ctx.bezierCurveTo(x+12,y-18,x+40-travel*24,y+8,x+48-travel*30,y-14);ctx.stroke();
+        }break;
       case 15:
         ctx.fillStyle=LIGHT;ctx.save();ctx.rotate(rotation);polygon(ctx,[[-reach*1.6,0],[-8,-3],[reach*1.4,-7],[reach*.7,3],[-8,6]]);ctx.fill();ctx.restore();break;
       case 16: break; // 実際の合体に参加した2体と誕生した1体を、盤面見本が最前面で描く。

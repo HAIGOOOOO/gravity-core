@@ -1,4 +1,4 @@
-import { BOARD_SIZE, CORE_RADIUS, TIER_COLOR } from '../game/constants';
+import { BOARD_SIZE, CORE_RADIUS } from '../game/constants';
 import { juiceEnvelope, type JuiceBurst } from './juice-model';
 
 function random(seed: number, i: number): number {
@@ -18,20 +18,20 @@ export function drawJuiceAtmosphere(ctx: CanvasRenderingContext2D, burst: JuiceB
   ctx.save(); ctx.globalAlpha *= .8 * juiceEnvelope(time, .02, .12, .8);
   ctx.strokeStyle = '#fff2d8'; ctx.lineWidth = peak ? 2 : 1;
   const pull = 1 - Math.exp(-Math.max(0, time - .04) * 6);
-  for (let i = 0; i < (peak ? 38 : 14); i++) {
-    const angle = random(burst.seed, i) * Math.PI * 2, radius = 230 + random(burst.seed, i + 90) * 200;
+  for (let i = 0; i < (peak ? 22 : 10); i++) {
+    const angle = burst.angle+(i%2)*Math.PI+(random(burst.seed,i)-.5)*1.1, radius = 230 + random(burst.seed, i + 90) * 200;
     const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius;
     const inward = (peak ? 90 : 28) * pull;
     const endX = x + (burst.x - x) / 500 * inward, endY = y + (burst.y - y) / 500 * inward;
     ctx.beginPath(); ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x * .88, y * .88, endX, endY); ctx.stroke();
+    ctx.quadraticCurveTo((x+endX)*.5,(y+endY)*.5,endX,endY);ctx.stroke();
   }
   ctx.restore();
   // ㉟ 核のコロナだけが反対へ振れる。核本体の座標は動かさない。
   if (!peak) return;
   ctx.save(); ctx.globalAlpha *= juiceEnvelope(time, .1, .18, .65);
-  ctx.strokeStyle = TIER_COLOR[burst.sourceTier]; ctx.lineWidth = 9;
+  ctx.strokeStyle = '#ffe3a0'; ctx.lineWidth = 7;
   const offset = Math.sin((time - .1) * 20) * Math.exp(-Math.max(0, time - .1) * 5) * 3;
-  ctx.beginPath(); ctx.arc(-Math.cos(burst.angle) * offset, -Math.sin(burst.angle) * offset, CORE_RADIUS + 13, burst.angle + .3, burst.angle + 4.8); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-Math.cos(burst.angle) * offset, -Math.sin(burst.angle) * offset, CORE_RADIUS + 13, burst.angle + 2.5, burst.angle + 3.7); ctx.stroke();
   ctx.restore();
 }
