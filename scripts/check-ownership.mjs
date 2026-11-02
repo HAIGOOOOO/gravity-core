@@ -36,6 +36,11 @@ const FORBIDDEN = [
   'docs/review/',
 ];
 
+// 2026-10-20（方針の版 9）から: ルールを変える題目は C が持つので、C だけ仕組みの場所も触ってよい。
+const ALLOW = {
+  C: ['src/game/', 'src/contracts/', 'src/shared/', 'src/fixtures/', 'src/audio/', 'docs/RULES.md'],
+};
+
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8' }).trim();
 
 const branch = process.env.GITHUB_HEAD_REF || sh('git rev-parse --abbrev-ref HEAD');
@@ -58,7 +63,8 @@ try {
 const me = LETTER[team];
 const others = Object.values(LETTER).filter((x) => x !== me);
 // ほかの担当の進み具合と覚え書きも触らない
-const forbidden = [...FORBIDDEN, ...others.flatMap((x) => [`docs/progress/${x}.md`, `docs/notes/${x}/`])];
+const allowed = ALLOW[me] ?? [];
+const forbidden = [...FORBIDDEN.filter((p) => !allowed.includes(p)), ...others.flatMap((x) => [`docs/progress/${x}.md`, `docs/notes/${x}/`])];
 const outside = changed.filter((file) => forbidden.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p)));
 
 if (outside.length > 0) {

@@ -15,6 +15,7 @@ export {
   type ReplayPlayer,
   type ReplayStart,
 } from './player';
+export { createReplayPlayerAsync, type AsyncReplayStart } from './async';
 export { findHighlights, type HighlightsResult, type ReplayHighlight, type HighlightKind } from './highlights';
 export { analyzeCause, type CauseResult, type DefeatCause } from './cause';
 // runReplay: プレイヤーを立てずに「記録が今のルールと合うか」だけ確かめる窓口
