@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ja">
+  <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>実計算の5連鎖 — GRAVITY CORE</title>  <script type="module" crossorigin src="../assets/chain-yPYA6sFa.js"></script>
+  <link rel="modulepreload" crossorigin href="../assets/constants-BSqsUWnw.js">
+  <link rel="modulepreload" crossorigin href="../assets/bodies-DgZqABTl.js">
+  <link rel="modulepreload" crossorigin href="../assets/heat-B2AgKSJ4.js">
+  <link rel="modulepreload" crossorigin href="../assets/render-geIvNQo9.js">
+  <link rel="modulepreload" crossorigin href="../assets/time-B-JT5oSx.js">
+  <link rel="modulepreload" crossorigin href="../assets/fixtures-MSz1FZbI.js">
+  <link rel="modulepreload" crossorigin href="../assets/juice-run-C6jpRw_A.js">
+  <link rel="stylesheet" crossorigin href="../assets/juice-run-BzWAGiz1.css">
+</head>
+  <body>
+    <header><h1>実計算の5連鎖</h1><p>2体から生まれた天体が、次の相手と合体する所を追います。</p><div id="demo-controls"><button id="chain-replay" type="button">最初から再生</button><button id="chain-log" type="button">合体の記録を見る</button></div></header>
+    <main><div class="juice-stage"><canvas id="juice-board" aria-label="実計算の盤面"></canvas><canvas id="juice-effects" aria-label="実際の合体に対応する演出"></canvas></div><aside><h2>5段までつながる配置</h2><p id="chain-status" role="status"></p><label><input id="chain-reduced" type="checkbox"/> 動きを減らす</label><button id="chain-record" type="button">5連鎖を録画する</button><pre id="chain-events" hidden></pre><p>連鎖数・得点・天体の位置は実際の計算から表示します。録画の描画回数も保存できます。</p><a href="./juice.html">形の3案を比べる</a></aside></main>
+  </body>
+</html>
