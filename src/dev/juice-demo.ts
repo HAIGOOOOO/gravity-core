@@ -6,6 +6,7 @@ import { dropAt } from '../fixtures';
 import { createBoardRenderer } from '../render';
 import { drawBody } from '../render/bodies';
 import { createJuiceScene, juiceParticipants, type JuiceScene } from './juice-scene';
+import { createJuiceRun } from './juice-run';
 import { drawJuice } from '../render/juice-shapes';
 import { drawJuiceLabels } from '../render/juice-labels';
 import { drawJuiceMemories, drawJuiceReflections } from '../render/juice-reflections';
@@ -29,6 +30,7 @@ const names:Record<JuiceDirection,string>={fracture:'A 圧縮して割れる',je
 let direction:JuiceDirection='fracture';let event:GameEvent=scene.event;
 let burst=makeJuiceBurst(event,direction)!;let age=0;let paused=false;let dirty=true;let previous=performance.now();
 const timing=createJuiceTiming(),governor=createTimeGovernor();
+const realRun=createJuiceRun(board,effects,stage,status,document.querySelector('main')!);
 let live=false,accumulator=0,appearanceSeed=0;
 let stopped=0,longestStop=0,slowest=1;
 const clockText=document.createElement('p');clockText.id='juice-clock';clockText.setAttribute('role','status');status.after(clockText);
@@ -44,6 +46,8 @@ function announce():void {
   bar.querySelectorAll<HTMLElement>('[data-direction]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.direction===direction)));
 }
 function fire(chain:number,tier:Tier=2,nova=false):void {
+  if(realRun.recording)return;
+  realRun.stop();
   live=false;accumulator=0;stopped=0;longestStop=0;slowest=1;clockText.textContent='';governor.reset();scene=createJuiceScene(nova?8:tier,chain);event=scene.event;burst=makeJuiceBurst(event,direction,++appearanceSeed)!;timing.start(burst);age=0;paused=false;announce();
 }
 for(const key of Object.keys(names) as JuiceDirection[])button(names[key],()=>{direction=key;const wasLive=live;fire(burst.chain,burst.sourceTier,burst.supernova);live=wasLive;announce();},key);
@@ -51,11 +55,14 @@ for(let chain=1;chain<=5;chain++)button(`${chain}連鎖`,()=>fire(chain));
 button('巨大惑星の合体',()=>fire(1,6));button('超新星',()=>fire(5,8,true));
 button('実計算で巨大合体',()=>{fire(1,6);live=true;announce();});
 button('実計算で超新星',()=>{fire(1,8,true);live=true;announce();});
+button('実計算で5連鎖',()=>realRun.start(direction));
+const recordButton=document.createElement('button');recordButton.type='button';recordButton.textContent='5連鎖を録画する';recordButton.id='juice-record';
+recordButton.addEventListener('click',()=>realRun.start(direction,true));document.querySelector('aside')!.append(recordButton);
 button('3案を並べる',compare);
 button('時系列を並べる',()=>timeline(false));
 button('超新星の時系列',()=>timeline(true));
-button('止めて比べる',()=>freezeAt(Number(slider.value)/1000));
-button('再生',()=>{const wasLive=live;fire(burst.chain,burst.sourceTier,burst.supernova);live=wasLive;announce();});
+button('止めて比べる',()=>{if(realRun.active){realRun.togglePause();return;}freezeAt(Number(slider.value)/1000);});
+button('再生',()=>{if(realRun.active){realRun.start(direction);return;}const wasLive=live;fire(burst.chain,burst.sourceTier,burst.supernova);live=wasLive;announce();});
 button('描画時間を測る',measure);
 slider.addEventListener('input',()=>freezeAt(Number(slider.value)/1000));
 reduced.addEventListener('change',()=>{dirty=true;});
@@ -64,6 +71,8 @@ for(const seconds of [.04,.1,.28,.8]){
   b.addEventListener('click',()=>freezeAt(seconds));document.getElementById('juice-times')!.append(b);
 }
 function freezeAt(seconds:number):void {
+  if(realRun.recording)return;
+  realRun.stop();
   if(live){scene=createJuiceScene(burst.sourceTier,burst.chain);event=scene.event;burst=makeJuiceBurst(event,direction,appearanceSeed)!;live=false;clockText.textContent='';}
   paused=true;age=seconds;slider.value=String(seconds*1000);document.getElementById('juice-time-label')!.textContent=`${seconds.toFixed(2)}秒`;announce();
 }
@@ -147,6 +156,7 @@ function paint(target:CanvasRenderingContext2D,item:JuiceBurst,seconds:number,cu
 }
 function resize():void {
   dirty=true;
+  realRun.redraw();
   const size=stage.clientWidth;renderer.resize(size);const pixels=Math.round(size*Math.min(devicePixelRatio,DPR_CAP));effects.width=pixels;effects.height=pixels;
   board.style.width='100%';board.style.height='100%';
 }
@@ -155,6 +165,7 @@ const header=document.querySelector('header')!;
 new ResizeObserver(()=>document.documentElement.style.setProperty('--juice-header-height',`${header.getBoundingClientRect().height}px`)).observe(header);
 function frame(now:number):void {
   const dt=Math.min((now-previous)/1000,MAX_FRAME_SECONDS);previous=now;
+  if(realRun.active){realRun.frame(dt,reduced.checked);requestAnimationFrame(frame);return;}
   if(paused&&!dirty){requestAnimationFrame(frame);return;}
   dirty=false;
   if(!paused){age+=dt;if(age>juiceDuration(burst)){paused=true;announce();}}
@@ -178,7 +189,7 @@ function frame(now:number):void {
   requestAnimationFrame(frame);
 }
 function compare():void {
-  if(live)freezeAt(Number(slider.value)/1000);
+  if(live||realRun.active)freezeAt(Number(slider.value)/1000);
   const out=document.getElementById('juice-frames')!;out.replaceChildren();document.getElementById('juice-comparison')!.hidden=false;
   document.getElementById('juice-comparison-title')!.textContent='同じ出来事の3案';
   for(const key of Object.keys(names) as JuiceDirection[]){
@@ -193,7 +204,7 @@ function compare():void {
   }
 }
 function timeline(nova=false):void {
-  if(live)freezeAt(Number(slider.value)/1000);
+  if(live||realRun.active)freezeAt(Number(slider.value)/1000);
   const out=document.getElementById('juice-frames')!;out.replaceChildren();document.getElementById('juice-comparison')!.hidden=false;
   document.getElementById('juice-comparison-title')!.textContent=nova?'超新星の前後':'1・3・5連鎖の時系列';
   for(const chain of nova?[5]:[1,3,5]){
@@ -222,7 +233,7 @@ function transformComparison(canvas:HTMLCanvasElement,item:JuiceBurst,seconds:nu
   context.drawImage(copy,-canvas.width/2,-canvas.height/2);context.restore();
 }
 function measure():void {
-  if(live)freezeAt(Number(slider.value)/1000);
+  if(live||realRun.active)freezeAt(Number(slider.value)/1000);
   const canvas=document.createElement('canvas');canvas.width=BOARD_SIZE;canvas.height=BOARD_SIZE;const context=canvas.getContext('2d')!;const samples:number[]=[];
   for(let i=0;i<360;i++){context.setTransform(1,0,0,1,BOARD_SIZE/2,BOARD_SIZE/2);const start=performance.now();context.clearRect(-BOARD_SIZE/2,-BOARD_SIZE/2,BOARD_SIZE,BOARD_SIZE);paint(context,burst,(i%120)/60);if(i>=120)samples.push(performance.now()-start);}
   samples.sort((a,b)=>a-b);document.getElementById('juice-performance')!.textContent=`${burst.supernova?'超新星':`${burst.chain}連鎖`}・240コマのCPU描画：95% ${samples[Math.ceil(samples.length*.95)-1]!.toFixed(2)}ms、最大 ${samples.at(-1)!.toFixed(2)}ms。CanvasのCPU時間のみ。CSS合成・GPU・実機60fpsと動画審査は未確認です。`;

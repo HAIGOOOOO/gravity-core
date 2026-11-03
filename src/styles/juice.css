@@ -21,6 +21,11 @@ a { color: #e9e5d9; font-size: 13px; line-height: 3; }
 #juice-frames figure { margin: 0; min-width: 0; }
 #juice-frames canvas { display: block; width: 100%; height: auto; }
 figcaption { font-size: 14px; margin: 8px 0; }
+.juice-recording { grid-column: 1/-1; min-width: 0; }
+.juice-recording video { display: block; width: min(100%,720px); background: #070b18; }
+.juice-recording a { display: inline-block; margin-right: 24px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+button:disabled { opacity: .5; cursor: wait; }
 [hidden] { display: none !important; }
 @media (min-width: 701px) { .juice-stage { width: min(100%,calc(100dvh - var(--juice-header-height,224px) - 36px)); justify-self: center; } }
 @media (max-width: 700px) { header, main { padding: 14px; } main { display: block; } aside { margin-top: 20px; } #juice-frames { grid-template-columns: 1fr; } }
