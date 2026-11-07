@@ -1,0 +1,92 @@
+[
+  {
+    "minFont": 11,
+    "mode": "instrument",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 615.78125,
+        "w": 320.66668701171875
+      }
+    ],
+    "viewport": [
+      360,
+      640
+    ]
+  },
+  {
+    "minFont": 11,
+    "mode": "print",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 633.78125,
+        "w": 320.66668701171875
+      }
+    ],
+    "viewport": [
+      360,
+      640
+    ]
+  },
+  {
+    "minFont": 0,
+    "mode": "eclipse",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 614.4479370117188,
+        "w": 320.66668701171875
+      }
+    ],
+    "viewport": [
+      360,
+      640
+    ]
+  },
+  {
+    "minFont": 11,
+    "mode": "instrument",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 330.09375,
+        "w": 560.6666870117188
+      }
+    ],
+    "viewport": [
+      640,
+      360
+    ]
+  },
+  {
+    "minFont": 11,
+    "mode": "print",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 344.76043701171875,
+        "w": 560.6666870117188
+      }
+    ],
+    "viewport": [
+      640,
+      360
+    ]
+  },
+  {
+    "minFont": 0,
+    "mode": "eclipse",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 328.09375,
+        "w": 560.6666870117188
+      }
+    ],
+    "viewport": [
+      640,
+      360
+    ]
+  }
+]

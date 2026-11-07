@@ -9,6 +9,7 @@ import { createSimulation, type SimulationSetup } from '../game/simulation';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
 import { addButton, addGroup, addSlider, addToggle, log } from './demo-kit';
+import { measureSmallBodies } from './body-benchmark';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('board') as HTMLCanvasElement;
@@ -78,6 +79,11 @@ addToggle('暗くする', false, (on) => (dimmed = on));
 addToggle('動きを減らす', false, (on) => (reducedMotion = on));
 addToggle('予測線', true, (on) => (aimGuide = on));
 addSlider('大きさ', 280, 900, 560, resize);
+addGroup('小粒子');
+// 自動撮影はボタンを順に押すため、別ページへの移動はリンクにする。
+const particleLink = document.createElement('a'); particleLink.href = './particles.html'; particleLink.textContent = '小粒子の3案と28pxを見比べる'; particleLink.style.color = 'var(--text)';
+document.getElementById('demo-controls')!.append(particleLink);
+addButton('80体を測る', async () => { const test = document.createElement('canvas'); test.width = 640; test.height = 480; log('小粒子A・80体を1000コマ計測中…'); log(await measureSmallBodies(test)); });
 
 resize(560);
 requestAnimationFrame(frame);

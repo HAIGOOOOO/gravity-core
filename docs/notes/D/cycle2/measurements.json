@@ -1,0 +1,92 @@
+[
+  {
+    "font": 11,
+    "mode": "instrument",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 616.1146240234375,
+        "w": 320.66668701171875
+      }
+    ],
+    "viewport": [
+      360,
+      640
+    ]
+  },
+  {
+    "font": 11,
+    "mode": "print",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 634.1146240234375,
+        "w": 320.66668701171875
+      }
+    ],
+    "viewport": [
+      360,
+      640
+    ]
+  },
+  {
+    "font": 11,
+    "mode": "eclipse",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 614.78125,
+        "w": 320.66668701171875
+      }
+    ],
+    "viewport": [
+      360,
+      640
+    ]
+  },
+  {
+    "font": 11,
+    "mode": "instrument",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 331.69793701171875,
+        "w": 560.6666870117188
+      }
+    ],
+    "viewport": [
+      640,
+      360
+    ]
+  },
+  {
+    "font": 11,
+    "mode": "print",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 346.3645935058594,
+        "w": 560.6666870117188
+      }
+    ],
+    "viewport": [
+      640,
+      360
+    ]
+  },
+  {
+    "font": 11,
+    "mode": "eclipse",
+    "overflow": false,
+    "scene": [
+      {
+        "h": 329.69793701171875,
+        "w": 560.6666870117188
+      }
+    ],
+    "viewport": [
+      640,
+      360
+    ]
+  }
+]
