@@ -26,7 +26,7 @@ import { chainMultiplier, createSimulation } from '../game/simulation';
 import { createTimeGovernor } from '../shared/time';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
-import { createReplayRecord, type ReplayRecord } from '../replay';
+import { createReplayCapture, type CapturedReplay, type ReplayRecord } from '../replay';
 import { createRankingStore, createSaveStore } from '../storage';
 import { createHud, createLayout, createOverlays } from '../ui';
 import { STRINGS, resultText } from '../ui/strings';
@@ -43,6 +43,8 @@ function newSeed(): number {
 export type AppHandle = {
   /** いちばん最近終わったプレイの再生の記録（シードと入力ログ）。まだ 1 回も終わっていなければ null */
   lastReplay(): ReplayRecord | null;
+  /** 同じプレイの見どころ・負けた原因と、再計算なしの再生（docs/review/B.md の 0）。まだ無ければ null */
+  lastCapture(): CapturedReplay | null;
 };
 
 export function startApp(): AppHandle {
@@ -66,6 +68,9 @@ export function startApp(): AppHandle {
   let prev: GameSnapshot = sim.getSnapshot();
   // 終わったプレイの入力ログを捨てずに持つ（保存の形は docs/review/B.md の 11 で決める。今はメモリの中だけ）
   let lastReplay: ReplayRecord | null = null;
+  // 遊んでいる間に出来事と保存点を貯め、結果の時に物理を回し直さない（担当 B の createReplayCapture）
+  let capture: ReturnType<typeof createReplayCapture> | null = null;
+  let lastCapture: CapturedReplay | null = null;
   let acc = 0;
   const timeGovernor = createTimeGovernor();
   let last = performance.now();
@@ -134,7 +139,8 @@ export function startApp(): AppHandle {
   }
 
   function startRun(): void {
-    sim = createSimulation(newSeed());
+    capture = createReplayCapture(newSeed());
+    sim = capture.simulation;
     prev = sim.getSnapshot();
     aim = null;
     pendingLaunch = null;
@@ -164,7 +170,8 @@ export function startApp(): AppHandle {
     };
     const isBest = record.score > save.bestScore;
     result = { record, isBest, rank: null };
-    lastReplay = createReplayRecord(sim);
+    lastCapture = capture ? capture.finish() : null;
+    lastReplay = lastCapture ? lastCapture.record : null;
     void ranking.submit(record, sim.getInputLog()).then(({ rank }) => {
       const hints = save.hints;
       save = saveStore.load();
@@ -357,7 +364,7 @@ export function startApp(): AppHandle {
   applySettings();
   setState('title');
   requestAnimationFrame(frame);
-  return { lastReplay: () => lastReplay };
+  return { lastReplay: () => lastReplay, lastCapture: () => lastCapture };
 }
 
 // 連鎖の倍率は HUD（担当 D）からも使えるように出しておく
