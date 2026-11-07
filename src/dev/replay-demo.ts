@@ -7,6 +7,7 @@ import { createBoardRenderer } from '../render';
 import { annotateCause, annotateMerge } from './replay-annotations';
 import { createReplaySavePanel } from './replay-save-panel';
 import { LONG_REPLAY_TEXT } from './replay-long-sample';
+import { readReplayHandoff } from './replay-handoff';
 import {
   createReplayPlayerAsync, createReplayRecord, parseReplay,
   type ReplayPlayer, type ReplayRecord, type ReplayHighlight,
@@ -280,5 +281,15 @@ function frame(now: number): void {
 // 非表示のタブで時間を飛ばさず、帰ってきた時も同じ場所から再生する。
 document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; draw(); } });
 renderer.resize(Math.min(620, BOARD_SIZE));
-sample(false);
+const handoff = readReplayHandoff();
+if (handoff) {
+  void openRecord(handoff.record, '結果から開いたプレイ').then((opened) => {
+    if (!opened || !player) return;
+    if (new URLSearchParams(location.search).get('cause') === '1' && player.cause) { causeButton.click(); return; }
+    const h = player.highlights.find((item) => item.tick === handoff.tick);
+    if (h) playHighlight(h); else seek(handoff.tick);
+  });
+} else if (new URLSearchParams(location.search).get('from') === 'result') {
+  status.textContent = '記録を引き継げませんでした。結果のページからもう一度開いてください。';
+} else sample(false);
 requestAnimationFrame(frame);
