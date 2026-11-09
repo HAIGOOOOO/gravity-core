@@ -306,12 +306,12 @@ describe('encodePlay / decodePlay', () => {
     expect(encodePlay({ rulesVersion: 1, seed: 1, endTick: 100, inputs: tooMany })).toBe('');
     // 文字列の上限（262,144 文字）を越える = 全部「投げる」だと約 8,000 入力で頭打ち
     const raws: LaunchInput[] = Array.from({ length: 9_000 }, (_, i) => ({
-      tick: i * 60,
+      tick: i * 30,
       originAngleRadians: i * 0.137,
       vx: 300 + i * 0.01,
       vy: -100,
     }));
-    expect(encodePlay({ rulesVersion: 1, seed: 1, endTick: 9_000 * 60, inputs: raws })).toBe('');
+    expect(encodePlay({ rulesVersion: 1, seed: 1, endTick: MAX_TICKS, inputs: raws })).toBe('');
   });
 });
 

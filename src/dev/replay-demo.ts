@@ -7,6 +7,7 @@ import { createBoardRenderer } from '../render';
 import { annotateCause, annotateMerge } from './replay-annotations';
 import { createReplaySavePanel } from './replay-save-panel';
 import { LONG_REPLAY_TEXT } from './replay-long-sample';
+import { shareToReplayAsync } from '../share/async';
 import { readReplayHandoff } from './replay-handoff';
 import {
   createReplayPlayerAsync, createReplayRecord, parseReplay,
@@ -133,13 +134,15 @@ function seek(tick: number, preserveHighlight = false): void {
   status.textContent = `${clock(player.tick)} を表示しています。`;
   draw();
 }
-async function openRecord(record: ReplayRecord, name: string): Promise<boolean | null> {
+async function openRecord(source: ReplayRecord | string, name: string): Promise<boolean | null> {
   const started = performance.now();
   preparation?.abort();
   const controller = new AbortController(); preparation = controller;
   playing = false; busy(true, name);
   status.textContent = '記録を準備しています。待たずに中止したり、別の記録を選べます。';
-  const result = await createReplayPlayerAsync(record, { signal: controller.signal });
+  const shared = typeof source === 'string' ? await shareToReplayAsync(source, controller.signal)
+    : { ok: true as const, record: source };
+  const result = shared.ok ? await createReplayPlayerAsync(shared.record, { signal: controller.signal }) : shared;
   if (preparation !== controller) return null;
   preparation = null; busy(false);
   if (!result.ok) {
@@ -281,15 +284,25 @@ function frame(now: number): void {
 // 非表示のタブで時間を飛ばさず、帰ってきた時も同じ場所から再生する。
 document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; draw(); } });
 renderer.resize(Math.min(620, BOARD_SIZE));
+function openSharedLink(): boolean {
+  const code = new URLSearchParams(location.hash.slice(1)).get('code');
+  if (code === null) return false;
+  void openRecord(code, '共有コードで受け取ったプレイ');
+  return true;
+}
+window.addEventListener('hashchange', () => { if (!openSharedLink()) sample(false); });
 const handoff = readReplayHandoff();
-if (handoff) {
+const sharedLink = openSharedLink();
+if (!sharedLink && handoff) {
   void openRecord(handoff.record, '結果から開いたプレイ').then((opened) => {
     if (!opened || !player) return;
     if (new URLSearchParams(location.search).get('cause') === '1' && player.cause) { causeButton.click(); return; }
     const h = player.highlights.find((item) => item.tick === handoff.tick);
     if (h) playHighlight(h); else seek(handoff.tick);
   });
-} else if (new URLSearchParams(location.search).get('from') === 'result') {
-  status.textContent = '記録を引き継げませんでした。結果のページからもう一度開いてください。';
-} else sample(false);
+} else if (!sharedLink) {
+  if (new URLSearchParams(location.search).get('from') === 'result') {
+    status.textContent = '記録を引き継げませんでした。結果のページからもう一度開いてください。';
+  } else sample(false);
+}
 requestAnimationFrame(frame);

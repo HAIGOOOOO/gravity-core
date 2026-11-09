@@ -6,9 +6,10 @@ import { describe, expect, it } from 'vitest';
 import type { LaunchInput } from '../contracts/game';
 import { DROP_SPEED } from '../game/constants';
 import { createRng } from '../game/rng';
-import { decodePlay, encodePlay, MAX_TEXT_LENGTH, SHARE_FORMAT_VERSION } from './codec';
+import { decodePlay, encodePlay, MAX_TEXT_LENGTH, MAX_TICKS, SHARE_RULES_VERSION } from './codec';
 import { base64UrlToBytes, bytesToBase64Url, fnv1a, writeF64, writeVarint } from './coding';
 
+const LEGACY_FORMAT = 2;
 const GRID_DENOM = 4294967296;
 
 /** rng() * Math.PI * 2 と同じ計算順で、格子（2π/2^32）上の角度を作る。 */
@@ -64,6 +65,19 @@ describe('decodePlay: 検査値を付け直した細工', () => {
     if (!d.ok) expect(d.reason).toBe('badData');
   });
 
+  it('現行形式の整数速度で予約ビットが立っているか、途中で切れた形を弾く', () => {
+    const code = encodePlay({
+      rulesVersion: SHARE_RULES_VERSION,
+      seed: 7,
+      inputs: [{ tick: 0, originAngleRadians: gridAngle(5), vx: -500, vy: 100 }],
+    });
+    expect(decodePlay(code).ok).toBe(true);
+    expect(decodePlay(forge(code, (body) => { body.pop(); }))).toEqual({ ok: false, reason: 'truncated' });
+    expect(decodePlay(forge(code, (body) => { body[body.length - 1]! |= 0x80; }))).toEqual({
+      ok: false, reason: 'badData',
+    });
+  });
+
   it('入力の tick が終了を越える物は弾く', () => {
     // 入力の頭を「tick 差 101・タグ 0」= 404 の varint [0x94, 0x03] に差し替える → tick 101 > endTick 100
     const d = decodePlay(forge(SAMPLE, (b) => { b.splice(5, 1, 0x94, 0x03); }));
@@ -109,8 +123,9 @@ describe('decodePlay: 検査値を付け直した細工', () => {
   });
 
   it('ヘッダの上限を越える値は弾く（endTick 上限超過・seed が 2^32）', () => {
-    // endTick 100 → 1,728,001（= 4 時間 + 1 tick）に差し替える: 1+60*128+105*16384
-    const overEnd = decodePlay(forge(SAMPLE, (b) => { b.splice(3, 1, 0x81, 0xbc, 0x69); }));
+    const ticks: number[] = [];
+    writeVarint(ticks, MAX_TICKS + 1);
+    const overEnd = decodePlay(forge(SAMPLE, (b) => { b.splice(3, 1, ...ticks); }));
     expect(overEnd.ok).toBe(false);
     if (!overEnd.ok) expect(overEnd.reason).toBe('badData');
     // seed 0 → 2^32 に差し替える: 16*128^4
@@ -136,7 +151,7 @@ describe('decodePlay: 検査値を付け直した細工', () => {
     expect(cutU32.ok).toBe(false);
     if (!cutU32.ok) expect(cutU32.reason).toBe('truncated');
     // タグ 1（角度だけ）の f64 が半分しか無い形を手組みする
-    const body: number[] = [SHARE_FORMAT_VERSION, 1];
+    const body: number[] = [LEGACY_FORMAT, 1];
     writeVarint(body, 0); // seed
     writeVarint(body, 100); // endTick
     writeVarint(body, 1); // 個数
@@ -149,7 +164,7 @@ describe('decodePlay: 検査値を付け直した細工', () => {
 
   it('入力の角度に非有限な値が紛れた物は弾く（「角度だけ」経路も含む）', () => {
     // タグ 1 の角度が NaN → そこから計算する vx/vy も NaN になるので弾く
-    const dropNaN: number[] = [SHARE_FORMAT_VERSION, 1];
+    const dropNaN: number[] = [LEGACY_FORMAT, 1];
     writeVarint(dropNaN, 0);
     writeVarint(dropNaN, 100);
     writeVarint(dropNaN, 1);
@@ -159,7 +174,7 @@ describe('decodePlay: 検査値を付け直した細工', () => {
     expect(d1.ok).toBe(false);
     if (!d1.ok) expect(d1.reason).toBe('badData');
     // タグ 2（投げる）の vy が Infinity（角度・vx は有限）
-    const rawInf: number[] = [SHARE_FORMAT_VERSION, 1];
+    const rawInf: number[] = [LEGACY_FORMAT, 1];
     writeVarint(rawInf, 0);
     writeVarint(rawInf, 100);
     writeVarint(rawInf, 1);
@@ -174,7 +189,7 @@ describe('decodePlay: 検査値を付け直した細工', () => {
 
   it('ヘッダの最小（5 バイト）に満たない本体は truncated で弾く', () => {
     // 検査値は正しいが本体が版バイト 1 つだけの形。読み始める以前に切れている
-    const d = decodePlay(pack([SHARE_FORMAT_VERSION]));
+    const d = decodePlay(pack([LEGACY_FORMAT]));
     expect(d.ok).toBe(false);
     if (!d.ok) expect(d.reason).toBe('truncated');
   });
@@ -182,7 +197,7 @@ describe('decodePlay: 検査値を付け直した細工', () => {
   it('大きい経路で入れた格子の入力は、読み戻すと小さい正規形に直る', () => {
     // 格子上の角度と丸めた落とす速度を、あえて「値そのまま」形（24 バイト）で手組みする
     const sample = drop(0, gridAngle(5));
-    const body: number[] = [SHARE_FORMAT_VERSION, 1];
+    const body: number[] = [LEGACY_FORMAT, 1];
     writeVarint(body, 0); // seed
     writeVarint(body, 100); // endTick
     writeVarint(body, 1); // 個数

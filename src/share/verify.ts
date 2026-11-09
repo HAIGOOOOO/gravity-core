@@ -1,16 +1,16 @@
 // 共有文字列を受け取り、シミュレーションで最初から再生して結果を計算し直す。
 // 文字列に得点は入っていない（入っていても信じない）。返す数は全部ここで再生した値。
-//
-// 再生の計算量はプレイの長さ（endTick）に比例し、正当な文字列でも最大 4 時間ぶんある。
-// 入力なし・endTick 最大に細工された文字列をそのまま再生すると長時間かかるので、
-// 止まってはいけない所（UI など）から呼ぶときは options.maxTicks で打ち切る。
 
-import type { RunStats, Tier } from '../contracts/game';
+import type { GameSnapshot, RunStats, SimulationPort, Tier } from '../contracts/game';
 import { createSimulation } from '../game/simulation';
+import { MAX_REPLAY_TICKS } from '../replay/limits';
+import { createReplayRecord, type ReplayRecord } from '../replay/record';
 import {
   decodePlay,
+  encodePlay,
   SHARE_RULES_VERSION,
   type DecodeFailReason,
+  type DecodePlayResult,
   type SharePlay,
 } from './codec';
 
@@ -22,7 +22,7 @@ export type VerifyOptions = Readonly<{
    * 上限まで進めても active のまま endTick に届かない場合、得点を確かめ切れないので
    * 'tooLongToVerify' で失敗にする。途中でゲームオーバーになる文字列はそこで止まるため、
    * endTick が上限を越えていても成功しうる。
-   * 省略・有限でない数・数以外の値は「上限なし」。負の数は 0 と同じ（1 tick も進めない）。
+   * 既定と最大はリプレイと同じ1時間。負の数は 0 と同じ（1 tick も進めない）。
    */
   maxTicks?: number;
 }>;
@@ -45,11 +45,11 @@ export type VerifyPlayResult =
   | { ok: true; play: SharePlay; result: VerifiedPlay }
   | { ok: false; reason: VerifyFailReason };
 
-/** maxTicks の引数を整える。有限の数だけ受け、それ以外（省略・NaN・文字列など）は上限なしにする。 */
+
 function toMaxTicks(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(0, Math.floor(value))
-    : Infinity;
+    ? Math.min(MAX_REPLAY_TICKS, Math.max(0, Math.floor(value)))
+    : MAX_REPLAY_TICKS;
 }
 
 /**
@@ -58,10 +58,47 @@ function toMaxTicks(value: unknown): number {
  * 途中でゲームオーバーになった場合はそこで止め、終わった時点の結果を返す。
  */
 export function verifyPlay(text: string, options?: VerifyOptions): VerifyPlayResult {
+  const run = recompute(text, options);
+  if (!run.ok) return run;
+  return { ok: true, play: run.play, result: run.result };
+}
+
+export function decodeReplayShare(
+  text: string,
+): DecodePlayResult | { ok: false; reason: 'rulesMismatch' } {
   const decoded = decodePlay(text);
+  if (decoded.ok && decoded.play.rulesVersion !== SHARE_RULES_VERSION) {
+    return { ok: false, reason: 'rulesMismatch' };
+  }
+  return decoded;
+}
+
+/** 端末保存の記録から、通常開始の現行ルールで再生できる入力だけを共有する。 */
+export function encodeReplayShare(record: ReplayRecord): string {
+  if (record.setup !== undefined || record.rulesVersion !== SHARE_RULES_VERSION) return '';
+  return encodePlay(record);
+}
+
+export type ShareReplayResult =
+  | { ok: true; record: ReplayRecord; final: GameSnapshot }
+  | { ok: false; reason: VerifyFailReason | 'invalidRun' };
+
+/** 受理されない入力や終点の不一致を弾き、受け手の物理計算から再生記録を作る。UIではWorkerで呼ぶ。 */
+export function shareToReplay(text: string, options?: VerifyOptions): ShareReplayResult {
+  const run = recompute(text, options);
+  if (!run.ok) return run;
+  if (run.result.inputsApplied !== run.play.inputs.length || run.result.ticks !== run.play.endTick) {
+    return { ok: false, reason: 'invalidRun' };
+  }
+  return { ok: true, record: createReplayRecord(run.sim), final: run.sim.getSnapshot() };
+}
+
+function recompute(text: string, options?: VerifyOptions):
+  | { ok: true; play: SharePlay; result: VerifiedPlay; sim: SimulationPort }
+  | { ok: false; reason: VerifyFailReason } {
+  const decoded = decodeReplayShare(text);
   if (!decoded.ok) return decoded;
   const { play } = decoded;
-  if (play.rulesVersion !== SHARE_RULES_VERSION) return { ok: false, reason: 'rulesMismatch' };
 
   try {
     const maxTicks = toMaxTicks(options?.maxTicks);
@@ -82,7 +119,7 @@ export function verifyPlay(text: string, options?: VerifyOptions): VerifyPlayRes
         if (snap.phase === 'active') return { ok: false, reason: 'tooLongToVerify' };
         break;
       }
-      const r = sim.submitLaunch({ originAngleRadians: input.originAngleRadians, vx: input.vx, vy: input.vy });
+      const r = sim.submitLaunch(input);
       if (r.accepted) applied++;
       // 射出のあとも最新を取り直す。いまのルールでは射出は phase を変えないが、変わりうる将来に備える
       // （古い snap の 'active' を信じて進め続けると、終了済みの sim に stepFixed を呼ぶ無限ループになりうる）
@@ -99,6 +136,7 @@ export function verifyPlay(text: string, options?: VerifyOptions): VerifyPlayRes
     return {
       ok: true,
       play,
+      sim,
       result: {
         score: snap.score,
         bestTier: snap.bestTierThisRun,

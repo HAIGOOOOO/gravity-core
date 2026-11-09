@@ -1,9 +1,6 @@
-// 共有文字列の公開面。ほかの層（UI・統合）からはここだけを import する想定。
-// 渡す側: プレイ中は encodeSimulation(sim)（手で値を組むなら encodePlay。endTick を省略すると
-//         「最後の入力の tick」までの再生になる点に注意）。
-// 受け取る側: 貼り付けられた文章なら extractShareText で取り出し、verifyPlay で再生して
-//         得点を計算し直す。止まってはいけない所から呼ぶなら verifyPlay(text, { maxTicks })。
-// 低レベルの道具（./coding）は内部用で、テストが同じフォルダから直接 import する。
+// 送る側はプレイ中なら encodeSimulation、保存の記録からなら encodeReplayShare を使う。
+// 受け取る側は shareToReplayAsync で盤面と得点を計算し直し、結果を再生へ渡す。
+// 文章からコードを取り出す必要がある場合は、先に extractShareText を使う。
 export {
   decodePlay,
   encodePlay,
@@ -14,5 +11,6 @@ export {
 } from './codec';
 export type { DecodeFailReason, DecodePlayResult, EncodePlayArgs, SharePlay } from './codec';
 export { extractShareText } from './extract';
-export { verifyPlay } from './verify';
-export type { VerifiedPlay, VerifyFailReason, VerifyOptions, VerifyPlayResult } from './verify';
+export { decodeReplayShare, encodeReplayShare, shareToReplay, verifyPlay } from './verify';
+export type { ShareReplayResult, VerifiedPlay, VerifyFailReason, VerifyOptions, VerifyPlayResult } from './verify';
+export { shareToReplayAsync, type AsyncShareReplay } from './async';

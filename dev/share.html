@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>共有コードで見る — GRAVITY CORE</title>
+</head>
+<body>
+<main class="replay-page share-page">
+  <header>
+    <p class="eyebrow">GRAVITY CORE / 担当Bの見本</p>
+    <h1>共有コードでプレイを見る</h1>
+    <p>友だちから届いたコードを貼ると、そのプレイの盤面と得点を再現します。</p>
+    <button id="share-jump-to-sender" type="button">自分のコードを作る</button>
+  </header>
+  <div class="replay-layout">
+    <section aria-labelledby="share-receive">
+      <h2 id="share-receive">受け取ったプレイ</h2>
+      <form id="share-form">
+        <label for="share-input">共有コード</label>
+        <textarea id="share-input" rows="4" spellcheck="false" autocapitalize="off"
+          autocomplete="off" aria-describedby="share-help share-status"></textarea>
+        <p id="share-help">コードはここに貼り付けます。受け取り用リンクはブラウザでそのまま開けます。</p>
+        <button type="submit">読み込む</button>
+        <button id="share-cancel" type="button" hidden>読み込みを中止</button>
+      </form>
+      <div id="demo-controls"><button id="share-sample" type="button">見本のプレイを読み込む</button></div>
+      <p id="share-status" role="status"></p>
+    </section>
+    <section id="share-result" aria-labelledby="share-result-title" hidden>
+      <h2 id="share-result-title">再現した最後の盤面</h2>
+      <p id="share-score" class="score"></p>
+      <p id="share-summary"></p>
+      <p><a id="share-replay" href="./replay.html" target="_blank" rel="noopener">再生ページを別タブで開く</a></p>
+      <canvas id="shared-board" aria-label="再現した最後の盤面"></canvas>
+    </section>
+  </div>
+  <details id="share-sender">
+    <summary>自分でプレイしてコードを作る</summary>
+    <p>盤面の外側に見える細い輪の近くを押し、その場で離すと核に落とします。押したまま動かすと、その向きへ投げられます。</p>
+    <button id="sender-play" type="button">プレイを始める</button>
+    <p id="sender-meter"></p>
+    <p id="sender-keys">キーボードでは盤面に移動し、←／→で向きを変え、スペースで落とします。</p>
+    <canvas id="sender-board" tabindex="0" aria-label="操作する盤面" aria-describedby="sender-keys"></canvas>
+    <p id="sender-direction" role="status"></p>
+    <p id="sender-status" role="status"></p>
+    <button id="sender-code" type="button" disabled>一時停止してコードを作る</button>
+    <section id="sender-output" hidden>
+      <label for="sender-text">最後に作った共有コード</label>
+      <textarea id="sender-text" rows="3" readonly></textarea>
+      <p id="sender-size"></p>
+      <button id="sender-copy" type="button">コードをコピー</button>
+      <button id="sender-link" type="button">受け取り用リンクをコピー</button>
+      <p id="sender-copy-status" role="status"></p>
+    </section>
+  </details>
+</main>
+<script type="module" src="/src/dev/share-demo.ts"></script>
+</body>
+</html>
