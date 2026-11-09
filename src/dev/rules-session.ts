@@ -6,7 +6,7 @@ import { createInterventionPreparation, createPressurePractice } from './rules-p
 import { createLessonReplay } from './rules-replay';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
-type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'over' | null;
+type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'loss-avoided' | 'over' | null;
 // 練習の観察時間。外した一投も短く区切り、同じ盤面から試せるようにする。
 const LEARN_OBSERVATION_TICKS = Math.ceil(1.4 * TICK_HZ);
 
@@ -35,7 +35,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
       }
       sim.stepFixed();
     }
-    if (mode === 'loss-repeat') sim = restoreSimulation({ ...sim.exportState(), heat: 99 });
+    sim = restoreSimulation({ ...sim.exportState(), heat: 99 });
   }
   const before = sim.getSnapshot();
   const review = createLessonReplay(before);
@@ -53,7 +53,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
   let lastFusion: { before: number; after: number; cooling: number } | null = null;
 
   function launch(command: LaunchCommand) {
-    if (finished || (preparation && preparation !== 'ready') || ((mode === 'learn' || mode === 'repeat') && !waiting)) return null;
+    if (finished || (preparation && preparation !== 'ready') || ((mode === 'learn' || mode === 'repeat' || mode === 'loss-repeat') && !waiting)) return null;
     const heatBefore = sim.getSnapshot().heat;
     const result = sim.submitLaunch(command);
     if (result.accepted) {
@@ -62,6 +62,8 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
       if (mode === 'repeat') shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
       if (mode === 'learn') learnDeadline = curr.tick + LEARN_OBSERVATION_TICKS;
       if (mode === 'repeat' && shots.length >= 3) finishAt = curr.tick + 1;
+      // 敗因の比較は一投直後まで。別の方角ならその時点で生き残ったことだけを示す。
+      if (mode === 'loss-repeat') finishAt = curr.tick + 1;
     }
     return result;
   }
@@ -89,7 +91,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
       }
     }
     if (curr.phase === 'over') finished = 'over';
-    else if (curr.tick >= finishAt) finished = mode === 'growth' ? 'growth' : mode === 'repeat' ? 'repeat' : 'chain';
+    else if (curr.tick >= finishAt) finished = mode === 'growth' ? 'growth' : mode === 'repeat' ? 'repeat' : mode === 'loss-repeat' ? 'loss-avoided' : 'chain';
     else if (finishAt === Infinity && curr.tick >= learnDeadline) finished = 'try-chain';
     else if (mode === 'collapse' && curr.intervention?.used && curr.intervention.activeLeftSeconds === 0) finished = 'collapse';
     else if (mode === 'collapse' && curr.stats.launches > before.stats.launches && !waiting && curr.intervention?.windowLeftSeconds === 0 && !curr.intervention.used) finished = 'expired';

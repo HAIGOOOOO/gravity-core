@@ -102,6 +102,23 @@ describe('ルールの練習も同じ計算を使う', () => {
     repeat.launch(dropAt(0)); repeat.step();
     expect(repeat.read().finished).toBe('over'); expect(repeat.read().curr.loss).toMatchObject({ kind: 'repeatLaunch', heatAdded: 1 });
   });
+  it('連投の敗因と同じ盤面から反対側に一投すると、加熱せず終了を回避する', () => {
+    const right = createRuleSession('loss-repeat'), left = createRuleSession('loss-repeat');
+    expect(left.before).toEqual(right.before);
+    right.launch(dropAt(0)); right.step();
+    expect(right.read()).toMatchObject({ finished: 'over', shotHeating: 1 });
+    const alternate = dropAt(Math.PI);
+    expect(left.predict(alternate).launchHeat).toBe(0);
+    expect(left.launch(alternate)?.accepted).toBe(true);
+    expect(left.launch(alternate)).toBeNull();
+    left.step();
+    const result = left.read();
+    expect(result).toMatchObject({ finished: 'loss-avoided', shotHeating: 0, running: false, curr: { phase: 'active' } });
+    expect(result.curr.tick).toBe(right.read().curr.tick);
+    expect(result.curr.heat).toBeLessThan(100);
+    left.step();
+    expect(left.read().curr).toBe(result.curr);
+  });
   it('連投は本人の最初の2投を加熱せず、3投目で実加熱し、待機中は進まない', () => {
     const lesson = createRuleSession('repeat');
     expect(lesson.before.recentLaunches).toHaveLength(0);

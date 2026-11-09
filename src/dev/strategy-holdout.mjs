@@ -6,12 +6,13 @@ import { createServer } from 'vite';
 const seedStart = Number(process.argv[2] ?? 1101);
 const count = Number(process.argv[3] ?? 32);
 const experiment = process.argv[4] ?? 'production';
-if (!['production', 'quick', 'cycle3', 'cycle5'].includes(experiment)) throw new Error('実験名が不明です');
-if (!Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
-  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード]');
+const suite = process.argv[5] ?? 'standard';
+if (!['production', 'quick', 'cycle3', 'cycle5', 'cycle8'].includes(experiment)) throw new Error('実験名が不明です');
+if (!['standard', 'tempo'].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
+  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [production|quick|cycle3|cycle5|cycle8] [standard|tempo]');
 }
 const seeds = Array.from({ length: count }, (_, n) => seedStart + n);
-const path = `docs/notes/C/strategy-${experiment}-${seedStart}-${count}.json`;
+const path = `docs/notes/C/strategy-${experiment}${suite === 'standard' ? '' : '-tempo'}-${seedStart}-${count}.json`;
 const server = await createServer({
   configFile: false, server: { middlewareMode: true, ws: false }, appType: 'custom',
   plugins: !experiment.startsWith('cycle') ? [] : [{
@@ -60,10 +61,18 @@ try {
     ['fixed-slow', slow, fixed],
     ['four-slow', slow, four(-Math.PI / 2)],
   ];
-  const cases = experiment === 'production' ? allCases : allCases.filter(([name]) => ['random', 'spiral', 'four', 'four-offset', 'four-jitter'].includes(name));
+  const tempo = [['', fast], ['-medium', Math.round(.75 * TICK_HZ)], ['-slow', slow], ['-slower', Math.round(1.25 * TICK_HZ)]];
+  const cases = suite === 'tempo'
+    ? tempo.flatMap(([suffix, spacing]) => [
+      [`random${suffix}`, spacing, seed => randomBot(seed).decide],
+      [`four${suffix}`, spacing, four(-Math.PI / 4)],
+    ])
+    : experiment === 'production' ? allCases : allCases.filter(([name]) =>
+      ['random', 'spiral', 'four', 'four-offset', 'four-jitter'].includes(name)
+      || experiment === 'cycle8' && ['random-slow', 'four-slow'].includes(name));
   const report = {
     revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-    experiment, seeds, maxSeconds: maxTicks / TICK_HZ, complete: false, summary: [], comparisons: [], runs: [],
+    experiment, suite, seeds, maxSeconds: maxTicks / TICK_HZ, complete: false, summary: [], comparisons: [], runs: [],
   };
   const save = () => writeFileSync(path, JSON.stringify(report, null, 2) + '\n');
   const median = values => {
@@ -96,7 +105,7 @@ try {
         launches: s.stats.launches, bestTier: s.bestTierThisRun, timedOut: s.phase !== 'over' });
     }
     report.runs.push({ strategy, runs });
-    const summary = { strategy, score: median(runs.map(r => r.score)), seconds: median(runs.map(r => r.seconds)),
+    const summary = { strategy, shotSpacingSeconds: spacing / TICK_HZ, score: median(runs.map(r => r.score)), seconds: median(runs.map(r => r.seconds)),
       heatFromShots: median(runs.map(r => r.heatFromShots)), timedOut: runs.filter(r => r.timedOut).length };
     report.summary.push(summary);
     console.log(JSON.stringify(summary));
@@ -104,7 +113,7 @@ try {
   }
   // 同じ種の組を一緒に引き直し、中央値比の標本によるぶれを見る。
   for (const { strategy, runs } of report.runs) {
-    const reference = strategy.endsWith('-slow') ? 'random-slow' : 'random';
+    const reference = suite === 'tempo' ? strategy.replace(/^four/, 'random') : strategy.endsWith('-slow') ? 'random-slow' : 'random';
     if (reference === strategy) continue;
     const other = report.runs.find(row => row.strategy === reference).runs;
     const rng = createRng(23611), ratios = [];
