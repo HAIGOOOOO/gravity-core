@@ -59,7 +59,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     if (result.accepted) {
       armed = mode === 'collapse' && pauseForIntervention;
       running = !armed; waiting = false; curr = sim.getSnapshot(); shotHeating += curr.heat - heatBefore;
-      shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
+      if (mode === 'repeat') shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
       if (mode === 'learn') learnDeadline = curr.tick + LEARN_OBSERVATION_TICKS;
       if (mode === 'repeat' && shots.length >= 3) finishAt = curr.tick + 1;
     }
@@ -92,7 +92,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     else if (curr.tick >= finishAt) finished = mode === 'growth' ? 'growth' : mode === 'repeat' ? 'repeat' : 'chain';
     else if (finishAt === Infinity && curr.tick >= learnDeadline) finished = 'try-chain';
     else if (mode === 'collapse' && curr.intervention?.used && curr.intervention.activeLeftSeconds === 0) finished = 'collapse';
-    else if (mode === 'collapse' && shots.length > 0 && !waiting && curr.intervention?.windowLeftSeconds === 0 && !curr.intervention.used) finished = 'expired';
+    else if (mode === 'collapse' && curr.stats.launches > before.stats.launches && !waiting && curr.intervention?.windowLeftSeconds === 0 && !curr.intervention.used) finished = 'expired';
     if (finished) running = false;
     else if (preparation === 'unlock' && curr.intervention?.unlocked && curr.bodies.some(b => b.tier === 3 && b.radius === TIER_RADIUS[3])) {
       running = false; waiting = true; preparation = 'charge';

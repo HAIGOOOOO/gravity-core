@@ -43,4 +43,11 @@ it('蓄力で同じ時に合体した組も順番に選べる', () => {
     lesson.review.contact(); selected.push(lesson.review.read().focus?.sequence);
   }
   expect(selected.slice(1)).toEqual(fusions.map(e => e.sequence));
+  expect(lesson.review.read().contactNumber).toBe(fusions.length + 1);
+  lesson.review.contact(-1);
+  expect(lesson.review.read().focus?.sequence).toBe(fusions.at(-2)?.sequence);
+  expect(lesson.review.read().contactNumber).toBe(fusions.length);
+  lesson.review.contact();
+  lesson.review.contact();
+  expect(lesson.review.read().contactNumber).toBe(1);
 });
