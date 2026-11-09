@@ -30,6 +30,19 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(result.curr.bodies.find((b) => b.id === result.resultBodyId)?.radius).toBe(TIER_RADIUS[5]);
     expect(lesson.before.bodies).toHaveLength(3);
   });
+  it('連鎖を外した一投は追加の投げを受けず、敗北を待たずに結果で止める', () => {
+    const lesson = createRuleSession('learn');
+    expect(lesson.launch(dropAt(Math.PI / 2))?.accepted).toBe(true);
+    for (let i = 0; i < TICK_HZ; i++) lesson.step();
+    expect(lesson.launch(dropAt(-Math.PI / 2))).toBeNull();
+    for (let i = 0; i < 2 * TICK_HZ; i++) lesson.step();
+    const result = lesson.read();
+    expect(result.finished).toBe('try-chain');
+    expect(result.curr.phase).toBe('active');
+    expect(result.curr.stats.launches).toBe(1);
+    expect(result.maxChain).toBeLessThan(2);
+    lesson.step(); expect(lesson.read().curr).toBe(result.curr);
+  });
   it('崩壊の準備を自分の得点へ加えず、実際の冷却を分けて終了する', () => {
     const lesson = createRuleSession('collapse');
     expect(lesson.read().score).toBe(0); expect(lesson.read().merges).toBe(0);

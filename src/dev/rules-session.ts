@@ -6,7 +6,9 @@ import { createInterventionPreparation, createPressurePractice } from './rules-p
 import { createLessonReplay } from './rules-replay';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
-type Finish = 'chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'over' | null;
+type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'over' | null;
+// 練習の観察時間。外した一投も短く区切り、同じ盤面から試せるようにする。
+const LEARN_OBSERVATION_TICKS = Math.ceil(1.4 * TICK_HZ);
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
 export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForIntervention = false, prepareIntervention = false) {
@@ -41,6 +43,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
   let prev = before, curr = before;
   let running = mode === 'play' || typeof mode === 'number';
   let waiting = !running, finished: Finish = null, finishAt = Infinity;
+  let learnDeadline = Infinity;
   let mergeCooling = 0, interventionCooling = 0, passiveChange = 0, maxChain = 0;
   let overflowHeating = 0, ambientCooling = 0;
   let shotHeating = 0;
@@ -50,13 +53,14 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
   let lastFusion: { before: number; after: number; cooling: number } | null = null;
 
   function launch(command: LaunchCommand) {
-    if (finished || (preparation && preparation !== 'ready') || (mode === 'repeat' && !waiting)) return null;
+    if (finished || (preparation && preparation !== 'ready') || ((mode === 'learn' || mode === 'repeat') && !waiting)) return null;
     const heatBefore = sim.getSnapshot().heat;
     const result = sim.submitLaunch(command);
     if (result.accepted) {
       armed = mode === 'collapse' && pauseForIntervention;
       running = !armed; waiting = false; curr = sim.getSnapshot(); shotHeating += curr.heat - heatBefore;
       shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
+      if (mode === 'learn') learnDeadline = curr.tick + LEARN_OBSERVATION_TICKS;
       if (mode === 'repeat' && shots.length >= 3) finishAt = curr.tick + 1;
     }
     return result;
@@ -86,6 +90,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     }
     if (curr.phase === 'over') finished = 'over';
     else if (curr.tick >= finishAt) finished = mode === 'growth' ? 'growth' : mode === 'repeat' ? 'repeat' : 'chain';
+    else if (finishAt === Infinity && curr.tick >= learnDeadline) finished = 'try-chain';
     else if (mode === 'collapse' && curr.intervention?.used && curr.intervention.activeLeftSeconds === 0) finished = 'collapse';
     else if (mode === 'collapse' && shots.length > 0 && !waiting && curr.intervention?.windowLeftSeconds === 0 && !curr.intervention.used) finished = 'expired';
     if (finished) running = false;
@@ -98,7 +103,7 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
       // 速さの制限を変えず、次の選択ができる時点でだけ教材の時計を止める。
       running = false; waiting = true;
     }
-    if (mode !== 'play') review.record(prev, curr, events);
+    if (mode !== 'play') review.record(prev, curr, events, maxChain);
     return events;
   }
   return {

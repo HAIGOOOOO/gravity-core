@@ -25,5 +25,22 @@ it('長い練習でも直近10秒までに保ち、停止中の再生は進ま�
   const initial = createRuleSession().before, replay = createLessonReplay(initial);
   for (let tick = 1; tick <= 12 * TICK_HZ; tick++) replay.record(initial, { ...initial, tick }, []);
   replay.start(); expect(replay.read().frame!.curr.tick).toBe(2 * TICK_HZ + 1);
+  expect(replay.read().seconds).toBe(0);
   replay.stop(); replay.advance(10); expect(replay.read().frame).toBeNull();
+});
+
+it('蓄力で同じ時に合体した組も順番に選べる', () => {
+  const lesson = createRuleSession('collapse', 21, true, true);
+  lesson.advancePreparation();
+  while (lesson.read().running) lesson.step();
+  lesson.advancePreparation();
+  const events = [];
+  while (lesson.read().running) events.push(...lesson.step());
+  const fusions = events.filter(e => e.kind === 'merge');
+  expect(fusions.some((e, n) => n > 0 && e.tick === fusions[n - 1]!.tick)).toBe(true);
+  const selected = [];
+  for (let n = 0; n < fusions.length + 1; n++) {
+    lesson.review.contact(); selected.push(lesson.review.read().focus?.sequence);
+  }
+  expect(selected.slice(1)).toEqual(fusions.map(e => e.sequence));
 });

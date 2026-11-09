@@ -2,13 +2,14 @@ import type { RuleSession } from './rules-session';
 import { applyLogicalTransform } from '../shared/coords';
 import { LAUNCH_RADIUS } from '../game/constants';
 import { repeatHeatingZones } from './rules-repeat-zones';
-import type { LessonFrame } from './rules-replay';
+import type { GameEvent, GameSnapshot } from '../contracts/game';
+
+export type ContactMark = Readonly<{ prev: GameSnapshot; event: GameEvent }>;
 
 /** 比較の線は見本だけ。実際の天体や入力の位置を書き換えない。 */
-export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession, enabled: boolean, review: LessonFrame | null = null): void {
+export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession, enabled: boolean, snapshot: GameSnapshot, reviewing: boolean, mark?: ContactMark): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  const snapshot = review?.curr ?? study.read().curr;
-  if (!review && study.mode === 'learn' && study.read().waiting) {
+  if (!reviewing && study.mode === 'learn' && study.read().waiting) {
     applyLogicalTransform(ctx); ctx.strokeStyle = '#f6e3aa'; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.arc(0, -LAUNCH_RADIUS, 28, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, -LAUNCH_RADIUS + 35); ctx.lineTo(0, -LAUNCH_RADIUS + 65); ctx.stroke();
@@ -32,16 +33,20 @@ export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession,
       ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 8, 0, Math.PI * 2); ctx.stroke();
     }
   }
-  if (review) {
+  if (mark) {
     applyLogicalTransform(ctx); ctx.lineWidth = 5; ctx.strokeStyle = '#f6e3aa'; ctx.setLineDash([7, 6]);
-    const event = review.events.find(e => e.kind === 'merge' || e.kind === 'supernova');
-    for (const id of event?.bodyIds?.slice(0, 2) ?? []) {
-      const body = review.prev.bodies.find(b => b.id === id);
-      if (body) { ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 3, 0, Math.PI * 2); ctx.stroke(); }
+    for (const id of mark.event.bodyIds?.slice(0, 2) ?? []) {
+      const body = mark.prev.bodies.find(b => b.id === id);
+      if (body) { ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 4, 0, Math.PI * 2); ctx.stroke(); }
     }
-    ctx.setLineDash([]); return;
+    ctx.setLineDash([]);
+    const result = snapshot.bodies.find(b => b.id === mark.event.bodyIds?.[2]);
+    if (result) {
+      ctx.strokeStyle = '#a3efd0';
+      ctx.beginPath(); ctx.arc(result.x, result.y, result.radius + 7, 0, Math.PI * 2); ctx.stroke();
+    }
   }
-  if (!enabled || study.mode !== 'growth' || !study.read().finished) return;
+  if (reviewing || !enabled || study.mode !== 'growth' || !study.read().finished) return;
   applyLogicalTransform(ctx); ctx.lineWidth = 3;
   for (const b of study.before.bodies) {
     ctx.setLineDash([3, 7]); ctx.strokeStyle = '#bdc3bc';
