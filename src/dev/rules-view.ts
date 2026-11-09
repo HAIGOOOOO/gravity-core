@@ -49,7 +49,8 @@ function launch(command: LaunchCommand): void {
 }
 const input = createPointerInput(board, { getSnapshot: () => study.read().curr, predict: (c) => study.predict(c), onAim: (a) => { aim = a; dirty = true; }, onLaunch: launch });
 function begin(mode: RuleMode, navigate = false): void {
-  if (profile) { profile = null; text('profile-result', '練習を切り替えたため、計測を中止しました。'); }
+  text('profile-result', profile ? '練習を切り替えたため、計測を中止しました。' : '');
+  profile = null;
   study = createRuleSession(mode, 21, mode === 'collapse' && el<HTMLInputElement>('guided-collapse').checked, mode === 'collapse'); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
   liveContact = undefined; cueLeft = 0; presentationHold = 0;
   fx.checked = mode === 'play' || practiceFx; syncEffects();
