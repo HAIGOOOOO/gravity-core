@@ -7,12 +7,12 @@ import { createEffectPool } from './pool';
 const theme = { bg: '', text: TIER_COLOR[8], chain: TIER_COLOR[3], danger: TIER_COLOR[4], cool: TIER_COLOR[0], font: 'sans-serif' };
 
 describe('イベントの演出', () => {
-  it('射出は輪だけ、着地は速度で粒子の量が変わる', () => {
+  it('射出の反応を残し、着地は速度で粒子の量が変わる', () => {
     const pool = createEffectPool();
     const effects = createEventEffects(pool, theme);
     effects.handle(sampleEvent('launch'));
-    expect(pool.rings.filter((p) => p.active)).toHaveLength(1);
-    expect(pool.particles.some((p) => p.active)).toBe(false);
+    expect(pool.rings.filter((p) => p.active).length).toBeGreaterThan(1);
+    expect(pool.particles.some((p) => p.active)).toBe(true);
     pool.clear();
     effects.handle({ ...sampleEvent('land'), impactSpeed: 100 });
     const gentle = pool.particles.filter((p) => p.active).length;

@@ -3,7 +3,8 @@
 // ゲームオーバー直前の最後の overLimitStart が、致命的な上昇の始まり。
 // その時点で越えていた天体（BodyView.overLimit）を、原因として返す。
 
-import type { BodyView, GameSnapshot, Tick } from '../contracts/game';
+import type { BodyView, GameSnapshot, LossSummary, Tick } from '../contracts/game';
+import { copyLoss } from '../game/loss';
 import { runReplay, type ReplayFailure, type ReplayRun } from './engine';
 import type { ReplayRecord } from './record';
 
@@ -16,6 +17,7 @@ export type DefeatCause = Readonly<{
   culprits: readonly BodyView[];
   /** 熱量が上がり始めた時点の盤面全体（巻き戻し表示に使う） */
   snapshot: GameSnapshot;
+  loss?: LossSummary;
 }>;
 
 export type CauseResult = Readonly<{ ok: true; cause: DefeatCause | null }> | ReplayFailure;
@@ -35,11 +37,13 @@ export function causeFromRun(run: ReplayRun): DefeatCause | null {
   if (run.final.phase !== 'over') return null;
   // 開始時点から越え続けていた等で overLimitStart が無い異例の記録向け。
   // その場合は終了時点の盤面を「上がり始め」とみなす。
-  const atRise = run.lastHeatRise ?? run.final;
+  const loss = run.final.loss;
+  const atRise = loss && loss.kind !== 'overLimit' ? run.final : run.lastHeatRise ?? run.final;
   return {
       gameOverTick: run.final.tick,
       heatRiseTick: atRise.tick,
       culprits: atRise.bodies.filter((b) => b.overLimit),
       snapshot: atRise,
+      ...(loss ? { loss: copyLoss(loss) } : {}),
   };
 }

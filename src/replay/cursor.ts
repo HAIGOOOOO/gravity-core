@@ -1,17 +1,20 @@
 // 復元した計算は最大 1 本だけ持つ。巻き戻しでも直前の保存点から再開する。
-import type { LaunchInput, Tick } from '../contracts/game';
+import type { Tick } from '../contracts/game';
+import type { InputAction } from '../shared/input-timeline';
 import { restoreSimulation, type Simulation } from '../game/simulation';
 import type { ReplayCheckpoint } from './engine';
 
 export function createReplayCursor(
-  states: readonly ReplayCheckpoint[], inputs: readonly LaunchInput[], endTick: Tick,
+  states: readonly ReplayCheckpoint[], inputs: readonly InputAction[], endTick: Tick,
 ) {
   let sim: Simulation | null = null;
   let nextInput = 0;
   const applyDue = (): void => {
     const tick = sim!.getSnapshot().tick;
     while (nextInput < inputs.length && inputs[nextInput]!.tick === tick) {
-      sim!.submitLaunch(inputs[nextInput++]!);
+      const action = inputs[nextInput++]!;
+      if (action.kind === 'launch') sim!.submitLaunch(action.input);
+      else sim!.submitGravity({ kind: 'collapse' });
     }
   };
   return {

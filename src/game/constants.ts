@@ -17,6 +17,8 @@ export const CORE_RADIUS = 44;
 export const LIMIT_RADIUS = 320;
 /** 射出リング。撃つ天体の中心が置かれる半径 */
 export const LAUNCH_RADIUS = 425;
+/** 画面の同じ方角が山の同じ場所になり続けないよう、盤面全体を時計回りに毎秒30度流す。 */
+export const BOARD_ROTATION_RADIANS_PER_SECOND = Math.PI / 6;
 /** これより内側の押下は照準にしない（角度が不安定なため） */
 export const AIM_MIN_RADIUS = 60;
 
@@ -88,6 +90,19 @@ export const HEAT_COOL_PER_SECOND = 14;
 export const LIMIT_GRACE_SECONDS = 1.2;
 /** 超新星で下がる熱量 */
 export const HEAT_SUPERNOVA = 40;
+/** 合体した瞬間の冷却。連鎖は最初の合体を1と数える。 */
+export const HEAT_MERGE_COOL = 2;
+export const HEAT_CHAIN_COOL_STEP = 3;
+export const HEAT_CHAIN_COOL_MAX_STEPS = 4;
+/** 衛星を作るまでは連投で加熱しない。最初の2投も同じ方向へ狙える。 */
+export const REPEAT_LAUNCH_UNLOCK_TIER = 3;
+export const REPEAT_LAUNCH_MEMORY = 8;
+export const REPEAT_LAUNCH_ANGLE = Math.PI / 12;
+export const REPEAT_LAUNCH_FREE_PREVIOUS = 1;
+export const REPEAT_LAUNCH_HEAT_STEP = 2;
+/** 敗北時の「近い合体相手」は、育ち切った衛星以上・実際の隙間4px以内だけ。 */
+export const LOSS_NEAR_FUSION_GAP = 4;
+export const LOSS_NEAR_FUSION_MIN_TIER = 3;
 /** 安定 | 上昇 | 過熱 | 臨界 の境目 */
 export const HEAT_STATE_LIMITS = [25, 50, 75] as const;
 
@@ -101,9 +116,13 @@ export const CHAIN_WINDOW_SECONDS = 2.5;
 export const CHAIN_GRACE_SECONDS = 0.085;
 export const CHAIN_STEP = 0.5;
 export const CHAIN_MULT_MAX = 3.0;
+/** 名前・音・動きを増やす演出段階の上限。連鎖数自体には上限を設けない。 */
+export const CHAIN_STAGE_MAX = 5;
 
 // 次の天体（到達した最高 Tier が minBest 以上のときの確率。下の行が優先）
 export const QUEUE_SIZE = 3;
+/** 現在の確率表の最小単位5%を、整数個の天体にする。 */
+export const QUEUE_BAG_SIZE = 20;
 export const QUEUE_TABLE = [
   { minBest: 0, weights: [0.7, 0.3] },
   { minBest: 2, weights: [0.45, 0.35, 0.2] },
@@ -226,9 +245,13 @@ export const CHARGED_PULL_RANGE = 200;
 export const CHARGED_PULL_ACCEL = 3000;
 /** 重力弾が引き寄せ続ける秒数 */
 export const CHARGED_PULL_SECONDS = 0.9;
-// 崩壊: 合体でためて、満タンなら核をタップ。山全体が締まり、同じ天体が寄り、熱量が下がる。
+// 崩壊: 合体でため、満タンなら射出後の窓で使う。山全体が締まり、同じ天体が寄り、熱量が下がる。
 /** 崩壊がたまる量。合体 1 回で 1、連鎖 n の合体で n たまる */
 export const BURST_MAX = 12;
+/** 本番で崩壊を知る段階。最初からすべての操作を並べない。 */
+export const INTERVENTION_UNLOCK_TIER = 3;
+/** 直前の射出からこの秒数以内に一度だけ介入できる。次の射出で窓を更新する。 */
+export const INTERVENTION_WINDOW_SECONDS = 1.2;
 export const COLLAPSE_SECONDS = 1.2;
 /** 崩壊の間、同じ天体が引き合う隙間の上限 */
 export const COLLAPSE_PULL_RANGE = 160;

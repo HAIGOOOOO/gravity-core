@@ -7,6 +7,7 @@
 
 import type { RunStats, Tier } from '../contracts/game';
 import { createSimulation } from '../game/simulation';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import {
   decodePlay,
   SHARE_RULES_VERSION,
@@ -70,7 +71,9 @@ export function verifyPlay(text: string, options?: VerifyOptions): VerifyPlayRes
     let snap = sim.getSnapshot();
     // stepFixed は tick を 1 ずつ進めるので、ループは snap.tick === 目標 tick で必ず止まる
     const canStep = (): boolean => snap.phase === 'active' && snap.tick < maxTicks;
-    for (const input of play.inputs) {
+    const actions = expandLaunchInputs(play.inputs, play.endTick);
+    if (!actions) return { ok: false, reason: 'badData' };
+    for (const input of actions) {
       while (snap.tick < input.tick && canStep()) {
         sim.stepFixed();
         snap = sim.getSnapshot();
@@ -82,8 +85,10 @@ export function verifyPlay(text: string, options?: VerifyOptions): VerifyPlayRes
         if (snap.phase === 'active') return { ok: false, reason: 'tooLongToVerify' };
         break;
       }
-      const r = sim.submitLaunch({ originAngleRadians: input.originAngleRadians, vx: input.vx, vy: input.vy });
-      if (r.accepted) applied++;
+      if (input.kind === 'launch') {
+        const r = sim.submitLaunch(input.input);
+        if (r.accepted) applied++;
+      } else if (!sim.submitGravity({ kind: 'collapse' }).accepted) return { ok: false, reason: 'badData' };
       // 射出のあとも最新を取り直す。いまのルールでは射出は phase を変えないが、変わりうる将来に備える
       // （古い snap の 'active' を信じて進め続けると、終了済みの sim に stepFixed を呼ぶ無限ループになりうる）
       snap = sim.getSnapshot();

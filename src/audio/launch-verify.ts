@@ -28,10 +28,11 @@ export async function verifyLaunch() {
   voices.setVolume(AUDIO.master);
   let maxVoices = 0, accepted = 0, silentEvents = 0, partialEvents = 0;
   const play = (index: number) => {
-    const count = voices.play(eventTones({ kind: 'launch', sourceTier: (index % 5) as Tier, sequence: index + 100, tick: 0 }));
+    const tones = eventTones({ kind: 'launch', sourceTier: (index % 5) as Tier, sequence: index + 100, tick: 0 });
+    const count = voices.play(tones);
     accepted += count;
     if (count === 0) silentEvents++;
-    else if (count < 3) partialEvents++;
+    else if (count < tones.length) partialEvents++;
     maxVoices = Math.max(maxVoices, voices.count);
   };
   play(0);

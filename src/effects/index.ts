@@ -6,8 +6,11 @@ import { REDUCED_RING_SECONDS } from './motion';
 import { createEffectPool, type EffectPool } from './pool';
 import { createPresentation } from './presentation';
 import { readTheme } from './theme';
+import { createJuiceEffects } from './juice';
+import { createCoolingReceipt } from './cooling';
 
 const pools = new WeakMap<HTMLCanvasElement, EffectPool>();
+const juiceLayers = new WeakMap<HTMLCanvasElement, ReturnType<typeof createJuiceEffects>>();
 
 /** 見本ページの負荷確認用。ゲーム側の受け渡しの型は増やさない。 */
 export function inspectEffects(canvas: HTMLCanvasElement) {
@@ -16,6 +19,8 @@ export function inspectEffects(canvas: HTMLCanvasElement) {
     particles: pool?.particles.reduce((sum, p) => sum + Number(p.active), 0) ?? 0,
     rings: pool?.rings.reduce((sum, p) => sum + Number(p.active), 0) ?? 0,
     texts: pool?.texts.reduce((sum, p) => sum + Number(p.active), 0) ?? 0,
+    bursts: juiceLayers.get(canvas)?.count ?? 0,
+    layers: juiceLayers.get(canvas)?.layers ?? 0,
   };
 }
 
@@ -27,6 +32,9 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
   const theme = readTheme(canvas);
   const events = createEventEffects(pool, theme);
   const presentation = createPresentation(shakeTarget, theme);
+  const juice = createJuiceEffects(shakeTarget, theme);
+  const cooling = createCoolingReceipt();
+  juiceLayers.set(canvas, juice);
 
   return {
     resize(cssSize) {
@@ -34,18 +42,20 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       Object.assign(theme, readTheme(canvas));
     },
     handleEvents(batch, snapshot) {
-      void snapshot;
+      juice.sync(snapshot);
       for (const event of batch) {
-        events.handle(event);
+        cooling.handle(event);
         if (event.kind === 'merge' || event.kind === 'supernova') {
-          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova');
-        }
+          juice.handle(event, snapshot);
+        } else events.handle(event);
       }
     },
     update(seconds) {
       pool.update(seconds);
       events.update(seconds);
       presentation.update(seconds);
+      juice.update(seconds);
+      cooling.update(seconds);
     },
     draw() {
       if (!ctx) return;
@@ -55,13 +65,16 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       applyLogicalTransform(ctx);
       events.draw(ctx);
       drawPool(ctx, pool, theme);
+      juice.draw(ctx);
       presentation.draw(ctx);
+      cooling.draw(ctx, theme);
       ctx.restore();
     },
     playGameOver() { presentation.gameOver(); },
     setReducedMotion(on) {
       events.setReduced(on);
       presentation.setReduced(on);
+      juice.setReduced(on);
       if (!on) return;
       for (const particle of pool.particles) particle.active = false;
       for (const ring of pool.rings) {
@@ -74,11 +87,14 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     clear() {
       events.clear();
       presentation.clear();
+      juice.clear();
+      cooling.clear();
       pool.clear();
       if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     },
+    timeScale() { return juice.timeScale(); },
   };
 }

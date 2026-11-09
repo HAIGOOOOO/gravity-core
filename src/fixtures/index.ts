@@ -92,6 +92,8 @@ export function sampleEvent(kind: GameEventKind, tier: Tier = 0, x = 160, y = -1
       };
     case 'supernova':
       return { ...base, sourceTier: 8, bodyIds: [1, 2], scoreDelta: 45000, heatDelta: -40, chain };
+    case 'collapse':
+      return { ...base, x: 0, y: 0 };
     case 'overLimitStart':
     case 'overLimitEnd':
     case 'gameOver':

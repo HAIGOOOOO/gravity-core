@@ -16,6 +16,7 @@ export function createAudioManager(): AudioManager {
   let volume = 70;
   let suspended = false;
   let silenceUntil = 0;
+  let lastCritical = -Infinity;
   const land = createRateGate(AUDIO.landCount, AUDIO.landWindow);
 
   function available(): boolean {
@@ -54,13 +55,24 @@ export function createAudioManager(): AudioManager {
         voices.play(eventTones(event));
       }
     },
-    // 臨界・終了・画面の音は手順 5 で追加する。
-    setCritical() {},
-    play() {},
+    setCritical(on) {
+      if (!on) { lastCritical = -Infinity; return; }
+      if (!available() || !context || !voices || context.currentTime < silenceUntil || context.currentTime - lastCritical < AUDIO.criticalInterval / 1000) return;
+      lastCritical = context.currentTime;
+      voices.play([{ frequency: 440, endFrequency: 330, wave: 'triangle', gain: 0.14, seconds: 0.13, delay: 0 },
+        { frequency: 330, wave: 'sine', gain: 0.05, seconds: 0.09, delay: 0.15 }]);
+    },
+    play(sound) {
+      if (!available() || !voices) return;
+      voices.play(sound === 'button'
+        ? [{ frequency: 880, endFrequency: 440, wave: 'sine', gain: 0.09, seconds: 0.07, delay: 0, attackSeconds: 0.003 }]
+        : [523, 659, 784, 1046].map((frequency, i) => ({ frequency, wave: 'sine', gain: 0.12, seconds: 0.55, delay: i * 0.075, pan: i % 2 ? 0.4 : -0.4 })));
+    },
     suspend() {
       suspended = true;
       voices?.stop();
       land.reset();
+      lastCritical = -Infinity;
       if (context) void context.suspend().catch(() => {});
     },
     resume() {

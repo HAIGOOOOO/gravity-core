@@ -1,0 +1,915 @@
+{
+  "sample": "seeds 801-816, 3 strategies, max 3min; ordinary simulated play only",
+  "runs": 48,
+  "overLimit": 31,
+  "nearFusion": 0,
+  "clockAndEndingMatches": true,
+  "records": [
+    {
+      "strategy": "random",
+      "seed": 801,
+      "tick": 13579,
+      "score": 352270,
+      "phase": "over",
+      "steps": 13579,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13579,
+        "culprit": {
+          "id": 391,
+          "tier": 5,
+          "x": 277.7948036199129,
+          "y": -75.84495524237256,
+          "radius": 52
+        },
+        "overflowPx": 19.96251518894519
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 802,
+      "tick": 12061,
+      "score": 279040,
+      "phase": "over",
+      "steps": 12061,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 12061,
+        "culprit": {
+          "id": 330,
+          "tier": 4,
+          "x": 211.99281971104685,
+          "y": 196.4084271630778,
+          "radius": 41
+        },
+        "overflowPx": 9.993470289061122
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 803,
+      "tick": 13840,
+      "score": 374930,
+      "phase": "over",
+      "steps": 13840,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13840,
+        "culprit": {
+          "id": 408,
+          "tier": 4,
+          "x": -54.65555135833184,
+          "y": -315.09843175847976,
+          "radius": 41
+        },
+        "overflowPx": 40.80345681517667
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 804,
+      "tick": 13897,
+      "score": 346190,
+      "phase": "over",
+      "steps": 13897,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13897,
+        "culprit": {
+          "id": 414,
+          "tier": 4,
+          "x": 196.64160874278792,
+          "y": -223.4111948234466,
+          "radius": 41
+        },
+        "overflowPx": 18.62473731427582
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 805,
+      "tick": 14227,
+      "score": 393780,
+      "phase": "over",
+      "steps": 14227,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 14227,
+        "culprit": {
+          "id": 420,
+          "tier": 3,
+          "x": -114.98287732891114,
+          "y": 270.747275668891,
+          "radius": 32
+        },
+        "overflowPx": 6.151575486112108
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 806,
+      "tick": 9345,
+      "score": 133250,
+      "phase": "over",
+      "steps": 9345,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 9345,
+        "culprit": {
+          "id": 250,
+          "tier": 4,
+          "x": 50.729321695099095,
+          "y": -301.81534552475927,
+          "radius": 41
+        },
+        "overflowPx": 27.04896156313731
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 807,
+      "tick": 14017,
+      "score": 364900,
+      "phase": "over",
+      "steps": 14017,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 14017,
+        "culprit": {
+          "id": 411,
+          "tier": 4,
+          "x": 120.06207112838895,
+          "y": 278.8390904157946,
+          "radius": 41
+        },
+        "overflowPx": 24.58876670184287
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 808,
+      "tick": 12312,
+      "score": 262310,
+      "phase": "over",
+      "steps": 12312,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 12312,
+        "culprit": {
+          "id": 352,
+          "tier": 4,
+          "x": 65.42775184883796,
+          "y": 319.53487332413283,
+          "radius": 41
+        },
+        "overflowPx": 47.16456886403637
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 809,
+      "tick": 13004,
+      "score": 280870,
+      "phase": "over",
+      "steps": 13004,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13004,
+        "culprit": {
+          "id": 360,
+          "tier": 2,
+          "x": 187.8783799000148,
+          "y": 250.3933259995736,
+          "radius": 25
+        },
+        "overflowPx": 18.04169584734717
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 810,
+      "tick": 11811,
+      "score": 258830,
+      "phase": "over",
+      "steps": 11811,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 11811,
+        "culprit": {
+          "id": 330,
+          "tier": 4,
+          "x": -265.19633328910965,
+          "y": -108.7920246007518,
+          "radius": 41
+        },
+        "overflowPx": 7.644029776862965
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 811,
+      "tick": 13816,
+      "score": 309400,
+      "phase": "over",
+      "steps": 13816,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13816,
+        "culprit": {
+          "id": 406,
+          "tier": 3,
+          "x": 157.22934837858264,
+          "y": -270.1831129907789,
+          "radius": 32
+        },
+        "overflowPx": 24.601955427252108
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 812,
+      "tick": 13643,
+      "score": 294210,
+      "phase": "over",
+      "steps": 13643,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13643,
+        "culprit": {
+          "id": 385,
+          "tier": 4,
+          "x": -19.826051493816344,
+          "y": -290.93146709972916,
+          "radius": 41
+        },
+        "overflowPx": 12.606225699377433
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 813,
+      "tick": 11616,
+      "score": 201320,
+      "phase": "over",
+      "steps": 11616,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 11616,
+        "culprit": {
+          "id": 321,
+          "tier": 4,
+          "x": 146.89176760094955,
+          "y": -241.21567508923417,
+          "radius": 41
+        },
+        "overflowPx": 3.4220127711123496
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 814,
+      "tick": 15176,
+      "score": 502490,
+      "phase": "over",
+      "steps": 15176,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 15176,
+        "culprit": {
+          "id": 401,
+          "tier": 4,
+          "x": 212.67592178724334,
+          "y": -181.46780398839627,
+          "radius": 41
+        },
+        "overflowPx": 0.5739823238647546
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 815,
+      "tick": 13561,
+      "score": 393420,
+      "phase": "over",
+      "steps": 13561,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 13561,
+        "angleRadians": 3.269785318037392,
+        "heatAdded": 0.43333333333313817
+      }
+    },
+    {
+      "strategy": "random",
+      "seed": 816,
+      "tick": 13556,
+      "score": 430620,
+      "phase": "over",
+      "steps": 13556,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13556,
+        "culprit": {
+          "id": 313,
+          "tier": 4,
+          "x": 279.41200219568327,
+          "y": -29.734694204079815,
+          "radius": 41
+        },
+        "overflowPx": 1.9897133533728493
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 801,
+      "tick": 13448,
+      "score": 307180,
+      "phase": "over",
+      "steps": 13448,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13448,
+        "culprit": {
+          "id": 393,
+          "tier": 3,
+          "x": 170.70052533486157,
+          "y": 285.8910962222047,
+          "radius": 32
+        },
+        "overflowPx": 44.975056496326204
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 802,
+      "tick": 13283,
+      "score": 305320,
+      "phase": "over",
+      "steps": 13283,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13283,
+        "culprit": {
+          "id": 356,
+          "tier": 3,
+          "x": -226.30377304085803,
+          "y": -196.72707663919817,
+          "radius": 32
+        },
+        "overflowPx": 11.858200447366698
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 803,
+      "tick": 13968,
+      "score": 374850,
+      "phase": "over",
+      "steps": 13968,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13968,
+        "culprit": {
+          "id": 398,
+          "tier": 4,
+          "x": 23.231917415072225,
+          "y": 314.7248363151051,
+          "radius": 41
+        },
+        "overflowPx": 36.58112202783997
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 804,
+      "tick": 13430,
+      "score": 303590,
+      "phase": "over",
+      "steps": 13430,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13430,
+        "culprit": {
+          "id": 384,
+          "tier": 1,
+          "x": 254.724861107006,
+          "y": -280.11781797106386,
+          "radius": 19
+        },
+        "overflowPx": 77.61688658966807
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 805,
+      "tick": 14050,
+      "score": 433890,
+      "phase": "over",
+      "steps": 14050,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 14050,
+        "culprit": {
+          "id": 418,
+          "tier": 3,
+          "x": -298.7879596931734,
+          "y": 44.88659200464687,
+          "radius": 32
+        },
+        "overflowPx": 14.140780099941196
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 806,
+      "tick": 13771,
+      "score": 394830,
+      "phase": "over",
+      "steps": 13771,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13771,
+        "culprit": {
+          "id": 367,
+          "tier": 4,
+          "x": 166.32611458662433,
+          "y": 228.85598981170477,
+          "radius": 41
+        },
+        "overflowPx": 3.912425436172782
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 807,
+      "tick": 11144,
+      "score": 235150,
+      "phase": "over",
+      "steps": 11144,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 11144,
+        "culprit": {
+          "id": 309,
+          "tier": 5,
+          "x": 158.4103170208702,
+          "y": -266.7590666253522,
+          "radius": 52
+        },
+        "overflowPx": 42.248655380618345
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 808,
+      "tick": 15758,
+      "score": 505470,
+      "phase": "over",
+      "steps": 15758,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 15758,
+        "culprit": {
+          "id": 475,
+          "tier": 2,
+          "x": 53.8399059094753,
+          "y": 294.295925671524,
+          "radius": 25
+        },
+        "overflowPx": 4.180258932972265
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 809,
+      "tick": 14317,
+      "score": 346860,
+      "phase": "over",
+      "steps": 14317,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 14317,
+        "culprit": {
+          "id": 410,
+          "tier": 1,
+          "x": 94.93418185521125,
+          "y": 294.85672460398297,
+          "radius": 19
+        },
+        "overflowPx": 8.762791388357982
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 810,
+      "tick": 13502,
+      "score": 381170,
+      "phase": "over",
+      "steps": 13502,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13502,
+        "culprit": {
+          "id": 397,
+          "tier": 5,
+          "x": -30.50892721570485,
+          "y": 283.21158174646257,
+          "radius": 52
+        },
+        "overflowPx": 16.85012668978476
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 811,
+      "tick": 11298,
+      "score": 257150,
+      "phase": "over",
+      "steps": 11298,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 11298,
+        "culprit": {
+          "id": 291,
+          "tier": 6,
+          "x": -232.61265009923977,
+          "y": 137.26881859610594,
+          "radius": 66
+        },
+        "overflowPx": 16.095119439359735
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 812,
+      "tick": 11740,
+      "score": 249300,
+      "phase": "over",
+      "steps": 11740,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 11740,
+        "culprit": {
+          "id": 325,
+          "tier": 4,
+          "x": 6.100686852533268,
+          "y": 298.00184002425203,
+          "radius": 41
+        },
+        "overflowPx": 19.06428004360498
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 813,
+      "tick": 12438,
+      "score": 342450,
+      "phase": "over",
+      "steps": 12438,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 12438,
+        "culprit": {
+          "id": 358,
+          "tier": 4,
+          "x": 183.3995209573573,
+          "y": -210.92318087144557,
+          "radius": 41
+        },
+        "overflowPx": 0.506659162741073
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 814,
+      "tick": 11199,
+      "score": 167260,
+      "phase": "over",
+      "steps": 11199,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 11199,
+        "culprit": {
+          "id": 303,
+          "tier": 4,
+          "x": -13.445473221992224,
+          "y": 302.5062235949147,
+          "radius": 41
+        },
+        "overflowPx": 23.804881175683533
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 815,
+      "tick": 13846,
+      "score": 292870,
+      "phase": "over",
+      "steps": 13846,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13846,
+        "culprit": {
+          "id": 396,
+          "tier": 2,
+          "x": 206.97537874175308,
+          "y": 239.03948691875678,
+          "radius": 25
+        },
+        "overflowPx": 21.194060209350937
+      }
+    },
+    {
+      "strategy": "spiral",
+      "seed": 816,
+      "tick": 13598,
+      "score": 336110,
+      "phase": "over",
+      "steps": 13598,
+      "endings": 1,
+      "loss": {
+        "kind": "overLimit",
+        "tick": 13598,
+        "culprit": {
+          "id": 406,
+          "tier": 3,
+          "x": 365.812819773168,
+          "y": 28.736004631945587,
+          "radius": 32
+        },
+        "overflowPx": 78.93974583384045
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 801,
+      "tick": 1741,
+      "score": 7270,
+      "phase": "over",
+      "steps": 1741,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 1741,
+        "angleRadians": 0,
+        "heatAdded": 12.999999999997698
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 802,
+      "tick": 2161,
+      "score": 9900,
+      "phase": "over",
+      "steps": 2161,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2161,
+        "angleRadians": 0,
+        "heatAdded": 7.999999999996987
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 803,
+      "tick": 2161,
+      "score": 9420,
+      "phase": "over",
+      "steps": 2161,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2161,
+        "angleRadians": 0,
+        "heatAdded": 13.99999999999848
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 804,
+      "tick": 2581,
+      "score": 12580,
+      "phase": "over",
+      "steps": 2581,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2581,
+        "angleRadians": 0,
+        "heatAdded": 10.999999999998252
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 805,
+      "tick": 1861,
+      "score": 6890,
+      "phase": "over",
+      "steps": 1861,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 1861,
+        "angleRadians": 0,
+        "heatAdded": 10.99999999999801
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 806,
+      "tick": 2281,
+      "score": 8710,
+      "phase": "over",
+      "steps": 2281,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2281,
+        "angleRadians": 0,
+        "heatAdded": 12.999999999997755
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 807,
+      "tick": 2041,
+      "score": 9060,
+      "phase": "over",
+      "steps": 2041,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2041,
+        "angleRadians": 0,
+        "heatAdded": 9.999999999997414
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 808,
+      "tick": 2101,
+      "score": 6800,
+      "phase": "over",
+      "steps": 2101,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2101,
+        "angleRadians": 0,
+        "heatAdded": 8.999999999997783
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 809,
+      "tick": 2101,
+      "score": 9640,
+      "phase": "over",
+      "steps": 2101,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2101,
+        "angleRadians": 0,
+        "heatAdded": 11.099999999997905
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 810,
+      "tick": 2221,
+      "score": 12870,
+      "phase": "over",
+      "steps": 2221,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2221,
+        "angleRadians": 0,
+        "heatAdded": 12.999999999997087
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 811,
+      "tick": 1741,
+      "score": 8750,
+      "phase": "over",
+      "steps": 1741,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 1741,
+        "angleRadians": 0,
+        "heatAdded": 10.999999999995794
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 812,
+      "tick": 2881,
+      "score": 23240,
+      "phase": "over",
+      "steps": 2881,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2881,
+        "angleRadians": 0,
+        "heatAdded": 10.999999999997272
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 813,
+      "tick": 1621,
+      "score": 4480,
+      "phase": "over",
+      "steps": 1621,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 1621,
+        "angleRadians": 0,
+        "heatAdded": 10.999999999998536
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 814,
+      "tick": 2461,
+      "score": 9930,
+      "phase": "over",
+      "steps": 2461,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2461,
+        "angleRadians": 0,
+        "heatAdded": 8.999999999997584
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 815,
+      "tick": 2881,
+      "score": 19470,
+      "phase": "over",
+      "steps": 2881,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2881,
+        "angleRadians": 0,
+        "heatAdded": 12.999999999996646
+      }
+    },
+    {
+      "strategy": "fixed",
+      "seed": 816,
+      "tick": 2941,
+      "score": 22750,
+      "phase": "over",
+      "steps": 2941,
+      "endings": 1,
+      "loss": {
+        "kind": "repeatLaunch",
+        "tick": 2941,
+        "angleRadians": 0,
+        "heatAdded": 8.999999999994913
+      }
+    }
+  ]
+}
