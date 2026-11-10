@@ -12,6 +12,7 @@ const MAX_CHECKPOINTS = 720;
 
 export type CapturedReplay = Readonly<{
   record: ReplayRecord;
+  final: GameSnapshot;
   highlights: readonly ReplayHighlight[];
   cause: DefeatCause | null;
   /** 結果の表示だけなら呼ばなくてよい。プレイヤーにも同じ計算結果を渡す。 */
@@ -85,7 +86,7 @@ export function createReplayCapture(seed: number, setup?: SimulationSetup): {
         checkpointEvery: every, critical, lastHeatRise, final: sim.getSnapshot(),
       };
       cached = {
-        record, highlights: highlightsFromRun(run), cause: causeFromRun(run),
+        record, final: run.final, highlights: highlightsFromRun(run), cause: causeFromRun(run),
         createPlayer: () => playerFromRun(record, run),
       };
       finishedRevision = revision;

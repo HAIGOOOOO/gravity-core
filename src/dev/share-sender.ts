@@ -1,10 +1,11 @@
 import type { AimView } from '../contracts/app';
 import type { LaunchCommand } from '../contracts/game';
 import { DT, TICK_HZ } from '../game/constants';
-import { createSimulation } from '../game/simulation';
+import { createReplayCapture } from '../replay/capture';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
-import { encodeSimulation } from '../share';
+import { encodeReplayShare, type ResultImageSource } from '../share';
+import { openResultImage } from './share-image-dialog';
 import { aimVelocity } from '../shared/launch';
 
 export function setupShareSender(): void {
@@ -25,7 +26,9 @@ export function setupShareSender(): void {
   const direction = document.querySelector<HTMLElement>('#sender-direction')!;
   const meter = document.querySelector<HTMLElement>('#sender-meter')!;
   const renderer = createBoardRenderer(canvas);
-  let sim = createSimulation(7);
+  let capture = createReplayCapture(7);
+  let sim = capture.simulation;
+  let lastImage: ResultImageSource | null = null;
   let aim: AimView | null = null;
   let bearing = 0;
   let frame = 0;
@@ -88,7 +91,8 @@ export function setupShareSender(): void {
   play.addEventListener('click', () => {
     if (frame) { pause(); return; }
     if (sim.getSnapshot().phase === 'over') {
-      sim = createSimulation(7);
+      capture = createReplayCapture(7);
+      sim = capture.simulation;
       left = 0;
     }
     play.textContent = '一時停止';
@@ -100,9 +104,11 @@ export function setupShareSender(): void {
   });
   code.addEventListener('click', () => {
     pause();
-    const nextCode = encodeSimulation(sim);
+    const finished = capture.finish();
+    const nextCode = encodeReplayShare(finished.record);
     if (!nextCode) { status.textContent = 'このプレイをコードにできませんでした。'; return; }
     text.value = nextCode;
+    lastImage = { final: finished.final, highlights: finished.highlights };
     copyStatus.textContent = '';
     const canLink = receiverUrl().length <= 2000;
     document.querySelector<HTMLButtonElement>('#sender-link')!.disabled = !canLink;
@@ -110,6 +116,9 @@ export function setupShareSender(): void {
     output.hidden = false;
     status.textContent = '共有コードを作りました。';
     document.querySelector('#sender-size')!.textContent = `${meter.textContent} ／ コード ${text.value.length.toLocaleString()}文字${canLink ? '' : '（コードをコピーして送れます）'}`;
+  });
+  document.querySelector('#sender-image')!.addEventListener('click', () => {
+    if (lastImage) openResultImage(lastImage, '自分で作ったプレイの記録');
   });
   function receiverUrl(): string {
     const url = new URL(location.href);

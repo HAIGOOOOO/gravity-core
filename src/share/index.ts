@@ -14,3 +14,4 @@ export { extractShareText } from './extract';
 export { decodeReplayShare, encodeReplayShare, shareToReplay, verifyPlay } from './verify';
 export type { ShareReplayResult, VerifiedPlay, VerifyFailReason, VerifyOptions, VerifyPlayResult } from './verify';
 export { shareToReplayAsync, type AsyncShareReplay } from './async';
+export { createResultImage, type ResultImageSource } from './result-image';

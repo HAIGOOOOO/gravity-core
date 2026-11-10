@@ -8,6 +8,7 @@ import {
   shareToReplayAsync, type AsyncShareReplay,
 } from '../share';
 import { LONG_REPLAY_TEXT } from './replay-long-sample';
+import { openResultImage } from './share-image-dialog';
 import { setupShareSender } from './share-sender';
 
 const form = document.querySelector<HTMLFormElement>('#share-form')!;
@@ -17,6 +18,7 @@ const cancel = document.querySelector<HTMLButtonElement>('#share-cancel')!;
 const result = document.querySelector<HTMLElement>('#share-result')!;
 const board = document.querySelector<HTMLCanvasElement>('#shared-board')!;
 const renderer = createBoardRenderer(board);
+const image = document.querySelector<HTMLButtonElement>('#share-result-image')!;
 const replay = document.querySelector<HTMLAnchorElement>('#share-replay')!;
 type Selection = { code: string; sample: boolean };
 let pending: AbortController | null = null;
@@ -103,12 +105,21 @@ cancel.addEventListener('click', () => {
   status.textContent = failure.cancelled + (verified ? '表示中の結果は前に開いた記録です。' : '');
   input.focus();
 });
-document.querySelector('#share-sample')!.addEventListener('click', () => {
+async function loadSample(): Promise<void> {
   const sample = parseReplay(LONG_REPLAY_TEXT);
   const code = sample && encodeReplayShare(sample);
   if (!code) { status.textContent = 'この版の見本は準備中です。受け取ったコードは上から読み込めます。'; return; }
-  void open(code, true);
+  await open(code, true);
+}
+function showCurrentImage(): void {
+  if (verified) openResultImage(verified, document.querySelector('#share-summary')!.textContent ?? '');
+}
+document.querySelector('#share-sample')!.addEventListener('click', () => { void loadSample(); });
+document.querySelector('#share-sample-image')!.addEventListener('click', async () => {
+  if (!verified?.sample || pending) await loadSample();
+  if (verified?.sample && !pending) showCurrentImage();
 });
+image.addEventListener('click', showCurrentImage);
 new ResizeObserver(() => {
   if (result.hidden) return;
   renderer.resize(result.clientWidth);

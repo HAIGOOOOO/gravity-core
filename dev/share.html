@@ -24,13 +24,17 @@
         <button type="submit">読み込む</button>
         <button id="share-cancel" type="button" hidden>読み込みを中止</button>
       </form>
-      <div id="demo-controls"><button id="share-sample" type="button">見本のプレイを読み込む</button></div>
+      <div id="demo-controls">
+        <button id="share-sample" type="button">見本のプレイを読み込む</button>
+        <button id="share-sample-image" type="button" aria-haspopup="dialog">見本の結果画像を見る</button>
+      </div>
       <p id="share-status" role="status"></p>
     </section>
     <section id="share-result" aria-labelledby="share-result-title" hidden>
       <h2 id="share-result-title">再現した最後の盤面</h2>
       <p id="share-score" class="score"></p>
       <p id="share-summary"></p>
+      <button id="share-result-image" type="button" aria-haspopup="dialog">このプレイの結果画像を作る</button>
       <p><a id="share-replay" href="./replay.html" target="_blank" rel="noopener">再生ページを別タブで開く</a></p>
       <canvas id="shared-board" aria-label="再現した最後の盤面"></canvas>
     </section>
@@ -51,9 +55,21 @@
       <p id="sender-size"></p>
       <button id="sender-copy" type="button">コードをコピー</button>
       <button id="sender-link" type="button">受け取り用リンクをコピー</button>
+      <button id="sender-image" type="button" aria-haspopup="dialog">この記録の結果画像を作る</button>
       <p id="sender-copy-status" role="status"></p>
     </section>
   </details>
+  <dialog id="share-image-dialog" aria-labelledby="share-image-title" aria-describedby="share-image-context">
+    <form method="dialog" class="share-image-actions">
+      <h2 id="share-image-title">共有用の結果画像</h2>
+      <button type="submit" autofocus>閉じる</button>
+    </form>
+    <p id="share-image-context"></p>
+    <p id="share-image-status" role="status"></p>
+    <a id="share-image-download" hidden>画像を保存 <small>PNG</small></a>
+    <p id="share-image-help">再生も見てもらうには、画像と一緒に共有コードか受け取り用リンクを送ります。</p>
+    <div id="share-image-preview"></div>
+  </dialog>
 </main>
 <script type="module" src="/src/dev/share-demo.ts"></script>
 </body>

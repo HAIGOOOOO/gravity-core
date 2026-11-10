@@ -30,7 +30,11 @@ describe('再生の共有', () => {
     expect(shared.record).toMatchObject({ finalHash: original.finalHash, finalScore: original.finalScore });
     const player = createReplayPlayer(shared.record);
     expect(player.ok).toBe(true);
-    if (player.ok) expect(player.player.seek(original.endTick)).toEqual(shared.final);
+    if (player.ok) {
+      expect(player.player.seek(original.endTick)).toEqual(shared.final);
+      expect(shared.highlights).toEqual(player.player.highlights);
+      expect(shared.highlights.length).toBeGreaterThan(0);
+    }
   });
 
   it('数値の旧ルールと別指紋は、共有からの再生を許さない', () => {

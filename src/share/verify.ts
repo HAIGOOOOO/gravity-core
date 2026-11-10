@@ -2,7 +2,10 @@
 // 文字列に得点は入っていない（入っていても信じない）。返す数は全部ここで再生した値。
 
 import type { GameSnapshot, RunStats, SimulationPort, Tier } from '../contracts/game';
+import { HEAT_STATE_LIMITS } from '../game/constants';
 import { createSimulation } from '../game/simulation';
+import type { IndexedEvent } from '../replay/engine';
+import { highlightsFromRun, type ReplayHighlight } from '../replay/highlights';
 import { MAX_REPLAY_TICKS } from '../replay/limits';
 import { createReplayRecord, type ReplayRecord } from '../replay/record';
 import {
@@ -80,21 +83,21 @@ export function encodeReplayShare(record: ReplayRecord): string {
 }
 
 export type ShareReplayResult =
-  | { ok: true; record: ReplayRecord; final: GameSnapshot }
+  | { ok: true; record: ReplayRecord; final: GameSnapshot; highlights: readonly ReplayHighlight[] }
   | { ok: false; reason: VerifyFailReason | 'invalidRun' };
 
 /** 受理されない入力や終点の不一致を弾き、受け手の物理計算から再生記録を作る。UIではWorkerで呼ぶ。 */
 export function shareToReplay(text: string, options?: VerifyOptions): ShareReplayResult {
-  const run = recompute(text, options);
+  const run = recompute(text, options, true);
   if (!run.ok) return run;
   if (run.result.inputsApplied !== run.play.inputs.length || run.result.ticks !== run.play.endTick) {
     return { ok: false, reason: 'invalidRun' };
   }
-  return { ok: true, record: createReplayRecord(run.sim), final: run.sim.getSnapshot() };
+  return { ok: true, record: createReplayRecord(run.sim), final: run.sim.getSnapshot(), highlights: run.highlights };
 }
 
-function recompute(text: string, options?: VerifyOptions):
-  | { ok: true; play: SharePlay; result: VerifiedPlay; sim: SimulationPort }
+function recompute(text: string, options?: VerifyOptions, collectHighlights = false):
+  | { ok: true; play: SharePlay; result: VerifiedPlay; sim: SimulationPort; highlights: readonly ReplayHighlight[] }
   | { ok: false; reason: VerifyFailReason } {
   const decoded = decodeReplayShare(text);
   if (!decoded.ok) return decoded;
@@ -104,13 +107,27 @@ function recompute(text: string, options?: VerifyOptions):
     const maxTicks = toMaxTicks(options?.maxTicks);
     const sim = createSimulation(play.seed);
     let applied = 0;
-    let snap = sim.getSnapshot();
+    const initial = sim.getSnapshot();
+    let snap = initial;
+    const events: IndexedEvent[] = [];
+    let critical = initial.heat >= HEAT_STATE_LIMITS[2] ? initial : null;
+    const advance = (): void => {
+      const surfaced = sim.stepFixed();
+      snap = sim.getSnapshot();
+      if (!collectHighlights) return;
+      // 見どころに使う出来事だけ残し、長い共有記録でも着地などは蓄えない。
+      for (const event of surfaced) {
+        if (event.kind === 'merge' || event.kind === 'supernova' || event.kind === 'gameOver') {
+          events.push({ at: snap.tick, event });
+        }
+      }
+      if (!critical && snap.heat >= HEAT_STATE_LIMITS[2]) critical = snap;
+    };
     // stepFixed は tick を 1 ずつ進めるので、ループは snap.tick === 目標 tick で必ず止まる
     const canStep = (): boolean => snap.phase === 'active' && snap.tick < maxTicks;
     for (const input of play.inputs) {
       while (snap.tick < input.tick && canStep()) {
-        sim.stepFixed();
-        snap = sim.getSnapshot();
+        advance();
       }
       if (snap.tick !== input.tick || snap.phase !== 'active') {
         // まだ active なのに入力の tick へ届かない = 上限で止まった。
@@ -126,8 +143,7 @@ function recompute(text: string, options?: VerifyOptions):
       snap = sim.getSnapshot();
     }
     while (snap.tick < play.endTick && canStep()) {
-      sim.stepFixed();
-      snap = sim.getSnapshot();
+      advance();
     }
     if (snap.tick < play.endTick && snap.phase === 'active') {
       return { ok: false, reason: 'tooLongToVerify' };
@@ -137,6 +153,7 @@ function recompute(text: string, options?: VerifyOptions):
       ok: true,
       play,
       sim,
+      highlights: collectHighlights ? highlightsFromRun({ checkpoints: [initial], critical, events }) : [],
       result: {
         score: snap.score,
         bestTier: snap.bestTierThisRun,
