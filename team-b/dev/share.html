@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>共有コードで見る — GRAVITY CORE</title>
-  <script type="module" crossorigin src="../assets/share-B-0o-f4m.js"></script>
+  <script type="module" crossorigin src="../assets/share-CxyxJ7D9.js"></script>
   <link rel="modulepreload" crossorigin href="../assets/bodies-CptjCEtv.js">
   <link rel="modulepreload" crossorigin href="../assets/render-CSK4RkSO.js">
   <link rel="modulepreload" crossorigin href="../assets/input-BGooXe_6.js">
   <link rel="modulepreload" crossorigin href="../assets/capture-Bn7VExY2.js">
   <link rel="modulepreload" crossorigin href="../assets/async-aUOFEom2.js">
-  <link rel="stylesheet" crossorigin href="../assets/share-zr413gr6.css">
+  <link rel="stylesheet" crossorigin href="../assets/share-Eq3IzhSr.css">
   <link rel="stylesheet" crossorigin href="../assets/replay-demo-B9C60M15.css">
 </head>
 <body>
@@ -75,7 +75,17 @@
     <p id="share-image-context"></p>
     <p id="share-image-status" role="status"></p>
     <a id="share-image-download" hidden>画像を保存 <small>PNG</small></a>
+    <p id="share-image-save-status" role="status"></p>
     <p id="share-image-help">再生も見てもらうには、画像と一緒に共有コードか受け取り用リンクを送ります。</p>
+    <section id="share-image-share" hidden>
+      <button id="share-image-copy" type="button">リンクをコピー</button>
+      <details id="share-image-link-details">
+        <summary id="share-image-link-summary">リンクを表示</summary>
+        <label id="share-image-link-label" for="share-image-link">このプレイの受け取り用リンク</label>
+        <textarea id="share-image-link" rows="2" readonly spellcheck="false" aria-describedby="share-image-copy-status"></textarea>
+      </details>
+      <p id="share-image-copy-status" role="status"></p>
+    </section>
     <div id="share-image-preview"></div>
   </dialog>
 </main>
