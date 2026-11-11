@@ -8,9 +8,12 @@ import {
   shareToReplayAsync, type AsyncShareReplay,
 } from '../share';
 import { LONG_REPLAY_TEXT } from './replay-long-sample';
-import { openResultImage } from './share-image-dialog';
+import { openResultImage, openSampleImage } from './share-image-dialog';
 import { setupShareSender } from './share-sender';
+import { createReceiveLink } from './share-link';
 
+const sampleRecord = parseReplay(LONG_REPLAY_TEXT);
+const SAMPLE_CODE = sampleRecord ? encodeReplayShare(sampleRecord) : '';
 const form = document.querySelector<HTMLFormElement>('#share-form')!;
 const input = document.querySelector<HTMLTextAreaElement>('#share-input')!;
 const status = document.querySelector<HTMLElement>('#share-status')!;
@@ -24,9 +27,10 @@ type Selection = { code: string; sample: boolean };
 let pending: AbortController | null = null;
 let verified: (Extract<AsyncShareReplay, { ok: true }> & Selection) | null = null;
 
-function remember(): void {
+function remember(href?: string): void {
   const selection = verified && { code: verified.code, sample: verified.sample };
-  try { history.replaceState({ hash: location.hash, draft: input.value.slice(0, MAX_TEXT_LENGTH), selection }, ''); }
+  const hash = href ? new URL(href).hash : location.hash;
+  try { history.replaceState({ hash, draft: input.value.slice(0, MAX_TEXT_LENGTH), selection }, '', href); }
   catch { /* 履歴を保存できないブラウザでも受信と再生はできる。 */ }
 }
 
@@ -76,6 +80,7 @@ async function open(raw: string, sample = false): Promise<void> {
   const code = /^[A-Za-z0-9_-]*$/.test(trimmed) ? trimmed : extractShareText(trimmed) ?? trimmed;
   const decoded = decodeReplayShare(code);
   if (!decoded.ok) { status.textContent = failure[decoded.reason] + previous; return; }
+  sample = sample || code === SAMPLE_CODE;
 
   const metadata = `${sample ? '見本' : '共有されたプレイ'} ${time(decoded.play.endTick)}・${decoded.play.inputs.length}投`;
   status.textContent = `${metadata}。盤面と得点を計算中… ${previous}`;
@@ -88,7 +93,7 @@ async function open(raw: string, sample = false): Promise<void> {
   stop();
   if (!data.ok) { status.textContent = failure[data.reason] + previous; return; }
   verified = { ...data, code, sample };
-  remember();
+  remember(createReceiveLink(code, sample));
   result.hidden = false;
   document.querySelector('#share-score')!.textContent = `${data.final.score.toLocaleString()}点`;
   document.querySelector('#share-summary')!.textContent = `${metadata}・${data.final.phase === 'over' ? 'ゲーム終了' : 'プレイの途中まで'}`;
@@ -99,25 +104,24 @@ async function open(raw: string, sample = false): Promise<void> {
 }
 
 form.addEventListener('submit', (event) => { event.preventDefault(); void open(input.value); });
-input.addEventListener('change', remember);
+input.addEventListener('change', () => remember());
 cancel.addEventListener('click', () => {
   stop();
   status.textContent = failure.cancelled + (verified ? '表示中の結果は前に開いた記録です。' : '');
   input.focus();
 });
 async function loadSample(): Promise<void> {
-  const sample = parseReplay(LONG_REPLAY_TEXT);
-  const code = sample && encodeReplayShare(sample);
-  if (!code) { status.textContent = 'この版の見本は準備中です。受け取ったコードは上から読み込めます。'; return; }
-  await open(code, true);
+  if (!SAMPLE_CODE) { status.textContent = 'この版の見本は準備中です。受け取ったコードは上から読み込めます。'; return; }
+  await open(SAMPLE_CODE, true);
 }
 function showCurrentImage(): void {
-  if (verified) openResultImage(verified, document.querySelector('#share-summary')!.textContent ?? '');
+  if (verified) openResultImage(verified, document.querySelector('#share-summary')!.textContent ?? '', verified.code);
 }
 document.querySelector('#share-sample')!.addEventListener('click', () => { void loadSample(); });
-document.querySelector('#share-sample-image')!.addEventListener('click', async () => {
-  if (!verified?.sample || pending) await loadSample();
-  if (verified?.sample && !pending) showCurrentImage();
+document.querySelector('#share-sample-image')!.addEventListener('click', () => {
+  if (!SAMPLE_CODE) { status.textContent = 'この版の見本は準備中です。受け取ったコードは上から読み込めます。'; return; }
+  if (verified?.sample && verified.code === SAMPLE_CODE) showCurrentImage();
+  else void openSampleImage(SAMPLE_CODE);
 });
 image.addEventListener('click', showCurrentImage);
 new ResizeObserver(() => {
@@ -131,14 +135,15 @@ window.addEventListener('pagehide', () => {
   status.textContent = failure.cancelled;
 });
 function restoreSelection(): void {
-  const linked = new URLSearchParams(location.hash.slice(1)).get('code');
+  const parameters = new URLSearchParams(location.hash.slice(1));
+  const linked = parameters.get('code');
   const saved = history.state as { hash?: string; draft?: string; selection?: Selection } | null;
   const matching = saved?.hash === location.hash ? saved : null;
   input.value = matching?.draft ?? linked ?? '';
   if (matching?.selection) {
     void open(matching.selection.code, matching.selection.sample);
   } else if (linked !== null) {
-    void open(linked);
+    void open(linked, parameters.get('sample') === '1');
   } else {
     stop();
     verified = null;

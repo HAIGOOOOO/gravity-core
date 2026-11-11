@@ -14,10 +14,30 @@ const HEIGHT = 1350;
 const BOARD_SIZE = 744;
 const INSET = 64;
 const RIGHT = WIDTH - INSET;
-const BOARD_TOP = 280;
+const BOARD_TOP = 312;
+const TEXT = {
+  underSecond: '1秒未満',
+  supernova: '超新星が発生',
+  chain: (value: number) => `${value}連鎖`,
+  born: (value: number) => `${TIER_NAMES[value]}が誕生`,
+  critical: '熱量が臨界に達した',
+  beforeEnd: 'ゲーム終了の直前',
+  over: 'ゲーム終了',
+  active: 'プレイ途中',
+  sample: '見本',
+  sampleScore: '見本のスコア',
+  finalScore: '最終スコア',
+  currentScore: 'ここまでのスコア',
+  points: (value: number) => `${value.toLocaleString('ja-JP')}点`,
+  launches: (value: number) => `${value}投`,
+  playTime: (time: string) => `プレイ時間 ${time}`,
+  boardAt: (time: string) => `${time} 時点の盤面`,
+  highlights: '見どころ',
+  empty: 'この記録には表示できる見どころがありません',
+} as const;
 
 function clock(tick: number): string {
-  if (tick > 0 && tick < TICK_HZ) return '1秒未満';
+  if (tick > 0 && tick < TICK_HZ) return TEXT.underSecond;
   const seconds = Math.floor(tick / TICK_HZ);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
@@ -36,11 +56,11 @@ function selectHighlights(highlights: readonly ReplayHighlight[]): ReplayHighlig
 
 function highlightLabel(highlight: ReplayHighlight): string {
   switch (highlight.kind) {
-    case 'supernova': return '超新星が発生';
-    case 'bestTier': return `${TIER_NAMES[highlight.value]}が誕生`;
-    case 'maxChain': return `${highlight.value}連鎖`;
-    case 'heatCritical': return '熱量が臨界に達した';
-    case 'beforeGameOver': return 'ゲーム終了の直前';
+    case 'supernova': return TEXT.supernova;
+    case 'bestTier': return TEXT.born(highlight.value);
+    case 'maxChain': return TEXT.chain(highlight.value);
+    case 'heatCritical': return TEXT.critical;
+    case 'beforeGameOver': return TEXT.beforeEnd;
   }
 }
 
@@ -79,16 +99,21 @@ export function createResultImage({ final, highlights, sample = false }: ResultI
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  const ending = final.phase === 'over' ? 'ゲーム終了' : 'プレイ途中';
-  const score = `${final.score.toLocaleString('ja-JP')}点`;
-  const summary = `${clock(final.tick)}  /  ${final.stats.launches}投`;
+  const ending = final.phase === 'over' ? TEXT.over : TEXT.active;
+  const score = TEXT.points(final.score);
+  const duration = clock(final.tick);
+  const launches = TEXT.launches(final.stats.launches);
+  const summary = `${TEXT.playTime(duration)} / ${launches}`;
   label('GRAVITY CORE', INSET, 88, 39, text, { bold: true });
-  const state = sample ? `見本 / ${ending}` : ending;
+  const state = sample ? `${TEXT.sample} / ${ending}` : ending;
   label(state, RIGHT, 87, 29, muted, { align: 'right' });
   rule(115);
-  label(final.phase === 'over' ? '最終スコア' : 'ここまでのスコア', INSET, 170, 30, muted);
+  const scoreLabel = sample ? TEXT.sampleScore : final.phase === 'over' ? TEXT.finalScore : TEXT.currentScore;
+  label(scoreLabel, INSET, 170, 30, sample ? cool : muted);
+  label(TEXT.playTime(duration), RIGHT, 168, 30, muted, { align: 'right' });
   label(score, INSET, 246, 86, warm, { bold: true, maxWidth: 652 });
-  label(summary, RIGHT, 244, 34, cool, { align: 'right' });
+  label(launches, RIGHT, 244, 34, cool, { align: 'right' });
+  label(TEXT.boardAt(duration), INSET, 289, 30, muted);
 
   const board = document.createElement('canvas');
   board.width = BOARD_SIZE;
@@ -100,16 +125,16 @@ export function createResultImage({ final, highlights, sample = false }: ResultI
   ctx.lineWidth = 2;
   ctx.strokeRect(INSET + 1, BOARD_TOP + 1, WIDTH - INSET * 2 - 2, BOARD_SIZE - 2);
 
-  label('見どころ', INSET, 1090, 36, text, { bold: true });
+  label(TEXT.highlights, INSET, 1105, 36, text, { bold: true });
   const rows = selectHighlights(highlights).map((h) => ({ time: clock(h.tick), text: highlightLabel(h) }));
-  const empty = 'この記録には表示できる見どころがありません';
-  if (rows.length === 0) label(empty, INSET, 1156, 32, muted);
+  const empty = TEXT.empty;
+  if (rows.length === 0) label(empty, INSET, 1171, 32, muted);
   rows.forEach((row, index) => {
-    const y = 1151 + index * 68;
+    const y = 1166 + index * 68;
     rule(y - 39);
     label(row.time, INSET, y, 33, cool);
     label(row.text, INSET + 147, y, 37, text, { maxWidth: WIDTH - INSET * 2 - 147 });
   });
   const details = rows.length ? rows.map((row) => `${row.time} ${row.text}`).join('。') : empty;
-  return { canvas, description: `GRAVITY CORE。 ${state}、${score}、${summary}。最後の盤面。見どころ。 ${details}` };
+  return { canvas, description: `GRAVITY CORE。 ${state}、${score}、${summary}。${TEXT.boardAt(duration)}。${TEXT.highlights}。 ${details}` };
 }

@@ -6,6 +6,7 @@ import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
 import { encodeReplayShare, type ResultImageSource } from '../share';
 import { openResultImage } from './share-image-dialog';
+import { createReceiveLink, MAX_SHARE_LINK_LENGTH } from './share-link';
 import { aimVelocity } from '../shared/launch';
 
 export function setupShareSender(): void {
@@ -28,7 +29,7 @@ export function setupShareSender(): void {
   const renderer = createBoardRenderer(canvas);
   let capture = createReplayCapture(7);
   let sim = capture.simulation;
-  let lastImage: ResultImageSource | null = null;
+  let lastImage: (ResultImageSource & { code: string }) | null = null;
   let aim: AimView | null = null;
   let bearing = 0;
   let frame = 0;
@@ -108,9 +109,9 @@ export function setupShareSender(): void {
     const nextCode = encodeReplayShare(finished.record);
     if (!nextCode) { status.textContent = 'このプレイをコードにできませんでした。'; return; }
     text.value = nextCode;
-    lastImage = { final: finished.final, highlights: finished.highlights };
+    lastImage = { final: finished.final, highlights: finished.highlights, code: nextCode };
     copyStatus.textContent = '';
-    const canLink = receiverUrl().length <= 2000;
+    const canLink = createReceiveLink(nextCode).length <= MAX_SHARE_LINK_LENGTH;
     document.querySelector<HTMLButtonElement>('#sender-link')!.disabled = !canLink;
     draw();
     output.hidden = false;
@@ -118,16 +119,11 @@ export function setupShareSender(): void {
     document.querySelector('#sender-size')!.textContent = `${meter.textContent} ／ コード ${text.value.length.toLocaleString()}文字${canLink ? '' : '（コードをコピーして送れます）'}`;
   });
   document.querySelector('#sender-image')!.addEventListener('click', () => {
-    if (lastImage) openResultImage(lastImage, '自分で作ったプレイの記録');
+    if (lastImage) openResultImage(lastImage, '自分で作ったプレイの記録', lastImage.code);
   });
-  function receiverUrl(): string {
-    const url = new URL(location.href);
-    url.hash = `code=${text.value}`;
-    return url.href;
-  }
   async function copy(asLink: boolean): Promise<void> {
     try {
-      await navigator.clipboard.writeText(asLink ? receiverUrl() : text.value);
+      await navigator.clipboard.writeText(asLink ? createReceiveLink(text.value) : text.value);
       copyStatus.textContent = asLink ? 'リンクをコピーしました。開くとこのプレイを再現できます。' : '共有コードをコピーしました。';
     } catch {
       text.focus();

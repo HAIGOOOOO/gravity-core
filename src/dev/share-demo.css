@@ -23,6 +23,11 @@
 .share-image-actions h2 { margin: 0; font-size: 18px; }
 #share-image-context, #share-image-status, #share-image-help { color: var(--text-sub); margin: 8px 0; }
 #share-image-status:empty { display: none; }
+#share-image-save-status:empty, #share-image-copy-status:empty { display: none; }
+#share-image-save-status, #share-image-copy-status { color: var(--cool); margin: 8px 0; }
+#share-image-share { margin-top: 12px; }
+#share-image-link { font-size: 13px; }
+.share-page #share-image-link-details { margin: 8px 0 0; padding: 0; border: 0; }
 .share-page #share-image-download {
   display: inline-flex;
   min-height: 44px;
