@@ -1,0 +1,9 @@
+.records-page #record-status { min-height: 3em; color: var(--text-sub); line-height: 1.6; }
+.records-page #record-caption { line-height: 1.6; }
+.records-page #record-stats { margin: 18px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.records-page dt { font-size: 13px; color: var(--text-sub); }
+.records-page dd { margin: 4px 0 0; font-size: 22px; }
+.records-page table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.records-page th, .records-page td { padding: 10px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.records-page #record-score { color: var(--core-hot); }
+@media (max-width: 720px) { .records-page #record-result > section:nth-child(2) { order: -1; } }

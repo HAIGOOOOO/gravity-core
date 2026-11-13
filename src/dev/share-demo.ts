@@ -97,7 +97,7 @@ async function open(raw: string, sample = false): Promise<void> {
   result.hidden = false;
   document.querySelector('#share-score')!.textContent = `${data.final.score.toLocaleString()}点`;
   document.querySelector('#share-summary')!.textContent = `${metadata}・${data.final.phase === 'over' ? 'ゲーム終了' : 'プレイの途中まで'}`;
-  replay.href = `./replay.html#code=${code}`;
+  replay.href = `./replay.html#code=${code}${sample ? '&sample=1' : ''}`;
   renderer.resize(result.clientWidth);
   draw();
   status.textContent = `${metadata}の盤面と得点を再現しました。`;

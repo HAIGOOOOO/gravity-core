@@ -285,9 +285,10 @@ function frame(now: number): void {
 document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; draw(); } });
 renderer.resize(Math.min(620, BOARD_SIZE));
 function openSharedLink(): boolean {
-  const code = new URLSearchParams(location.hash.slice(1)).get('code');
+  const parameters = new URLSearchParams(location.hash.slice(1));
+  const code = parameters.get('code');
   if (code === null) return false;
-  void openRecord(code, '共有コードで受け取ったプレイ');
+  void openRecord(code, parameters.get('sample') === '1' ? '自動で遊んだ見本のプレイ' : '共有コードで受け取ったプレイ');
   return true;
 }
 window.addEventListener('hashchange', () => { if (!openSharedLink()) sample(false); });

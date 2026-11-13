@@ -69,15 +69,11 @@ export type EventFold = {
   supernovas: number;
   /** 出来事から数えた最大連鎖 */
   chainMax: number;
-  /** 出来事が証明する到達 Tier（合体の結果・元の Tier、超新星なら最上段） */
-  tierMax: number;
   /** 閉じた限界区間（越え始め〜終わりの tick）。終了時刻との兼ね合いは仕上げでそろえる */
   overLimitIntervals: { from: Tick; to: Tick }[];
   overLimitEntries: number;
   /** 越え始めた tick。終わっていなければその時刻、越えていなければ null */
   overLimitSince: Tick | null;
-  /** 合体・超新星が覚えている得点の合計。盤面の得点が欠けた時の下限の証拠（得点は減らない） */
-  scoreSum: number;
   /** 読めた出来事の一番遅い tick。盤面の tick が欠けた・古い時の証拠 */
   lastTick: number;
   maxSingleScore: number;
@@ -92,11 +88,9 @@ export function createEventFold(): EventFold {
     merges: 0,
     supernovas: 0,
     chainMax: 0,
-    tierMax: 0,
     overLimitIntervals: [],
     overLimitEntries: 0,
     overLimitSince: null,
-    scoreSum: 0,
     lastTick: 0,
     maxSingleScore: 0,
     maxImpactSpeed: 0,
@@ -143,20 +137,10 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
       // sourceTier が範囲外だと配列の外に NaN を書き込んでしまうので、検査してから数える
       if (isTier(event.sourceTier)) {
         fold.mergesByTier[event.sourceTier]++;
-        // 合体した時点で「その Tier に届いた」「1 つ上の Tier が生まれた」実績になる。
-        // resultTier の無い出来事でも、sourceTier + 1 が生まれるのはルールで決まっている
-        const produced = Math.min(TIER_COUNT - 1, event.sourceTier + 1);
-        if (produced > fold.tierMax) fold.tierMax = produced;
-      }
-      // resultTier があればそれも到達の実績（盤面の集計が欠けても到達 Tier を補える）
-      if (isTier(event.resultTier) && event.resultTier > fold.tierMax) {
-        fold.tierMax = event.resultTier;
       }
       break;
     case 'supernova':
       fold.supernovas++;
-      // 超新星は Tier 8 どうしの合体なので、起きた時点で最上段まで届いている
-      fold.tierMax = TIER_COUNT - 1;
       break;
     case 'overLimitStart': {
       // 「越え始めた回数」は越えていない状態から越えた時だけ数える（重複した start は無視）
@@ -183,9 +167,6 @@ export function foldEvent(fold: EventFold, event: GameEvent): void {
     const delta = countInt(event.scoreDelta);
     if (delta !== null) {
       if (delta > fold.maxSingleScore) fold.maxSingleScore = delta;
-      // 得点は合体・超新星でしか増えない。記録の合計は「少なくともこれだけ取った」
-      // 下限の証拠で、盤面の得点が欠けた・古い時に使う。負の値は得点を下げる根拠にしない
-      if (delta > 0) fold.scoreSum += delta;
     }
   }
 }
@@ -233,12 +214,11 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
   // 盤面・識別情報がまるごと欠けた呼び出しでも落ちないよう、ある分だけ読む
   const snap: Partial<GameSnapshot> = snapshot ?? {};
   const info: Partial<RunDetailMeta> = meta ?? {};
-  // 累積する量はすべて「出来事の証拠と盤面の集計の大きい方」。時刻も同じで、
-  // 出来事の最遅時刻が残る以上、プレイはそこまで進んでいた（盤面が古い・欠けた形を補う）
+  // 出来事の最遅時刻が残る以上、プレイはそこまで進んでいた（盤面が古い・欠けた形を補う）。
   const tick = Math.max(nonNegative(snap.tick), fold.lastTick);
   const overLimitTicks = overLimitTotalTicks(fold, tick);
-  // 得点も同じ: 合体・超新星の記録が証明する合計を下回らない（計数と同じ counted() の考え方）
-  const score = counted(fold.scoreSum, snap.score);
+  // 得点と到達した天体は、ルールを実行した盤面の値を使う。
+  const score = nonNegativeInt(snap.score);
   const simStats: Partial<RunStats> = snap.stats ?? {};
   // 出来事と盤面の集計は本来一致する。取りこぼしがあっても大きい方が残る（maxChain と同じ考え方）。
   // 着地は撃った天体にだけ出る出来事（1 投に 1 回まで）なので、残った着地の数は
@@ -270,9 +250,7 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
     merges,
     supernovas,
     maxChain,
-    // 合体・超新星の出来事が証明する到達 Tier（fold.tierMax）と盤面の値の大きい方を採る。
-    // 盤面の集計が欠けても出来事側から補える
-    bestTier: Math.min(TIER_COUNT - 1, Math.max(nonNegativeInt(snap.bestTierThisRun), fold.tierMax)),
+    bestTier: Math.min(TIER_COUNT - 1, nonNegativeInt(snap.bestTierThisRun)),
     overLimitSeconds: overLimitTicks / TICK_HZ,
     overLimitEntries,
     scorePerLaunch: launches > 0 ? score / launches : 0,
@@ -286,9 +264,8 @@ export function finishFold(fold: EventFold, snapshot: GameSnapshot, meta: RunDet
 
 /**
  * 出来事の列（プレイ中に起きた全イベント）と最後の盤面から、1 回分の統計を作る。
- * 累積する量（回数・得点・経過 tick・到達 Tier）はすべて、出来事が証明する値と
- * 盤面の集計の大きい方を採る。どちらも同じプレイの数字なので、片方が欠けても
- * 残る側が実際に近い。盤面に対応する集計の無い項目（着地・限界区間・単発得点・
+ * 得点と到達した天体は最後の盤面の値を使う。回数と経過tickは既存の集計を照合する。
+ * 盤面に対応する集計の無い項目（着地・限界区間・単発得点・
  * 衝突の速さ・Tier 内訳）は出来事側の記録をそのまま使う。
  */
 export function buildRunDetail(
