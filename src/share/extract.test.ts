@@ -34,8 +34,8 @@ function drop(tick: number, angle: number): LaunchInput {
  */
 const junkRun = (quads: number): string => 'A'.repeat(quads * 4 + 1);
 
-// 最小（入力なし → 本体 5 バイト + 検査値 4 = 9 バイト → 12 文字）と、少し長い（入力 5 個）の 2 種類。
-const MINIMAL = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 0, inputs: [], endTick: 0 });
+// 旧形式の最小（12 文字）と、現行形式で入力 5 個のコード。
+const MINIMAL = encodePlay({ rulesVersion: 2, seed: 0, inputs: [], endTick: 0 });
 const WITH_INPUTS = encodePlay({
   rulesVersion: SHARE_RULES_VERSION,
   seed: 42,
@@ -97,11 +97,10 @@ describe('extractShareText', () => {
   });
 
   it('共有文字列に base64url の文字が区切りなしで続くと取り出せない（既知の限界）', () => {
-    // くっ付いた分まで連なりの一部と見なされる。3 文字足すと全体が %4==1 の長さになり、
-    // base64 として成り立たないので必ず弾かれる（検査値の偶然の一致を気にしなくてよい）
-    expect(WITH_INPUTS.length % 4).toBe(2);
-    expect(extractShareText(`${WITH_INPUTS}xyz`)).toBe(null);
-    expect(extractShareText(`xyz${WITH_INPUTS}`)).toBe(null);
+    // 連なり全体が %4==1 になる長さを足す。検査値に関係なく base64url として成立しない。
+    const suffix = 'x'.repeat((5 - WITH_INPUTS.length % 4) % 4);
+    expect(extractShareText(`${WITH_INPUTS}${suffix}`)).toBe(null);
+    expect(extractShareText(`${suffix}${WITH_INPUTS}`)).toBe(null);
     expect(extractShareText(`${MINIMAL}a`)).toBe(null); // 12+1=13 も %4==1
     // 区切りが 1 文字でもあれば取り出せる
     expect(extractShareText(`${WITH_INPUTS}!`)).toBe(WITH_INPUTS);

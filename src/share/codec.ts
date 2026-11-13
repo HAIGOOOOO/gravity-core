@@ -1,31 +1,19 @@
-// 1 回のプレイを短い文字列にする、と読み戻す。
-// 同じシードと同じ入力なら必ず同じ結果になるので、中身は「シード + 入力ログ + ルールの版」だけ。
-//
-// バイト列の形:
-//   [u8]     形式の版（SHARE_FORMAT_VERSION）
-//   [varint] rulesVersion（RULES.md の版）
-//   [varint] seed
-//   [varint] endTick（ここまで再生する。未終了のプレイも共有できるようにするため）
-//   [varint] 入力の数
-//   入力ごと: [varint（前の入力からの tick 差 ×4 + 種別）] + 中身
-//     種別 0: u32le の k → 角度 = (k / 2^32) * π * 2。速度は「まっすぐ落とす」を整数に丸めて計算し直す
-//             （シミュレーションが丸めた「押して離す」はほぼ全部これ。形式の版 2 から）
-//     種別 1: f64 の角度。速度は同上で計算し直す
-//     種別 2: f64 の角度・vx・vy をそのまま
-//     種別 3: u32le の k（角度は種別 0 と同じ）+ zigzag varint の vx・vy（整数）。
-//             シミュレーションが丸めた射出（src/game/predictor.ts の quantizeLaunch）は全部これに乗る（1 投 7〜9 バイト）
-//   [u32le]  ここまで全部の FNV-1a（壊れを見つける検査値）
-// 文字は URL に入れても壊れない base64url（padding なし）。
-//
-// 値の入れ方について: この物理は小さなズレが接触判定を経て増幅しうるので、
-// 値を丸めて小さくする代わりに「同じ計算で出せる値は計算し直す」方式にした。
-// 「まっすぐ落とす」（速度 -cos(角度)*DROP_SPEED, -sin(角度)*DROP_SPEED）は角度だけで復元できる。
-// その中でも角度が 2π/2^32 の格子に乗る入力（createRng 由来 = 自動プレイ全部）は 4 バイト。
-// 格子に乗らない「まっすぐ落とす」は 8 バイト、それ以外（投げる）は 24 バイトで
-// 値のビットをそのまま入れる。どの経路でも誤差は 0 で、再生は元のプレイと完全に一致する。
+// シード、受理された入力、再生する長さを base64url の共有コードにする。得点は含めない。
+// 形式3は replay のルール指紋（形式の varint + hash の u32le）を持つ。
+// 形式2は端末に保存済みの圧縮記録を読むために残す。ルール欄は数値1個（varint）。
+// 共通部分は seed / endTick / 入力数（varint）、続けて tick 差×4+種別（varint）と各入力。
+//   0: 角度の格子番号 (u32)。整数の直落とし速度は角度から復元。
+//   1: 格子に乗らない角度 (f64)。丸め前の直落とし速度は角度から復元。
+//   2: 角度・vx・vy (f64)。生の値をそのまま復元。
+//   3: 角度の格子番号 (u32) と整数の vx・vy。
+//      形式3は符号付き11ビットずつを3バイトに詰める。形式2は zigzag varint を2つ。
+// 末尾は FNV-1a の u32le。検査値は通信中の破損検出用。
 
 import type { LaunchInput, SimulationPort } from '../contracts/game';
-import { DROP_SPEED, TICK_HZ } from '../game/constants';
+import { DROP_SPEED } from '../game/constants';
+import { ANGLE_GRID } from '../game/predictor';
+import { MAX_REPLAY_TICKS } from '../replay/limits';
+import { rulesVersion } from '../replay/rules';
 import {
   base64UrlToBytes,
   bytesToBase64Url,
@@ -39,21 +27,16 @@ import {
 } from './coding';
 
 /** この文字列形式の版。形を変えたら +1 する。 */
-export const SHARE_FORMAT_VERSION = 2;
-/** いまのルールの版。RULES.md のルールが変わったら +1 する（リーダー管理）。 */
-export const SHARE_RULES_VERSION = 2; // 2: 射出の値を丸める（2026-10-18）
+export const SHARE_FORMAT_VERSION = 3;
+const LEGACY_FORMAT = 2;
+export const SHARE_RULES_VERSION = rulesVersion();
 
-/**
- * 文字列の長さの上限。4 時間ぶんの「まっすぐ落とし」連打（約 2.9 万入力）でも十分入る大きさ。
- * 実際の入力数の上限はこちらが先に効く（全部「投げる」だと約 8,000 入力で頭打ち）。
- * 貼り付け口（extractShareText）も同じ上限で候補を絞るので、export してある。
- */
+/** 貼り付けと読み込みで共通の文字数上限。 */
 export const MAX_TEXT_LENGTH = 262_144;
 /** 入力の数の上限。文字列の上限より先に効くことはほぼないが、読む側の安全として置く。
  *  テストが上限値と連動して境目を確かめられるよう export（./index の公開面には出さない）。 */
 export const MAX_INPUTS = 100_000;
-/** プレイの長さの上限 = 4 時間（tick）。これを越える記録は壊れた物とみなす。同上の理由で export。 */
-export const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
+export const MAX_TICKS = MAX_REPLAY_TICKS;
 
 const TAG_DROP_GRID = 0;
 const TAG_DROP = 1;
@@ -61,11 +44,13 @@ const TAG_RAW = 2;
 const TAG_GRID_INT = 3;
 /** 種別 3 で持てる速度の大きさ。ゲームの速さの上限よりずっと大きく、zigzag が安全に計算できる範囲 */
 const INT_LIMIT = 1_000_000;
-/** 2^32。createRng が返す値の分母で、自動プレイの角度は必ずこの格子に乗る。 */
-const GRID_DENOM = 4294967296;
+// 符号ビットを含む11ビットの整数。現在のゲームで受理される速度成分はこの範囲に収まる。
+const VELOCITY_BITS = 11;
+const VELOCITY_BASE = 2 ** VELOCITY_BITS;
+const FINGERPRINT = /^r(0|[1-9][0-9]{0,2})\.([0-9a-f]{8})$/;
 
 export type SharePlay = {
-  rulesVersion: number;
+  rulesVersion: string | number;
   seed: number;
   /** プレイの長さ（tick）。再生はこの tick まで進める */
   endTick: number;
@@ -91,7 +76,7 @@ function fail(reason: DecodeFailReason): DecodePlayResult {
 
 /** rng() * Math.PI * 2 と同じ計算順で、格子上の角度を作る（ビット一致させるため順序を変えない）。 */
 function gridAngle(k: number): number {
-  return (k / GRID_DENOM) * Math.PI * 2;
+  return (k / ANGLE_GRID) * Math.PI * 2;
 }
 
 /** 角度が 2π/2^32 の格子に乗っていればその番号、乗っていなければ null。往復で一致する物だけ認める。 */
@@ -100,8 +85,8 @@ function gridIndex(angle: number): number | null {
   // -0 は格子番号に潰せない: writeU32 では -0 が 0 として書かれ、読み戻しでは +0 になる。
   // 角度が -0→+0 に変わると vy の 0 の符号（+0/-0）が元とずれるので、f64 の経路へ回す
   if (Object.is(angle, -0)) return null;
-  const k = Math.round((angle / (Math.PI * 2)) * GRID_DENOM);
-  if (k < 0 || k >= GRID_DENOM) return null;
+  const k = Math.round((angle / (Math.PI * 2)) * ANGLE_GRID);
+  if (k < 0 || k >= ANGLE_GRID) return null;
   return gridAngle(k) === angle ? k : null;
 }
 
@@ -145,7 +130,7 @@ function unzigzag(z: number): number {
 // ───────── 公開関数 ─────────
 
 export type EncodePlayArgs = {
-  rulesVersion: number;
+  rulesVersion: string | number;
   seed: number;
   inputs: readonly LaunchInput[];
   /** 共有した時点の tick。省略すると最後の入力の tick（入力が無ければ 0） */
@@ -175,12 +160,20 @@ function encodeInner(args: EncodePlayArgs): string {
   const last = inputs.length ? (inputs[inputs.length - 1] as LaunchInput | null | undefined) : undefined;
   const lastTick = inputs.length === 0 ? 0 : typeof last === 'object' && last !== null ? last.tick : Number.NaN;
   const endTick = args.endTick ?? lastTick;
-  if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) return '';
   if (!Number.isInteger(endTick) || endTick < 0 || endTick > MAX_TICKS) return '';
 
-  const bytes: number[] = [SHARE_FORMAT_VERSION];
-  writeVarint(bytes, rulesVersion);
+  const legacy = typeof rulesVersion === 'number';
+  const bytes: number[] = [legacy ? LEGACY_FORMAT : SHARE_FORMAT_VERSION];
+  if (legacy) {
+    if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
+    writeVarint(bytes, rulesVersion);
+  } else {
+    const fingerprint = typeof rulesVersion === 'string' ? FINGERPRINT.exec(rulesVersion) : null;
+    if (!fingerprint) return '';
+    writeVarint(bytes, Number(fingerprint[1]));
+    writeU32(bytes, Number.parseInt(fingerprint[2]!, 16));
+  }
   writeVarint(bytes, seed);
   writeVarint(bytes, endTick);
   writeVarint(bytes, inputs.length);
@@ -188,24 +181,34 @@ function encodeInner(args: EncodePlayArgs): string {
   let prevTick = 0;
   for (const input of inputs) {
     // 実行時には型を越えた物（null・数など）が紛れうるので、先に object かどうかで弾く
-    if (typeof input !== 'object' || input === null) return '';
+    if (typeof input !== 'object' || input === null || input.charged === true) return '';
     const { tick, originAngleRadians: angle, vx, vy } = input;
     if (!Number.isInteger(tick) || tick < prevTick || tick > endTick) return '';
     if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return '';
     const head = (tick - prevTick) * 4;
     prevTick = tick;
     const dropK = roundedDropIndex(input);
+    const angleK = gridIndex(angle);
+    const fitsVelocity = legacy || (
+      vx >= -VELOCITY_BASE / 2 && vx < VELOCITY_BASE / 2 &&
+      vy >= -VELOCITY_BASE / 2 && vy < VELOCITY_BASE / 2
+    );
     if (dropK !== null) {
       writeVarint(bytes, head + TAG_DROP_GRID);
       writeU32(bytes, dropK);
     } else if (isStraightDrop(input)) {
       writeVarint(bytes, head + TAG_DROP);
       writeF64(bytes, angle);
-    } else if (gridIndex(angle) !== null && isPlainInt(vx) && isPlainInt(vy)) {
+    } else if (angleK !== null && isPlainInt(vx) && isPlainInt(vy) && fitsVelocity) {
       writeVarint(bytes, head + TAG_GRID_INT);
-      writeU32(bytes, gridIndex(angle)!);
-      writeVarint(bytes, zigzag(vx));
-      writeVarint(bytes, zigzag(vy));
+      writeU32(bytes, angleK);
+      if (legacy) {
+        writeVarint(bytes, zigzag(vx));
+        writeVarint(bytes, zigzag(vy));
+      } else {
+        const packed = (vx + VELOCITY_BASE / 2) + (vy + VELOCITY_BASE / 2) * VELOCITY_BASE;
+        bytes.push(packed & 255, (packed >>> 8) & 255, packed >>> 16);
+      }
     } else {
       writeVarint(bytes, head + TAG_RAW);
       writeF64(bytes, angle);
@@ -268,14 +271,18 @@ export function decodePlay(text: string): DecodePlayResult {
     if (fnv1a(body) !== sum) return fail('checksum');
     // ヘッダ（版 + 4 つの varint）は最小でも 5 バイト。それ未満は中身を読む以前に切れている
     if (body.length < 5) return fail('truncated');
-    if (body[0] !== SHARE_FORMAT_VERSION) return fail('badVersion');
+    const legacy = body[0] === LEGACY_FORMAT;
+    if (!legacy && body[0] !== SHARE_FORMAT_VERSION) return fail('badVersion');
 
     const pos = { i: 1 };
-    const rulesVersion = readVarint(body, pos);
+    const format = readVarint(body, pos);
+    if (format === null || format > (legacy ? 255 : 999)) return fail('badData');
+    const hash = legacy ? null : readU32(body, pos);
+    if (!legacy && hash === null) return fail('truncated');
+    const rulesVersion = hash === null ? format : `r${format}.${hash.toString(16).padStart(8, '0')}`;
     const seed = readVarint(body, pos);
     const endTick = readVarint(body, pos);
     const count = readVarint(body, pos);
-    if (rulesVersion === null || rulesVersion > 255) return fail('badData');
     if (seed === null || seed > 0xffffffff) return fail('badData');
     if (endTick === null || endTick > MAX_TICKS) return fail('badData');
     if (count === null || count > MAX_INPUTS) return fail('badData');
@@ -312,13 +319,22 @@ export function decodePlay(text: string): DecodePlayResult {
         vy = y;
       } else {
         const k = readU32(body, pos);
-        const zx = readVarint(body, pos);
-        const zy = readVarint(body, pos);
-        if (k === null || zx === null || zy === null) return fail('truncated');
-        if (zx > INT_LIMIT * 2 || zy > INT_LIMIT * 2) return fail('badData');
+        if (k === null) return fail('truncated');
         angle = gridAngle(k);
-        vx = unzigzag(zx);
-        vy = unzigzag(zy);
+        if (legacy) {
+          const zx = readVarint(body, pos);
+          const zy = readVarint(body, pos);
+          if (zx === null || zy === null) return fail('truncated');
+          if (zx > INT_LIMIT * 2 || zy > INT_LIMIT * 2) return fail('badData');
+          vx = unzigzag(zx);
+          vy = unzigzag(zy);
+        } else {
+          if (pos.i + 3 > body.length) return fail('truncated');
+          const packed = body[pos.i++]! + body[pos.i++]! * 256 + body[pos.i++]! * 65536;
+          if (packed >= VELOCITY_BASE ** 2) return fail('badData');
+          vx = packed % VELOCITY_BASE - VELOCITY_BASE / 2;
+          vy = Math.floor(packed / VELOCITY_BASE) - VELOCITY_BASE / 2;
+        }
       }
       if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return fail('badData');
       inputs.push({ tick, originAngleRadians: angle, vx, vy });

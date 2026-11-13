@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GameEvent, GameEventKind, GameSnapshot } from '../contracts/game';
-import { createAutoPlay, onCore } from '../fixtures';
+import { createAutoPlay, dropAt, onCore } from '../fixtures';
+import { createSimulation } from '../game/simulation';
+import { createStatsStore } from './history';
 import { createRunRecorder } from './recorder';
 import { buildRunDetail } from './stats';
 import { readRunDetail } from './archive';
@@ -29,6 +31,22 @@ function snapshot(partial: Partial<GameSnapshot> = {}): GameSnapshot {
 }
 
 describe('プレイ中の蓄積器', () => {
+  it('同じ出来事を重ねて受け取っても、ゲームの得点と到達した天体を保存する', () => {
+    const sim = createSimulation(7);
+    const recorder = createRunRecorder();
+    sim.submitLaunch(dropAt(-Math.PI / 2));
+    for (let tick = 0; tick < 300; tick++) {
+      const events = sim.stepFixed();
+      recorder.feed(events);
+      recorder.feed(events);
+    }
+    const snapshot = sim.getSnapshot();
+    expect(snapshot.score).toBeGreaterThan(0);
+    const detail = recorder.finish(snapshot, META);
+    const store = createStatsStore(null);
+    store.add(detail);
+    expect(store.load().runs[0]).toMatchObject({ score: snapshot.score, bestTier: snapshot.bestTierThisRun });
+  });
   it('分けて渡した出来事も、まとめて渡した列と同じ統計になる', () => {
     const events = [
       event('launch', 1),
