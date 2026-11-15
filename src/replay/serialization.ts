@@ -3,9 +3,10 @@ import type { LaunchInput, RunStats } from '../contracts/game';
 import type { SimulationSetup } from '../game/simulation';
 import { TIER_COUNT } from '../game/constants';
 import { expandLaunchInputs } from '../shared/input-timeline';
-import { decodePlay, encodePlay, MAX_INPUTS, OLD_C_REPLAY_RULES } from '../share/codec';
-import { REPLAY_FORMAT, type ReplayRecord } from './record';
+import { decodePlay, encodePlay, MAX_INPUTS } from '../share/codec';
+import type { ReplayRecord } from './record';
 import { MAX_REPLAY_TICKS } from './limits';
+import { NATIVE_REPLAY_FORMAT, REPLAY_FORMAT } from './rules';
 
 // 読む前に文字数を制限し、巨大なJSONの展開で画面が固まるのを防ぐ。
 export const MAX_REPLAY_TEXT_LENGTH = 1024 * 1024;
@@ -86,12 +87,13 @@ export function parseReplay(text: string): ReplayRecord | null {
     if (r.packing !== 1 || typeof r.inputs !== 'string') return null;
     const decoded = decodePlay(r.inputs);
     if (!decoded.ok ||
-      (decoded.play.rulesVersion !== r.rulesVersion && decoded.play.rulesVersion !== OLD_C_REPLAY_RULES) ||
+      (decoded.play.rulesVersion !== r.rulesVersion &&
+        !(r.format === NATIVE_REPLAY_FORMAT && decoded.play.rulesVersion === NATIVE_REPLAY_FORMAT)) ||
       decoded.play.seed !== r.seed || decoded.play.endTick !== r.endTick) return null;
     r.inputs = decoded.play.inputs;
     delete r.packing;
   }
-  if (r.format !== REPLAY_FORMAT) return null;
+  if (r.format !== REPLAY_FORMAT && r.format !== NATIVE_REPLAY_FORMAT) return null;
   if (typeof r.rulesVersion !== 'string') return null;
   if (!isNonNegativeInt(r.seed) || r.seed > 0xffffffff) return null;
   if (!Array.isArray(r.inputs) || r.inputs.length > MAX_INPUTS || !r.inputs.every(isInput)) return null;

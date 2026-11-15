@@ -11,10 +11,11 @@
 // 末尾は FNV-1a の u32le。検査値は通信中の破損検出用。
 
 import type { LaunchInput, SimulationPort } from '../contracts/game';
+import { NATIVE_ANGLES, PORTABLE_ANGLES, type AngleMath } from '../game/angle';
 import { DROP_SPEED } from '../game/constants';
 import { ANGLE_GRID } from '../game/predictor';
 import { MAX_REPLAY_TICKS } from '../replay/limits';
-import { rulesVersion } from '../replay/rules';
+import { NATIVE_REPLAY_FORMAT, NATIVE_REPLAY_RULES, rulesVersion } from '../replay/rules';
 import { expandLaunchInputs } from '../shared/input-timeline';
 import {
   base64UrlToBytes,
@@ -33,9 +34,7 @@ export const SHARE_FORMAT_VERSION = 4;
 const LEGACY_FORMAT = 2;
 const PREVIOUS_FORMAT = 3;
 const OLD_C_SHARE_RULES = 11;
-export const OLD_C_REPLAY_RULES = 12;
-// 旧Cの共有11が使った物理の指紋。数値の旧版を現在のルールへ無条件で置き換えない。
-const OLD_C_FINGERPRINT = 'r12.c3152231';
+const FIRST_PORTABLE_RULES_FORMAT = 13;
 export const SHARE_RULES_VERSION = rulesVersion();
 
 /** 貼り付けと読み込みで共通の文字数上限。 */
@@ -97,27 +96,33 @@ function gridIndex(angle: number): number | null {
   return gridAngle(k) === angle ? k : null;
 }
 
+function straightDrop(angle: number, angles: AngleMath): { vx: number; vy: number } {
+  const direction = angles.vector(angle);
+  return { vx: -direction.x * DROP_SPEED, vy: -direction.y * DROP_SPEED };
+}
+
 /** 丸めた「まっすぐ落とす」の速度（シミュレーションの quantizeLaunch と同じ丸め）。 */
-function roundedDrop(angle: number): { vx: number; vy: number } {
-  return { vx: Math.round(-Math.cos(angle) * DROP_SPEED) + 0, vy: Math.round(-Math.sin(angle) * DROP_SPEED) + 0 };
+function roundedDrop(angle: number, angles: AngleMath): { vx: number; vy: number } {
+  const { vx, vy } = straightDrop(angle, angles);
+  return { vx: Math.round(vx) + 0, vy: Math.round(vy) + 0 };
 }
 
 /** 格子の上の角度で、速度が丸めた「まっすぐ落とす」とビット一致するか。一致すれば格子の番号、しなければ null。 */
-function roundedDropIndex(input: LaunchInput): number | null {
+function roundedDropIndex(input: LaunchInput, angles: AngleMath): number | null {
   const k = gridIndex(input.originAngleRadians);
   if (k === null) return null;
-  const v = roundedDrop(input.originAngleRadians);
+  const v = roundedDrop(input.originAngleRadians, angles);
   return Object.is(input.vx, v.vx) && Object.is(input.vy, v.vy) ? k : null;
 }
 
 /** 「押して離す」で出る速度（核へまっすぐ、速さ DROP_SPEED）とビット一致するか。値で見るので出自を問わない。 */
-function isStraightDrop(input: LaunchInput): boolean {
-  const a = input.originAngleRadians;
+function isStraightDrop(input: LaunchInput, angles: AngleMath): boolean {
+  const v = straightDrop(input.originAngleRadians, angles);
   // Object.is で比べる: === は +0 と -0 を区別しないため、式が出す 0 の符号と逆の速度を持つ入力を
   // 「まっすぐ落とし」と誤認し、読み戻しで vy の 0 の符号がずれてしまう（角度 ±0 のときだけ起きる）
   return (
-    Object.is(input.vx, -Math.cos(a) * DROP_SPEED) &&
-    Object.is(input.vy, -Math.sin(a) * DROP_SPEED)
+    Object.is(input.vx, v.vx) &&
+    Object.is(input.vy, v.vy)
   );
 }
 
@@ -172,13 +177,16 @@ function encodeInner(args: EncodePlayArgs): string {
 
   const legacy = typeof rulesVersion === 'number';
   const bytes: number[] = [legacy ? LEGACY_FORMAT : SHARE_FORMAT_VERSION];
+  let angles = NATIVE_ANGLES;
   if (legacy) {
     if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
     writeVarint(bytes, rulesVersion);
   } else {
     const fingerprint = typeof rulesVersion === 'string' ? FINGERPRINT.exec(rulesVersion) : null;
     if (!fingerprint) return '';
-    writeVarint(bytes, Number(fingerprint[1]));
+    const format = Number(fingerprint[1]);
+    if (format >= FIRST_PORTABLE_RULES_FORMAT) angles = PORTABLE_ANGLES;
+    writeVarint(bytes, format);
     writeU32(bytes, Number.parseInt(fingerprint[2]!, 16));
   }
   writeVarint(bytes, seed);
@@ -194,7 +202,7 @@ function encodeInner(args: EncodePlayArgs): string {
     if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return '';
     const head = (tick - prevTick) * 4;
     prevTick = tick;
-    const dropK = roundedDropIndex(input);
+    const dropK = roundedDropIndex(input, angles);
     const angleK = gridIndex(angle);
     const fitsVelocity = legacy || (
       vx >= -VELOCITY_BASE / 2 && vx < VELOCITY_BASE / 2 &&
@@ -203,7 +211,7 @@ function encodeInner(args: EncodePlayArgs): string {
     if (dropK !== null) {
       writeVarint(bytes, head + TAG_DROP_GRID);
       writeU32(bytes, dropK);
-    } else if (isStraightDrop(input)) {
+    } else if (isStraightDrop(input, angles)) {
       writeVarint(bytes, head + TAG_DROP);
       writeF64(bytes, angle);
     } else if (angleK !== null && isPlainInt(vx) && isPlainInt(vy) && fitsVelocity) {
@@ -293,13 +301,14 @@ export function decodePlay(text: string): DecodePlayResult {
     const format = readVarint(body, pos);
     if (format === null) return fail('badData');
     // 本線が形式3で発行した指紋はr3。Cは数値11（共有）または12（端末保存）を発行した。
-    const oldC = wireFormat === PREVIOUS_FORMAT && (format === OLD_C_SHARE_RULES || format === OLD_C_REPLAY_RULES);
+    const oldC = wireFormat === PREVIOUS_FORMAT && (format === OLD_C_SHARE_RULES || format === NATIVE_REPLAY_FORMAT);
     const legacy = wireFormat === LEGACY_FORMAT || oldC;
+    const angles = !legacy && wireFormat === SHARE_FORMAT_VERSION && format >= FIRST_PORTABLE_RULES_FORMAT ? PORTABLE_ANGLES : NATIVE_ANGLES;
     if (format > (legacy ? 255 : 999)) return fail('badData');
     const hash = legacy ? null : readU32(body, pos);
     if (!legacy && hash === null) return fail('truncated');
     const rulesVersion = oldC && format === OLD_C_SHARE_RULES
-      ? OLD_C_FINGERPRINT
+      ? NATIVE_REPLAY_RULES
       : hash === null ? format : `r${format}.${hash.toString(16).padStart(8, '0')}`;
     const seed = readVarint(body, pos);
     const endTick = readVarint(body, pos);
@@ -323,13 +332,12 @@ export function decodePlay(text: string): DecodePlayResult {
         const k = readU32(body, pos);
         if (k === null) return fail('truncated');
         angle = gridAngle(k);
-        ({ vx, vy } = roundedDrop(angle));
+        ({ vx, vy } = roundedDrop(angle, angles));
       } else if (tag === TAG_DROP) {
         const a = readF64(body, pos);
         if (a === null) return fail('truncated');
         angle = a;
-        vx = -Math.cos(angle) * DROP_SPEED;
-        vy = -Math.sin(angle) * DROP_SPEED;
+        ({ vx, vy } = straightDrop(angle, angles));
       } else if (tag === TAG_RAW) {
         const a = readF64(body, pos);
         const x = readF64(body, pos);

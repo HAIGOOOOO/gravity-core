@@ -49,6 +49,7 @@ import {
   TIER_RADIUS,
 } from './constants';
 import { solveContacts } from './contacts';
+import { NATIVE_ANGLES, PORTABLE_ANGLES } from './angle';
 import { driftBoard } from './board-drift';
 import { createGravity, defaultGravityTuning, type GravityState, type GravityTuning } from './gravity';
 import { fusionCooling } from './heat';
@@ -98,7 +99,8 @@ export type SimulationSetup = {
  * メモリの中で持つ用。JSON にすると -0 が 0 になり、ビット一致が崩れうる。中身は見ない・書き換えない。
  */
 export type SimulationState = Readonly<{
-  format: 8;
+  format: 9;
+  legacyAngles: boolean;
   seed: number;
   rngState: number;
   tick: number;
@@ -122,6 +124,7 @@ export type SimulationState = Readonly<{
   gravityPrototype: boolean;
   interventionCooling: number;
 }>;
+type LegacySimulationState = Omit<SimulationState, 'format' | 'legacyAngles'> & Readonly<{ format: 8 }>;
 
 /** createSimulation が返す物。SimulationPort に、途中の盤面の書き出しを足した物。 */
 export type Simulation = SimulationPort & {
@@ -149,21 +152,29 @@ export function chainMultiplier(chain: number): number {
  * @param gravityTuning 渡したときは試作の全操作を使える。通常は崩壊だけを射出後の一手にする。
  */
 export function createSimulation(seed: number, setup?: SimulationSetup, gravityTuning?: GravityTuning): Simulation {
-  return build(seed, setup, null, gravityTuning);
+  return build(seed, setup, null, gravityTuning, false);
+}
+
+/** 形式12の記録を、当時と同じ角度計算で組み立てる。 */
+export function createLegacyReplaySimulation(seed: number, setup?: SimulationSetup): Simulation {
+  return build(seed, setup, null, undefined, true);
 }
 
 /** exportState() で書き出した状態から、続きを計算できるシミュレーションを作る。 */
-export function restoreSimulation(state: SimulationState): Simulation {
-  if (state.format !== 8) throw new Error(`restoreSimulation: 知らない形式 ${String(state.format)}`);
-  return build(state.seed, undefined, state, undefined);
+export function restoreSimulation(state: SimulationState | LegacySimulationState): Simulation {
+  if (state.format !== 8 && state.format !== 9) throw new Error('restoreSimulation: 知らない形式');
+  const legacyAngles = state.format === 8 || state.legacyAngles;
+  return build(state.seed, undefined, state, undefined, legacyAngles);
 }
 
 function build(
   seed: number,
   setup: SimulationSetup | undefined,
-  saved: SimulationState | null,
+  saved: SimulationState | LegacySimulationState | null,
   gravityTuning: GravityTuning | undefined,
+  legacyAngles: boolean,
 ): Simulation {
+  const angles = legacyAngles ? NATIVE_ANGLES : PORTABLE_ANGLES;
   const rng = saved ? createRngFromState(saved.rngState) : createRng(seed);
   const bag = createTierBag(rng, saved?.bag);
   const gravityPrototype = saved?.gravityPrototype ?? gravityTuning !== undefined;
@@ -227,7 +238,8 @@ function build(
     for (const b of setup.bodies) addBody(b.tier, b.x, b.y, b.vx ?? 0, b.vy ?? 0, true);
   } else {
     const r = CORE_RADIUS + TIER_RADIUS[START_BODY.tier];
-    addBody(START_BODY.tier, r * Math.cos(START_BODY.angle), r * Math.sin(START_BODY.angle), 0, 0, true);
+    const direction = angles.vector(START_BODY.angle);
+    addBody(START_BODY.tier, r * direction.x, r * direction.y, 0, 0, true);
   }
 
   function getSnapshot(): GameSnapshot {
@@ -272,10 +284,10 @@ function build(
 
   function submitLaunch(raw: LaunchCommand): LaunchResult {
     const command = quantizeLaunch(raw);
-    const reason = launchRejectReason(getSnapshot(), command);
+    const reason = launchRejectReason(getSnapshot(), command, angles);
     if (reason !== null) return { accepted: false, reason };
 
-    const addedHeat = Math.min(HEAT_MAX - heat, launchHeating(tick, bestTier, inputLog, command.originAngleRadians));
+    const addedHeat = Math.min(HEAT_MAX - heat, launchHeating(tick, bestTier, inputLog, command.originAngleRadians, angles));
     heat += addedHeat;
 
     const tier = queue[0];
@@ -283,10 +295,11 @@ function build(
     queue[1] = queue[2];
     queue[2] = bag.draw(bestTier);
 
+    const direction = angles.vector(command.originAngleRadians);
     const body = addBody(
       tier,
-      LAUNCH_RADIUS * Math.cos(command.originAngleRadians),
-      LAUNCH_RADIUS * Math.sin(command.originAngleRadians),
+      LAUNCH_RADIUS * direction.x,
+      LAUNCH_RADIUS * direction.y,
       command.vx,
       command.vy,
       false,
@@ -467,7 +480,7 @@ function build(
       }
     }
 
-    driftBoard(bodies);
+    driftBoard(bodies, angles);
 
     // 6. 限界リングと熱量
     // 重力操作で山が動いている間だけ、すでに越えている天体には少し幅を持たせる（判定のちらつき防止）
@@ -509,8 +522,7 @@ function build(
   function predict(command: LaunchCommand): Prediction {
     // 照準の線と実際の射出が食い違わないよう、同じ丸めを通す
     const q = quantizeLaunch(command);
-    if (gravity.active()) return predictLaunch(getSnapshot(), q, gravity.flight());
-    return predictLaunch(getSnapshot(), q);
+    return predictLaunch(getSnapshot(), q, gravity.active() ? gravity.flight() : undefined, angles);
   }
 
   function submitGravity(command: GravityCommand): GravityResult {
@@ -537,7 +549,8 @@ function build(
 
   function exportState(): SimulationState {
     return {
-      format: 8,
+      format: 9,
+      legacyAngles,
       seed,
       rngState: rng.state(),
       tick,

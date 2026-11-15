@@ -3,16 +3,15 @@
 
 import type { GameSnapshot, RunStats, SimulationPort, Tier } from '../contracts/game';
 import { HEAT_STATE_LIMITS } from '../game/constants';
-import { createSimulation } from '../game/simulation';
 import type { IndexedEvent } from '../replay/engine';
 import { highlightsFromRun, type ReplayHighlight } from '../replay/highlights';
 import { MAX_REPLAY_TICKS } from '../replay/limits';
-import { createReplayRecord, type ReplayRecord } from '../replay/record';
+import { createReplayRecord, createReplaySimulation, type ReplayRecord } from '../replay/record';
+import { replayFormatForRules, type ReplayFormat } from '../replay/rules';
 import { expandLaunchInputs } from '../shared/input-timeline';
 import {
   decodePlay,
   encodePlay,
-  SHARE_RULES_VERSION,
   type DecodeFailReason,
   type DecodePlayResult,
   type SharePlay,
@@ -71,15 +70,15 @@ export function decodeReplayShare(
   text: string,
 ): DecodePlayResult | { ok: false; reason: 'rulesMismatch' } {
   const decoded = decodePlay(text);
-  if (decoded.ok && decoded.play.rulesVersion !== SHARE_RULES_VERSION) {
+  if (decoded.ok && replayFormatForRules(decoded.play.rulesVersion) === null) {
     return { ok: false, reason: 'rulesMismatch' };
   }
   return decoded;
 }
 
-/** 端末保存の記録から、通常開始の現行ルールで再生できる入力だけを共有する。 */
+/** 端末保存の記録から、通常開始で対応するルールの入力を共有する。 */
 export function encodeReplayShare(record: ReplayRecord): string {
-  if (record.setup !== undefined || record.rulesVersion !== SHARE_RULES_VERSION) return '';
+  if (record.setup !== undefined || replayFormatForRules(record.rulesVersion) !== record.format) return '';
   return encodePlay(record);
 }
 
@@ -94,19 +93,21 @@ export function shareToReplay(text: string, options?: VerifyOptions): ShareRepla
   if (run.result.inputsApplied !== run.play.inputs.length || run.result.ticks !== run.play.endTick) {
     return { ok: false, reason: 'invalidRun' };
   }
-  return { ok: true, record: createReplayRecord(run.sim), final: run.sim.getSnapshot(), highlights: run.highlights };
+  return { ok: true, record: createReplayRecord(run.sim, { format: run.format }), final: run.sim.getSnapshot(), highlights: run.highlights };
 }
 
 function recompute(text: string, options?: VerifyOptions, collectHighlights = false):
-  | { ok: true; play: SharePlay; result: VerifiedPlay; sim: SimulationPort; highlights: readonly ReplayHighlight[] }
+  | { ok: true; play: SharePlay; result: VerifiedPlay; sim: SimulationPort; format: ReplayFormat; highlights: readonly ReplayHighlight[] }
   | { ok: false; reason: VerifyFailReason } {
-  const decoded = decodeReplayShare(text);
+  const decoded = decodePlay(text);
   if (!decoded.ok) return decoded;
   const { play } = decoded;
+  const format = replayFormatForRules(play.rulesVersion);
+  if (format === null) return { ok: false, reason: 'rulesMismatch' };
 
   try {
     const maxTicks = toMaxTicks(options?.maxTicks);
-    const sim = createSimulation(play.seed);
+    const sim = createReplaySimulation(format, play.seed);
     let applied = 0;
     const initial = sim.getSnapshot();
     let snap = initial;
@@ -158,6 +159,7 @@ function recompute(text: string, options?: VerifyOptions, collectHighlights = fa
       ok: true,
       play,
       sim,
+      format,
       highlights: collectHighlights ? highlightsFromRun({ checkpoints: [initial], critical, events }) : [],
       result: {
         score: snap.score,

@@ -5,13 +5,13 @@
 // ルールの版の指紋を一緒に保存し、合わない記録は再生しない。
 
 import type { GameSnapshot, LaunchInput, RunStats, SimulationPort, Tick } from '../contracts/game';
-import { createSimulation, type SimulationSetup } from '../game/simulation';
+import { createLegacyReplaySimulation, createSimulation, type SimulationSetup } from '../game/simulation';
 
-import { hashText, REPLAY_FORMAT, rulesVersion } from './rules';
+import { hashText, NATIVE_REPLAY_FORMAT, NATIVE_REPLAY_RULES, REPLAY_FORMAT, rulesVersion, type ReplayFormat } from './rules';
 export { REPLAY_FORMAT, rulesVersion } from './rules';
 
 export type ReplayRecord = Readonly<{
-  format: typeof REPLAY_FORMAT;
+  format: ReplayFormat;
   /** rulesVersion() が作る指紋。今のルールと違う記録は「合わない」結果を返す */
   rulesVersion: string;
   seed: number;
@@ -67,6 +67,10 @@ export function copySetup(setup: SimulationSetup): SimulationSetup {
   return copy;
 }
 
+export function createReplaySimulation(format: ReplayFormat, seed: number, setup?: SimulationSetup) {
+  return format === NATIVE_REPLAY_FORMAT ? createLegacyReplaySimulation(seed, setup) : createSimulation(seed, setup);
+}
+
 /**
  * プレイ中（あるいは終了後）のシミュレーションから記録を作る。
  * 盤面は持たず、シードと受理済みの入力ログを写す。
@@ -78,19 +82,20 @@ export function copySetup(setup: SimulationSetup): SimulationSetup {
  */
 export function createReplayRecord(
   sim: SimulationPort,
-  options: { now?: Date; setup?: SimulationSetup } = {},
+  options: { now?: Date; setup?: SimulationSetup; format?: ReplayFormat } = {},
 ): ReplayRecord {
   const snap = sim.getSnapshot();
+  const format = options.format ?? REPLAY_FORMAT;
   const record: ReplayRecord = {
-    format: REPLAY_FORMAT,
-    rulesVersion: rulesVersion(),
+    format,
+    rulesVersion: format === NATIVE_REPLAY_FORMAT ? NATIVE_REPLAY_RULES : rulesVersion(),
     seed: snap.seed,
     inputs: sim.getInputLog().map((i) => ({ ...i })),
     endTick: snap.tick,
     finalScore: snap.score,
     finalBodyCount: snap.bodies.length,
     // 開始の盤面はシードと setup だけで決まるので、同じ組み立てで作り直して指紋を取る
-    initialHash: snapshotHash(createSimulation(snap.seed, options.setup).getSnapshot()),
+    initialHash: snapshotHash(createReplaySimulation(format, snap.seed, options.setup).getSnapshot()),
     finalHash: snapshotHash(snap),
     phase: snap.phase,
     stats: { ...snap.stats },

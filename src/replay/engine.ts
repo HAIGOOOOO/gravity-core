@@ -17,9 +17,10 @@
 
 import type { GameEvent, GameSnapshot, Tick } from '../contracts/game';
 import { HEAT_STATE_LIMITS } from '../game/constants';
-import { createSimulation, type SimulationState } from '../game/simulation';
+import type { SimulationState } from '../game/simulation';
 import { expandLaunchInputs } from '../shared/input-timeline';
-import { rulesVersion, snapshotHash, type ReplayRecord } from './record';
+import { createReplaySimulation, rulesVersion, snapshotHash, type ReplayRecord } from './record';
+import { replayFormatForRules } from './rules';
 import { MAX_REPLAY_TICKS } from './limits';
 export { MAX_REPLAY_TICKS } from './limits';
 
@@ -76,7 +77,7 @@ export type RunOptions = {
  */
 export function runReplay(record: ReplayRecord, options: RunOptions = {}): ReplayRun | ReplayFailure {
   const expected = rulesVersion();
-  if (record.rulesVersion !== expected) {
+  if (replayFormatForRules(record.rulesVersion) !== record.format) {
     return { ok: false, reason: 'rulesMismatch', expected, actual: record.rulesVersion };
   }
   const limit = options.maxTicks ?? MAX_REPLAY_TICKS;
@@ -87,7 +88,7 @@ export function runReplay(record: ReplayRecord, options: RunOptions = {}): Repla
   }
 
   const every = options.checkpointEvery ?? CHECKPOINT_EVERY;
-  const sim = createSimulation(record.seed, record.setup);
+  const sim = createReplaySimulation(record.format, record.seed, record.setup);
   // 開始の盤面（入力を反映する前の tick 0）が記録と違う = seed / setup / 初期キューが
   // 書き換えられた。熱量のように終わる頃には同じ状態へ収束して最終照合を
   // すり抜ける細工も、ここで「合わない」と分かる。

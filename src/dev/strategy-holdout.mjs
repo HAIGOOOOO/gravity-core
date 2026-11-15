@@ -55,6 +55,7 @@ try {
   const { randomBot, safeMergeBot, spiralBot } = await server.ssrLoadModule('/src/tools/bots.ts');
   const { dropAt } = await server.ssrLoadModule('/src/fixtures/index.ts');
   const { LAUNCH_COOLDOWN, TICK_HZ } = await server.ssrLoadModule('/src/game/constants.ts');
+  const { rulesVersion } = await server.ssrLoadModule('/src/replay/rules.ts');
   const fast = Math.round(LAUNCH_COOLDOWN * TICK_HZ), slow = TICK_HZ;
   const maxTicks = 5 * 60 * TICK_HZ;
   const four = (start, jitter = 0, alternateOrder = false) => seed => {
@@ -108,7 +109,7 @@ try {
   const maxTimingJitter = suite === 'aiming' || suite === 'evasion' ? Math.round(.15 * TICK_HZ) : 0;
   const report = {
     revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-    experiment, suite, seeds, maxSeconds: maxTicks / TICK_HZ, complete: false, summary: [], comparisons: [], runs: [],
+    rulesVersion: rulesVersion(), experiment, suite, seeds, maxSeconds: maxTicks / TICK_HZ, complete: false, summary: [], comparisons: [], runs: [],
   };
   const save = () => writeFileSync(path, JSON.stringify(report, null, 2) + '\n');
   const median = values => {

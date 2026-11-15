@@ -3,6 +3,7 @@ import './share-demo.css';
 import { TICK_HZ } from '../game/constants';
 import { createBoardRenderer } from '../render';
 import { parseReplay } from '../replay/record';
+import { NATIVE_REPLAY_FORMAT } from '../replay/rules';
 import {
   decodeReplayShare, encodeReplayShare, extractShareText, MAX_TEXT_LENGTH,
   shareToReplayAsync, type AsyncShareReplay,
@@ -100,7 +101,9 @@ async function open(raw: string, sample = false): Promise<void> {
   replay.href = `./replay.html#code=${code}${sample ? '&sample=1' : ''}`;
   renderer.resize(result.clientWidth);
   draw();
-  status.textContent = `${metadata}の盤面と得点を再現しました。`;
+  status.textContent = data.record.format === NATIVE_REPLAY_FORMAT
+    ? `${metadata}を旧ルールで計算しました。旧形式では、実行環境によって得点や盤面が変わる場合があります。`
+    : `${metadata}の盤面と得点を再現しました。`;
 }
 
 form.addEventListener('submit', (event) => { event.preventDefault(); void open(input.value); });

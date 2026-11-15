@@ -113,6 +113,13 @@ describe('射出後の一手', () => {
     expect(shared.record.inputs.at(-1)?.collapseTick).toBe(1489);
     const restored = parseReplay(JSON.stringify({ ...shared.record, packing: 1, inputs: oldPacked }));
     expect(restored).toEqual(shared.record);
+    expect(shared.record.format).toBe(12);
+    const player = createReplayPlayer(shared.record);
+    expect(player.ok).toBe(true);
+    if (player.ok) {
+      player.player.seek(300);
+      expect(player.player.seek(shared.record.endTick)).toEqual(shared.final);
+    }
     // 本線891374cが保存した本物の形式3。曲げ投げは3バイトの速度表現。
     const mainCode = 'AwOHneOIB4IBASsAAAAAcCohYWawVQ';
     expect(decodePlay(mainCode)).toMatchObject({ ok: true, play: { rulesVersion: 'r3.88e39d87', inputs: [
