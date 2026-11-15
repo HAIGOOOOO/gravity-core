@@ -3,7 +3,7 @@ import type { LaunchInput, RunStats } from '../contracts/game';
 import type { SimulationSetup } from '../game/simulation';
 import { TIER_COUNT } from '../game/constants';
 import { expandLaunchInputs } from '../shared/input-timeline';
-import { decodePlay, encodePlay, MAX_INPUTS } from '../share/codec';
+import { decodePlay, encodePlay, MAX_INPUTS, OLD_C_REPLAY_RULES } from '../share/codec';
 import { REPLAY_FORMAT, type ReplayRecord } from './record';
 import { MAX_REPLAY_TICKS } from './limits';
 
@@ -15,7 +15,7 @@ export const MAX_REPLAY_TEXT_LENGTH = 1024 * 1024;
 /** 入力は共有と同じ可逆の圧縮へ。全体のルール指紋と最終照合値は外側に残す。 */
 export function serializeReplay(record: ReplayRecord): string {
   if (record.inputs.some((input) => input.charged === true)) return '';
-  const inputs = encodePlay({ ...record, rulesVersion: REPLAY_FORMAT });
+  const inputs = encodePlay(record);
   if (!inputs) return '';
   return JSON.stringify({ ...record, packing: 1, inputs });
 }
@@ -85,7 +85,8 @@ export function parseReplay(text: string): ReplayRecord | null {
   if (r.packing !== undefined) {
     if (r.packing !== 1 || typeof r.inputs !== 'string') return null;
     const decoded = decodePlay(r.inputs);
-    if (!decoded.ok || decoded.play.rulesVersion !== REPLAY_FORMAT ||
+    if (!decoded.ok ||
+      (decoded.play.rulesVersion !== r.rulesVersion && decoded.play.rulesVersion !== OLD_C_REPLAY_RULES) ||
       decoded.play.seed !== r.seed || decoded.play.endTick !== r.endTick) return null;
     r.inputs = decoded.play.inputs;
     delete r.packing;

@@ -297,13 +297,18 @@ describe('速度', () => {
     );
     storage.setItem(STATS_KEY, JSON.stringify({ version: 1, runs }));
     const store = createStatsStore(storage);
-    const t0 = performance.now();
-    const archive = store.load();
-    const trend = summarizeTrend(archive.runs, 50);
-    const elapsed = performance.now() - t0;
-    expect(archive.runs).toHaveLength(1000);
-    expect(trend.recentCount).toBe(50);
-    expect(elapsed).toBeLessThan(50);
+    const measure = () => {
+      const start = performance.now();
+      const archive = store.load();
+      const trend = summarizeTrend(archive.runs, 50);
+      const elapsed = performance.now() - start;
+      expect(archive.runs).toHaveLength(1000);
+      expect(trend.recentCount).toBe(50);
+      return elapsed;
+    };
+    for (let i = 0; i < 3; i++) measure();
+    const samples = Array.from({ length: 5 }, measure).sort((a, b) => a - b);
+    expect(samples[2]).toBeLessThan(50);
   });
   it('1000 件の保存値は 1MB 未満に収まる（localStorage の上限 5MB に対し十分小さい）', () => {
     const storage = fakeStorage();

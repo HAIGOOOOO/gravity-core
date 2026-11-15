@@ -1,3 +1,4 @@
+import { MAX_REPLAY_TICKS } from '../replay/limits';
 import { describe, expect, it } from 'vitest';
 import type { GameSnapshot, LaunchInput } from '../contracts/game';
 import { createAutoPlay, dropAt } from '../fixtures';
@@ -291,7 +292,7 @@ describe('verifyPlay', () => {
   });
 
   it('ルールの版が違う文字列は rulesMismatch で弾く', () => {
-    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION + 1, seed: 1, inputs: [], endTick: 0 });
+    const text = encodePlay({ rulesVersion: 'r999.00000000', seed: 1, inputs: [], endTick: 0 });
     expect(decodePlay(text).ok).toBe(true); // 文字列としては正しい
     expect(verifyPlay(text)).toEqual({ ok: false, reason: 'rulesMismatch' });
   });
@@ -407,12 +408,9 @@ describe('verifyPlay', () => {
 });
 
 describe('verifyPlay の再生上限（maxTicks）', () => {
-  /** codec.ts のプレイ長の上限と同じ（= 4 時間）。細工された巨大 endTick の文字列用。 */
-  const MAX_TICKS = TICK_HZ * 60 * 60 * 4;
-
   it('上限を付けると、巨大な endTick の文字列を速く打ち切る', () => {
-    // 正当だが入力なし・endTick 最大の文字列。上限なしだと 4 時間ぶん（約 172 万 tick）再生する
-    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [], endTick: MAX_TICKS });
+    // 正当だが入力なし・endTick 最大の文字列。短い上限を指定しなければ最大1時間分を計算する
+    const text = encodePlay({ rulesVersion: SHARE_RULES_VERSION, seed: 1, inputs: [], endTick: MAX_REPLAY_TICKS });
     expect(text).not.toBe('');
     const t0 = performance.now();
     const v = verifyPlay(text, { maxTicks: 3600 });
@@ -463,7 +461,7 @@ describe('verifyPlay の再生上限（maxTicks）', () => {
     if (vz.ok) expect(vz.result.ticks).toBe(0);
   }, 120_000);
 
-  it('おかしい上限の値は「上限なし」として扱い、例外も出ない', () => {
+  it('おかしい上限の値は既定値として扱い、例外も出ない', () => {
     const auto = createAutoPlay(9);
     for (let i = 0; i < 240; i++) auto.step();
     const snap = auto.sim.getSnapshot();

@@ -32,7 +32,7 @@ export function findHighlights(record: ReplayRecord): HighlightsResult {
 }
 
 /** 検証済みの計算を共有し、見どころのために物理を回し直さない。 */
-export function highlightsFromRun(run: ReplayRun): readonly ReplayHighlight[] {
+export function highlightsFromRun(run: Pick<ReplayRun, 'checkpoints' | 'critical' | 'events'>): readonly ReplayHighlight[] {
   const highlights: ReplayHighlight[] = [];
   let maxChain = 0;
   let maxChainTick: Tick | null = null;

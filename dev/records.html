@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>記録の数値を照合する — GRAVITY CORE</title>
+</head>
+<body>
+<main class="replay-page records-page">
+  <header>
+    <p class="eyebrow">GRAVITY CORE / 担当B・記録の見本</p>
+    <h1>記録の数値を照合する</h1>
+    <p>30秒と2分の見本で、ゲームの結果と記録の得点・到達した天体を並べて確かめます。</p>
+  </header>
+  <div id="demo-controls">
+    <button type="button" id="record-short">30秒の見本で照合</button>
+    <button type="button" id="record-long">2分の見本で照合</button>
+  </div>
+  <button type="button" id="record-cancel" hidden>準備を中止</button>
+  <p id="record-status" role="status">照合する見本を選んでください。</p>
+  <div class="replay-layout" id="record-result" hidden>
+    <section>
+      <p id="record-caption"></p>
+      <canvas id="board" aria-label="記録した時点の盤面"></canvas>
+    </section>
+    <section>
+      <h2>選んだ見本の記録</h2>
+      <p id="record-phase"></p>
+      <p class="score" id="record-score"></p>
+      <p id="record-tier"></p>
+      <dl id="record-stats"></dl>
+      <a id="record-replay" target="_blank" rel="noopener">このプレイの再生を別タブで開く</a>
+      <details>
+        <summary>ゲームの結果と照合する</summary>
+        <table>
+          <thead><tr><th scope="col">項目</th><th scope="col">ゲームの結果</th><th scope="col">記録</th></tr></thead>
+          <tbody id="record-comparison"></tbody>
+        </table>
+      </details>
+    </section>
+  </div>
+</main>
+<script type="module" src="/src/dev/records-demo.ts"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ import { createReplayRecord, parseReplay, serializeReplay } from '../replay/reco
 import { runReplay } from '../replay/engine';
 import { createReplayPlayer } from '../replay/player';
 import { decodePlay, encodePlay, encodeSimulation, SHARE_RULES_VERSION } from '../share/codec';
-import { verifyPlay } from '../share/verify';
+import { shareToReplay, verifyPlay } from '../share/verify';
 import { expandLaunchInputs } from '../shared/input-timeline';
 import { BURST_MAX, INTERVENTION_WINDOW_SECONDS, TICK_HZ } from './constants';
 import { createRng } from './rng';
@@ -98,5 +98,26 @@ describe('射出後の一手', () => {
     if (result.ok) { expect(result.result.score).toBe(sim.getSnapshot().score); expect(result.result.stats).toEqual(sim.getSnapshot().stats); }
     const replay = runReplay(createReplayRecord(sim)); expect(replay.ok).toBe(true);
     if (replay.ok) expect(replay.final).toEqual(sim.getSnapshot());
+    const shared = shareToReplay(encodeSimulation(sim));
+    expect(shared.ok).toBe(true);
+    if (shared.ok) expect(shared.final).toEqual(sim.getSnapshot());
+  });
+  it('統合前に保存した崩壊を読み、新旧の共有形式で再生に使えるルールを区別する', () => {
+    // 47d5a2dの実プレイの共有コードと、同じ入力を含む端末保存の内側のコード。
+    const oldShare = 'AwsLwQ0WAB5CxEmYAiTyXhOYAodvhZSYAnH__PCYAvQJHCeYAlALgQOYAvlNLbKYAouU36OYAkr6B46YAsM8ibyYAhXoygeYAlgYlu2YAsKhkVOYAuWS6YOYAoqz7b-YAvHLB6eYAsi4B4iYAtUkTcyYAva5Wv-YAowKsD2YApT_DE6YAmvvSOQBFRNF2FzJ';
+    const oldPacked = 'AwwLwQ0WAB5CxEmYAiTyXhOYAodvhZSYAnH__PCYAvQJHCeYAlALgQOYAvlNLbKYAouU36OYAkr6B46YAsM8ibyYAhXoygeYAlgYlu2YAsKhkVOYAuWS6YOYAoqz7b-YAvHLB6eYAsi4B4iYAtUkTcyYAva5Wv-YAowKsD2YApT_DE6YAmvvSOQBFRNkrKVd';
+    const shared = shareToReplay(oldShare);
+    expect(shared.ok).toBe(true);
+    if (!shared.ok) return;
+    expect(shared.final).toMatchObject({ tick: 1729, score: 3310, intervention: { used: true } });
+    expect(shared.record.inputs.at(-1)?.collapseTick).toBe(1489);
+    const restored = parseReplay(JSON.stringify({ ...shared.record, packing: 1, inputs: oldPacked }));
+    expect(restored).toEqual(shared.record);
+    // 本線891374cが保存した本物の形式3。曲げ投げは3バイトの速度表現。
+    const mainCode = 'AwOHneOIB4IBASsAAAAAcCohYWawVQ';
+    expect(decodePlay(mainCode)).toMatchObject({ ok: true, play: { rulesVersion: 'r3.88e39d87', inputs: [
+      { tick: 10, originAngleRadians: 0, vx: -400, vy: 37 },
+    ] } });
+    expect(shareToReplay(mainCode)).toEqual({ ok: false, reason: 'rulesMismatch' });
   });
 });

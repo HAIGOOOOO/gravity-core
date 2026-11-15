@@ -59,9 +59,8 @@ describe('プレイ統計の作成', () => {
     expect(d.merges).toBe(2);
     expect(d.supernovas).toBe(1);
     expect(d.maxChain).toBe(5);
-    // 超新星の記録がある以上 Tier 8 には届いている。盤面の到達 Tier が下を向いていても
-    // （欠損・別版の盤面など）実績の大きい方を採る。merges 等の counted() と同じ考え方
-    expect(d.bestTier).toBe(TIER_COUNT - 1);
+    // 到達した天体は、渡された盤面の値をそのまま使う。
+    expect(d.bestTier).toBe(5);
     // 越えていたのは tick 100〜220 と 300〜400（終了まで開きっぱなし）
     expect(d.overLimitSeconds).toBeCloseTo(220 / TICK_HZ, 10);
     expect(d.overLimitEntries).toBe(2);
@@ -166,7 +165,7 @@ describe('壊れた入力を通さない', () => {
       { id: 'meta', playedAt: 'not-a-date', gameVersion: '0.1.0' },
     );
     expect(d.maxChain).toBe(4); // 出来事側の連鎖は残る
-    expect(d.score).toBe(50); // 得点の下限は記録の合計
+    expect(d.score).toBe(0); // 盤面の得点を使う
     expect(d.seconds).toBeCloseTo(5 / TICK_HZ, 10); // 出来事の時刻がプレイ時間の下限になる
     expect(d.playedAt).toBe('1970-01-01T00:00:00.000Z');
     expect(readRunDetail(d)).not.toBeNull();
@@ -238,15 +237,13 @@ describe('壊れた入力を通さない', () => {
 });
 
 describe('盤面の集計との照合', () => {
-  it('合体の出来事が示す到達 Tier が盤面を上回るときは、出来事側を採る', () => {
-    // 盤面の集計が欠けた・古い版の記録でも、「この Tier が生まれた」出来事は到達の証拠。
-    // 逆に出来事が示さない分（待ち行列から直接落ちた高い Tier 等）は盤面側が担う
+  it('合体の出来事が示す到達 Tier が違っても、盤面の到達値を使う', () => {
     const d = buildRunDetail(
       [event('merge', 5, { sourceTier: 3, resultTier: 4 })],
       snapshot({ bestTierThisRun: 2 }),
       META,
     );
-    expect(d.bestTier).toBe(4);
+    expect(d.bestTier).toBe(2);
   });
   it('出来事の取りこぼしで数が足りない時は、盤面の集計を採る', () => {
     const d = buildRunDetail(
@@ -275,7 +272,7 @@ describe('盤面の集計との照合', () => {
     expect(d.merges).toBe(1);
     expect(d.maxChain).toBe(2);
   });
-  it('盤面の得点・時刻が欠けていても、出来事が証明する分だけ残る', () => {
+  it('出来事に高い得点や超新星があっても、盤面の0点・到達値を上書きしない', () => {
     const d = buildRunDetail(
       [
         event('merge', 300, { sourceTier: 0, resultTier: 1, chain: 1, scoreDelta: 330 }),
@@ -284,8 +281,9 @@ describe('盤面の集計との照合', () => {
       snapshot({}), // tick・得点・集計が全部欠けた盤面
       META,
     );
-    // 得点は合体・超新星でしか増えないので、記録の合計は「少なくともこれだけ取った」証拠
-    expect(d.score).toBe(45330);
+    // 出来事だけからゲームの結果を推測しない。
+    expect(d.score).toBe(0);
+    expect(d.bestTier).toBe(0);
     // 出来事の最遅時刻までプレイは進んでいた
     expect(d.seconds).toBeCloseTo(600 / TICK_HZ, 10);
     expect(readRunDetail(d)).not.toBeNull();
