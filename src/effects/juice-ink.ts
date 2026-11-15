@@ -19,7 +19,9 @@ export function createJuiceInk(theme: EffectTheme) {
   return {
     theme,
     glow(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {
-      const stamp = stamps.get(color); if (stamp && radius > 0) ctx.drawImage(stamp, x - radius, y - radius, radius * 2, radius * 2);
+      if (ctx.globalAlpha === 0 || radius <= 0) return;
+      const stamp = stamps.get(color);
+      if (stamp) ctx.drawImage(stamp, x - radius, y - radius, radius * 2, radius * 2);
     },
   };
 }

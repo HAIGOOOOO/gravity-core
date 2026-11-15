@@ -10,6 +10,26 @@ import { createChainOrigins } from './juice-chain';
 // 空間→物体→破片→数字。文字を光と煙の下へ埋めない。
 const DRAW_ORDER = [28, 29, 33, 34, 38, 41, 3, 2, 1, 4, 5, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 22,
   23, 25, 26, 27, 30, 31, 32, 35, 36, 37, 39, 42];
+const CLIP_RADIUS = LIMIT_RADIUS - 12;
+const FULL_CIRCLE = Math.PI * 2;
+
+function clipBurst(ctx: CanvasRenderingContext2D, body: { x: number; y: number; radius: number } | null): void {
+  ctx.beginPath();
+  ctx.arc(0, 0, CLIP_RADIUS, 0, FULL_CIRCLE);
+  if (!body) { ctx.clip(); return; }
+
+  const hole = body.radius + 10;
+  // 内側の天体は外周と穴を一つのクリップにできる。外周をまたぐ場合は外側を先に切る。
+  const inside = CLIP_RADIUS >= hole && body.x * body.x + body.y * body.y <= (CLIP_RADIUS - hole) ** 2;
+  if (!inside) {
+    ctx.clip();
+    ctx.beginPath();
+    ctx.rect(-LIMIT_RADIUS, -LIMIT_RADIUS, LIMIT_RADIUS * 2, LIMIT_RADIUS * 2);
+  }
+  ctx.moveTo(body.x + hole, body.y);
+  ctx.arc(body.x, body.y, hole, 0, FULL_CIRCLE);
+  ctx.clip('evenodd');
+}
 
 export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
   const bursts = Array.from({ length: JUICE_CAP }, blankBurst);
@@ -73,16 +93,13 @@ export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
           }
         };
         ctx.save();
-        ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS - 12, 0, Math.PI * 2); ctx.clip();
         // 何十層にも同じクリップを作らず、背後の層を一度に保護する。
-        if (b.resultBody && age >= 0.08 && age <= 0.6) {
-          const body = b.resultBody, hole = body.radius + 10;
-          ctx.beginPath(); ctx.rect(-LIMIT_RADIUS, -LIMIT_RADIUS, LIMIT_RADIUS * 2, LIMIT_RADIUS * 2);
-          ctx.moveTo(body.x + hole, body.y); ctx.arc(body.x, body.y, hole, 0, Math.PI * 2); ctx.clip('evenodd');
-        }
+        clipBurst(ctx, age >= 0.08 && age <= 0.6 ? b.resultBody : null);
         ctx.translate(b.x, b.y); drawSet(DRAW_ORDER); ctx.restore();
-        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, LIMIT_RADIUS - 12, 0, Math.PI * 2); ctx.clip();
-        ctx.translate(b.x, b.y); drawSet([17, 18]); ctx.restore();
+        if (age >= 0.08 && age <= LAYER_ENDS[17]) {
+          ctx.save(); clipBurst(ctx, null);
+          ctx.translate(b.x, b.y); drawSet([17, 18]); ctx.restore();
+        }
         ctx.save(); ctx.translate(b.x, b.y); drawSet([19, 20, 21, 24, 40]); ctx.restore();
       }
       ctx.restore();
