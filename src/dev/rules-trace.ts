@@ -9,10 +9,13 @@ export type ContactMark = Readonly<{ prev: GameSnapshot; event: GameEvent }>;
 /** 比較の線は見本だけ。実際の天体や入力の位置を書き換えない。 */
 export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession, enabled: boolean, snapshot: GameSnapshot, reviewing: boolean, mark?: ContactMark): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  if (!reviewing && study.mode === 'learn' && study.read().waiting) {
-    applyLogicalTransform(ctx); ctx.strokeStyle = '#f6e3aa'; ctx.lineWidth = 5;
-    ctx.beginPath(); ctx.arc(0, -LAUNCH_RADIUS, 28, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, -LAUNCH_RADIUS + 35); ctx.lineTo(0, -LAUNCH_RADIUS + 65); ctx.stroke();
+  if (!reviewing && (study.mode === 'learn' || study.mode === 'collapse')) {
+    const { waiting, preparation } = study.read();
+    if (waiting && (study.mode === 'learn' || preparation === 'ready')) {
+      applyLogicalTransform(ctx); ctx.strokeStyle = '#f6e3aa'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(0, -LAUNCH_RADIUS, 28, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -LAUNCH_RADIUS + 35); ctx.lineTo(0, -LAUNCH_RADIUS + 65); ctx.stroke();
+    }
   }
   if (study.mode === 'repeat') {
     applyLogicalTransform(ctx); ctx.lineWidth = 12; ctx.strokeStyle = '#ff9398';
@@ -46,12 +49,14 @@ export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession,
       ctx.beginPath(); ctx.arc(result.x, result.y, result.radius + 7, 0, Math.PI * 2); ctx.stroke();
     }
   }
-  if (reviewing || !enabled || study.mode !== 'growth' || !study.read().finished) return;
+  if (reviewing || !enabled || study.mode !== 'growth') return;
+  const { finished, curr } = study.read();
+  if (!finished) return;
   applyLogicalTransform(ctx); ctx.lineWidth = 3;
   for (const b of study.before.bodies) {
     ctx.setLineDash([3, 7]); ctx.strokeStyle = '#bdc3bc';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.stroke();
-    const actual = study.read().curr.bodies.find((body) => body.id === b.id);
+    const actual = curr.bodies.find((body) => body.id === b.id);
     if (actual) {
       ctx.setLineDash([]); ctx.strokeStyle = '#83d9ff';
       ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(actual.x, actual.y); ctx.stroke();

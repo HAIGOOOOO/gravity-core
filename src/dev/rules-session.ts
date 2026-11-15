@@ -1,17 +1,22 @@
 import type { GameEvent, LaunchCommand } from '../contracts/game';
 import { CORE_RADIUS, DROP_SPEED, GROW_SECONDS, TICK_HZ, TIER_RADIUS } from '../game/constants';
-import { createSimulation, restoreSimulation } from '../game/simulation';
+import { createSimulation, restoreSimulation, type SimulationState } from '../game/simulation';
 import { GROWTH_PREVIEW_COMMAND, setupGrowthPreview } from '../fixtures/growth-preview';
 import { createInterventionPreparation, createPressurePractice } from './rules-practice';
 import { createLessonReplay } from './rules-replay';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
 type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'loss-avoided' | 'over' | null;
+type PracticeShot = Readonly<{ angle: number; heat: number }>;
+export type RepeatCheckpoint = Readonly<{ state: SimulationState; shots: readonly PracticeShot[] }>;
 // 練習の観察時間。外した一投も短く区切り、同じ盤面から試せるようにする。
 const LEARN_OBSERVATION_TICKS = Math.ceil(1.4 * TICK_HZ);
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
-export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForIntervention = false, prepareIntervention = false) {
+export function createRuleSession(
+  mode: RuleMode = 'learn', seed = 21, pauseForIntervention = false, prepareIntervention = false,
+  repeatFrom?: RepeatCheckpoint,
+) {
   let sim = mode === 'learn' || mode === 'collapse' ? createPressurePractice(seed, mode === 'collapse') : createSimulation(seed, mode === 'growth' ? setupGrowthPreview() : undefined);
   let preparation: 'unlock' | 'charge' | 'ready' | null = mode === 'collapse' && prepareIntervention ? 'unlock' : null;
   if (preparation) sim = createInterventionPreparation(seed);
@@ -23,7 +28,8 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
   if (mode === 'loss') sim = restoreSimulation({ ...createPressurePractice(seed, true).exportState(), heat: 99 });
   if (mode === 'repeat') {
     // 衛星のある途中盤面から、履歴のない最初の一投を本人に操作してもらう。
-    sim = createSimulation(seed, { heat: 40, bestTier: 3, bodies: [{ tier: 3, x: 0, y: -CORE_RADIUS - TIER_RADIUS[3] }] });
+    sim = repeatFrom ? restoreSimulation(repeatFrom.state)
+      : createSimulation(seed, { heat: 40, bestTier: 3, bodies: [{ tier: 3, x: 0, y: -CORE_RADIUS - TIER_RADIUS[3] }] });
   }
   if (mode === 'loss-repeat') {
     // 実際に同じ方角へ投げて衛星まで育てる。練習開始前の得点は後で差し引く。
@@ -47,7 +53,8 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
   let mergeCooling = 0, interventionCooling = 0, passiveChange = 0, maxChain = 0;
   let overflowHeating = 0, ambientCooling = 0;
   let shotHeating = 0;
-  const shots: { angle: number; heat: number }[] = [];
+  let repeatCheckpoint = mode === 'repeat' ? repeatFrom : undefined;
+  const shots: PracticeShot[] = [...repeatCheckpoint?.shots ?? []];
   let armed = false;
   let resultBodyId: number | null = null;
   let lastFusion: { before: number; after: number; cooling: number } | null = null;
@@ -104,12 +111,16 @@ export function createRuleSession(mode: RuleMode = 'learn', seed = 21, pauseForI
     else if (mode === 'repeat' && curr.launchCooldownLeftSeconds <= 0) {
       // 速さの制限を変えず、次の選択ができる時点でだけ教材の時計を止める。
       running = false; waiting = true;
+      if (shots.length === 2 && !repeatCheckpoint) {
+        repeatCheckpoint = { state: sim.exportState(), shots: [...shots] };
+      }
     }
     if (mode !== 'play') review.record(prev, curr, events, maxChain);
     return events;
   }
   return {
     mode, before, prediction, review,
+    repeatCheckpoint: () => repeatCheckpoint,
     read: () => ({ prev, curr, running, waiting, armed, finished, preparation, resultBodyId, lastFusion, shotHeating, shots: [...shots], mergeCooling, interventionCooling, passiveChange, overflowHeating, ambientCooling, maxChain,
       score: curr.score - before.score, merges: curr.stats.merges - before.stats.merges }),
     launch,

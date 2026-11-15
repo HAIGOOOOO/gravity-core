@@ -145,4 +145,24 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(lesson.read().finished).toBe('repeat'); expect(lesson.read().shotHeating).toBe(0);
     expect(lesson.read().shots.map(s => s.heat)).toEqual([0, 0, 0]);
   });
+  it('3投目をやり直すと、2投後の盤面と履歴が一致し、逆側の一投だけを比べられる', () => {
+    const lesson = createRuleSession('repeat');
+    for (let shot = 0; shot < 2; shot++) {
+      expect(lesson.launch(dropAt(0))?.accepted).toBe(true);
+      for (let tick = 0; tick < TICK_HZ; tick++) lesson.step();
+    }
+    const beforeThird = lesson.read().curr;
+    expect(lesson.launch(dropAt(0))?.accepted).toBe(true);
+    lesson.step();
+    expect(lesson.read().shots.map(shot => shot.heat)).toEqual([0, 0, 2]);
+    const checkpoint = lesson.repeatCheckpoint();
+    expect(checkpoint).toBeDefined();
+    const retry = createRuleSession('repeat', 21, false, false, checkpoint);
+    expect(retry.before).toEqual(beforeThird);
+    expect(retry.read().shots.map(shot => shot.heat)).toEqual([0, 0]);
+    expect(retry.launch(dropAt(Math.PI))?.accepted).toBe(true);
+    retry.step();
+    expect(retry.read()).toMatchObject({ finished: 'repeat', shotHeating: 0, curr: { tick: beforeThird.tick + 1 } });
+    expect(retry.read().shots.map(shot => shot.heat)).toEqual([0, 0, 0]);
+  });
 });
