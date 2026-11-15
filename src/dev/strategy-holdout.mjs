@@ -8,10 +8,11 @@ const count = Number(process.argv[3] ?? 32);
 const experiment = process.argv[4] ?? 'production';
 const suite = process.argv[5] ?? 'standard';
 const cycle = /^cycle[358]$/.test(experiment);
-const zones = /^zones(8|10|12)$/.test(experiment);
+const zones = /^zones(8|10|12)$/.test(experiment) || experiment === 'zones-wide9';
 if (!(experiment === 'production' || experiment === 'quick' || cycle || zones)) throw new Error('実験名が不明です');
-if (!['standard', 'tempo', 'aiming', 'evasion'].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
-  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion]');
+const variableTempoSuites = ['aiming', 'evasion', 'confirmation'];
+if (!['standard', 'tempo', ...variableTempoSuites].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
+  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion|confirmation]');
 }
 const seeds = Array.from({ length: count }, (_, n) => seedStart + n);
 const suiteSuffix = suite === 'standard' ? '' : `-${suite}`;
@@ -26,12 +27,14 @@ const server = await createServer({
       const anchor = 'return Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;';
       if (!source.includes(anchor)) throw new Error('加熱の比較箇所が見つかりません');
       if (zones) {
-        const extra = Number(experiment.slice('zones'.length));
+        const wide = experiment === 'zones-wide9';
+        const extra = wide ? 9 : Number(experiment.slice('zones'.length));
+        const tolerance = wide ? '24 * Math.PI / 180' : 'REPEAT_LAUNCH_ANGLE';
         // ＋10では間隔の境界をなくし、通常の冷却で投げる速さの差が出るか調べる。
-        const paceCondition = extra === 10 ? 'true' : 'recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ)';
+        const paceCondition = wide || extra === 10 ? 'true' : 'recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ)';
         return `import { repeatedFourZones } from '../dev/strategy-zone-heat';\n` + source.replace(anchor, `
           const fastRepeat = ${paceCondition};
-          const extra = fastRepeat && repeatedFourZones(recent, angle, REPEAT_LAUNCH_ANGLE) ? ${extra} : 0;
+          const extra = fastRepeat && repeatedFourZones(recent, angle, ${tolerance}) ? ${extra} : 0;
           return extra + Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;
         `);
       }
@@ -81,17 +84,21 @@ try {
     ['four-slow', slow, four(-Math.PI / 2)],
   ];
   const tempo = [['', fast], ['-medium', Math.round(.75 * TICK_HZ)], ['-slow', slow], ['-slower', Math.round(1.25 * TICK_HZ)]];
+  const fourStart = (jitter = 0, alternate = false) => seed => {
+    const angle = suite === 'confirmation' && seed % 2 !== 0 ? -Math.PI / 2 : -Math.PI / 4;
+    return four(angle, jitter, alternate)(seed);
+  };
   const aimingCases = [
     ['random', fast, seed => randomBot(seed).decide],
-    ['four', fast, four(-Math.PI / 4)],
-    ['four-wobble', fast, four(-Math.PI / 4, Math.PI / 90)],
-    ['four-mixed', fast, four(-Math.PI / 4, Math.PI / 90, true)],
+    ['four', fast, fourStart()],
+    ['four-wobble', fast, fourStart(Math.PI / 90)],
+    ['four-mixed', fast, fourStart(Math.PI / 90, true)],
     ['merge-safe', fast, seed => safeMergeBot(seed).decide],
   ];
   const evasionCases = [
     ...aimingCases,
-    ['four-wide', fast, four(-Math.PI / 4, Math.PI / 18, true)],
-    ['four-margin', fast + Math.round(.17 * TICK_HZ), four(-Math.PI / 4, Math.PI / 90, true)],
+    ['four-wide', fast, fourStart(Math.PI / 18, true)],
+    ['four-margin', fast + Math.round(.17 * TICK_HZ), fourStart(Math.PI / 90, true)],
     ['random-margin', fast + Math.round(.17 * TICK_HZ), seed => randomBot(seed).decide],
   ];
   const cases = {
@@ -101,12 +108,13 @@ try {
     ]),
     aiming: aimingCases,
     evasion: evasionCases,
+    confirmation: evasionCases,
     standard: experiment === 'production' ? allCases : allCases.filter(([name]) =>
       ['random', 'spiral', 'four', 'four-offset', 'four-jitter'].includes(name)
       || experiment === 'cycle8' && ['random-slow', 'four-slow'].includes(name)),
   }[suite];
   // 各戦法で別々に同じ乱数列を使い、受理された投数が同じなら次の間隔も同じ。
-  const maxTimingJitter = suite === 'aiming' || suite === 'evasion' ? Math.round(.15 * TICK_HZ) : 0;
+  const maxTimingJitter = variableTempoSuites.includes(suite) ? Math.round(.15 * TICK_HZ) : 0;
   const report = {
     revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     rulesVersion: rulesVersion(), experiment, suite, seeds, maxSeconds: maxTicks / TICK_HZ, complete: false, summary: [], comparisons: [], runs: [],

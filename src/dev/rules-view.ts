@@ -159,10 +159,7 @@ function draw(): void {
   text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '金色の輪を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? '盤面の右か左を押して離す。赤い帯は加熱する方角。' : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '金色の輪から一投すると「崩壊を使う」が有効になります。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : '');
   el('satellite-guide').hidden = !!s.finished || (study.mode !== 'collapse' && study.mode !== 'play');
   function finishedHeatCause(): string {
-    if (s.curr.phase === 'over') {
-      const kind = s.curr.loss?.kind;
-      return kind === 'repeatLaunch' ? '終了：同じ方角への連投で加熱' : kind === 'overLimit' ? '終了：限界外の山で加熱' : kind === 'gravity' ? '終了：重力操作で加熱' : '熱量100で終了';
-    }
+    if (s.curr.phase === 'over') return '';
     if (s.finished) return s.curr.overLimit ? '練習は停止中。赤い輪の天体は、時間を進めると熱を上げます。' : '練習は停止中。限界外の天体はありません。';
     if (s.preparation === 'unlock') return s.running ? '合体で衛星を作っています' : '時間停止中 / 衛星を作るところから';
     if (s.preparation === 'charge') return s.running ? `合体で力をためています ${i?.charge}/${i?.max}` : `衛星を解放 / 力 ${i?.charge}/${i?.max}`;
@@ -219,7 +216,7 @@ function draw(): void {
   const fusion = s.lastFusion;
   text('fusion-change', fusion ? `合体直前 ${fusion.before.toFixed(1)} → 直後 ${fusion.after.toFixed(1)}（−${fusion.cooling.toFixed(1)}）` : '');
   el('fusion-change').hidden = !fusion;
-  text('lesson-result', s.finished === 'expired' ? '時間切れ。もう一度、一投から試せます。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '成長が終わりました。予告と実際の位置を比べてください。' : s.finished === 'repeat' ? `3投の加熱：${s.shots.map(shot => `＋${shot.heat.toFixed(0)}`).join(' → ')}。もう一度で、別の方角を試せます。` : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖 / 合体で熱 −${s.mergeCooling.toFixed(0)}` : s.finished === 'over' ? '熱量100で終了。' : '');
+  text('lesson-result', s.finished === 'expired' ? '崩壊の受付が終わりました。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '成長が終わりました。' : s.finished === 'repeat' ? `3投の加熱：${s.shots.map(shot => `＋${shot.heat.toFixed(0)}`).join(' → ')}。もう一度で、別の方角を試せます。` : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖 / 合体で熱 −${s.mergeCooling.toFixed(0)}` : s.finished === 'over' ? 'ゲーム終了' : '');
   if (s.finished === 'try-chain') text('lesson-result', s.merges > 0 ? '合体できました。次の合体につながるよう、金色の輪からもう一度。' : '今回は合体しませんでした。金色の輪から真っすぐ落としてみましょう。');
   if (s.finished === 'loss-avoided') text('lesson-result', s.shotHeating === 0 ? '連投による加熱は0。この一投では終了しませんでした。' : `連投で熱＋${s.shotHeating.toFixed(1)}。この一投では終了しませんでした。`);
   el('result-actions').hidden = !finished || !!review.frame; el('next-lesson').hidden = s.finished === 'try-chain';
@@ -249,11 +246,11 @@ function draw(): void {
   text('practice-shot', s.preparation === 'unlock' ? '合体を進めて衛星を作る' : s.preparation === 'charge' ? '合体を続けて力をためる' : '真上から一投する');
   el('board-action').hidden = study.mode !== 'collapse' && study.mode !== 'play' || finished || !!review.frame;
   el<HTMLButtonElement>('board-collapse').disabled = !i?.ready || !s.running && !s.armed;
-  text('board-collapse-state', i?.used && i.activeLeftSeconds > 0 ? '崩壊中' : i?.ready ? (s.armed ? '練習で受付を停止中' : `あと ${i.windowLeftSeconds.toFixed(1)} 秒`) : !i?.unlocked ? '衛星を作ると解放' : i.charge < i.max ? `力 ${i.charge}/${i.max}` : '満タン・一投すると使える');
+  text('board-collapse-state', i?.used && i.activeLeftSeconds > 0 ? '崩壊中' : i?.ready ? (s.armed ? '練習で受付を停止中' : `あと ${i.windowLeftSeconds.toFixed(1)} 秒`) : !i?.unlocked ? '衛星を作ると解放' : `力 ${i.charge}/${i.max}`);
   text('free-intervention', !i?.unlocked ? `未解放：まず衛星を作ってください。現在の力 ${i?.charge ?? 0}/${i?.max ?? BURST_MAX}。` : i.ready ? '撃った後の一手を使えます。' : i.charge < i.max ? `衛星は解放済み。合体であと ${i.max - i.charge} の力をためてください。` : `満タン。次の一投から${INTERVENTION_WINDOW_SECONDS}秒間使えます。`);
   el<HTMLButtonElement>('growth-launch').disabled = !s.waiting;
   const clock = el<HTMLProgressElement>('window-left'); clock.max = INTERVENTION_WINDOW_SECONDS; clock.value = i?.used ? 0 : i?.windowLeftSeconds ?? 0;
-  text('intervention-status', s.preparation === 'unlock' ? `1. 衛星を作ると解放 / 力 ${i?.charge}/${i?.max}` : s.preparation === 'charge' ? `2. 衛星を解放しました / 合体で力 ${i?.charge}/${i?.max}` : s.waiting ? `3. 力 ${i?.charge}/${i?.max}。一投すると${INTERVENTION_WINDOW_SECONDS}秒の受付開始` : s.armed ? '練習のため時間を止めています。崩壊を押すと動きます。' : s.finished === 'expired' ? '受付終了・時間切れ' : i?.used ? `受付終了・崩壊${i.activeLeftSeconds > 0 ? '中' : '完了'} / 実冷却 −${s.interventionCooling.toFixed(1)}` : i?.ready ? `あと ${i.windowLeftSeconds.toFixed(1)}秒 / ゲージ ${i.charge}/${i.max}` : '受付終了');
+  text('intervention-status', s.preparation === 'ready' && s.waiting ? `通常の受付は射出してから${INTERVENTION_WINDOW_SECONDS}秒間です。` : '');
   el('window-left').hidden = s.preparation === 'unlock' || s.preparation === 'charge';
   const pause = el<HTMLButtonElement>('pause'); pause.disabled = s.waiting || finished || s.armed || !!profile?.shotAt; pause.textContent = s.running ? '一時停止' : '再開';
   const keyboardEnabled = study.mode === 'play' && s.running && !profile?.shotAt;
@@ -356,6 +353,9 @@ function fitBoard(): void {
   // 成長の答えと線の凡例も、通常幅では盤面と同じ画面に収める。
   const reserve = study.mode === 'growth' ? 205 : 100;
   document.documentElement.style.setProperty('--board-size', `${Math.max(260, Math.min(640, innerHeight - top - reserve))}px`);
+  const replayActions = el('replay-actions');
+  const slot = el(innerWidth <= 760 ? 'board-replay' : 'aside-replay');
+  if (replayActions.parentElement !== slot) slot.append(replayActions);
 }
 window.addEventListener('resize', fitBoard); document.fonts.ready.then(fitBoard); fitBoard();
 function frame(now: number): void {

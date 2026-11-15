@@ -24,6 +24,9 @@ aside{min-width:0}#mode-title{font-size:22px;margin:0 0 12px}#practice-actions:h
 #board:focus-visible{outline:3px solid #e1b96c;outline-offset:2px}
 #keyboard-help{font-size:13px}
 #live-score{font-size:14px}
+html{overflow-anchor:none}
+#heat-cause:empty,#intervention-status:empty{display:none}
+#board-replay #replay-status{min-height:2.8em}
 @media(min-width:761px){#mobile-queue{display:none}}
 </style></head><body>
 <header><div><span class="eyebrow">GRAVITY CORE</span><h1>連鎖で、熱を逃がす。</h1></div><nav><a href="/">ゲーム本体で遊ぶ</a><br><a href="./juice.html">演出の比較</a></nav></header>
@@ -42,6 +45,7 @@ aside{min-width:0}#mode-title{font-size:22px;margin:0 0 12px}#practice-actions:h
   <span id="board-collapse-state"></span>
   <progress id="window-left" aria-label="崩壊を受け付ける残り時間" value="0"></progress>
 </div>
+<p id="defeat-panel" hidden></p><div id="board-replay"></div>
 <p id="contact-live"></p><p id="replay-heat"></p><p id="aim-feedback"></p><p id="control-hint"></p><p id="keyboard-help" hidden>盤面にフォーカスして、←・→で狙い、スペースで一投。</p><p id="profile-result" role="status"></p>
 <div id="trace-controls" hidden>
   <p id="comparison"></p>
@@ -51,8 +55,8 @@ aside{min-width:0}#mode-title{font-size:22px;margin:0 0 12px}#practice-actions:h
 <aside id="study-panel"><h2 id="mode-title"></h2>
 <div id="practice-actions"><div id="learn-actions"><details><summary>ボタンで投げる（操作の補助）</summary><button id="learn-launch">真上から一投する</button></details></div><div id="collapse-actions" hidden><label><input id="guided-collapse" type="checkbox" checked>射出後に止めて操作を確認</label><p id="intervention-status"></p></div><div id="growth-actions" hidden><button id="growth-launch">この照準で撃つ</button></div></div>
 <div id="repeat-actions" hidden><p id="repeat-history"></p><div class="controls"><button id="repeat-same">右から</button><button id="repeat-other">左から</button></div></div>
-<div id="loss-actions" hidden><div class="controls" role="group" aria-label="敗因の種類"><button data-mode="loss">限界外の山</button><button data-mode="loss-repeat">連投の加熱</button></div><div id="loss-attempt" class="controls" style="margin-top:8px"><button id="loss-start">終了の原因を見る</button><button id="loss-alternate" hidden>左から投げる</button></div></div><div id="free-actions" hidden><p id="free-intervention"></p></div><p id="mode"></p><div id="satellite-guide" hidden><canvas data-tier="2" width="48" height="48" role="img"></canvas><span>小惑星2個<br>→ 合体 →</span><canvas data-tier="3" width="48" height="48" role="img"></canvas><span>衛星<br>崩壊を解放</span></div><p id="shot-readiness"></p><p id="input-feedback" role="status"></p><p id="lesson-result" role="status"></p><p id="result-heat" aria-label="練習で変わった熱の内訳" hidden></p><p id="defeat-panel" hidden></p><div id="result-actions" class="controls" hidden><button id="try-again">もう一度</button><button id="next-lesson">次へ</button></div>
-<div id="replay-actions" hidden><div class="controls"><button id="replay-slow">1/4速で見返す</button><button id="replay-prev" disabled>前の合体へ</button><button id="replay-contact">次の合体へ</button><button id="replay-collapse" hidden>崩壊の発動から見る</button><button id="replay-return">結果へ戻る</button></div><p id="replay-status" role="status"></p></div>
+<div id="loss-actions" hidden><div class="controls" role="group" aria-label="敗因の種類"><button data-mode="loss">限界外の山</button><button data-mode="loss-repeat">連投の加熱</button></div><div id="loss-attempt" class="controls" style="margin-top:8px"><button id="loss-start">終了の原因を見る</button><button id="loss-alternate" hidden>左から投げる</button></div></div><div id="free-actions" hidden><p id="free-intervention"></p></div><p id="mode"></p><div id="satellite-guide" hidden><canvas data-tier="2" width="48" height="48" role="img"></canvas><span>小惑星2個<br>→ 合体 →</span><canvas data-tier="3" width="48" height="48" role="img"></canvas><span>衛星<br>崩壊を解放</span></div><p id="shot-readiness"></p><p id="input-feedback" role="status"></p><p id="lesson-result" role="status"></p><p id="result-heat" aria-label="練習で変わった熱の内訳" hidden></p><div id="result-actions" class="controls" hidden><button id="try-again">もう一度</button><button id="next-lesson">次へ</button></div>
+<div id="aside-replay"><div id="replay-actions" hidden><div class="controls"><button id="replay-slow">1/4速で見返す</button><button id="replay-prev" disabled>前の合体へ</button><button id="replay-contact">次の合体へ</button><button id="replay-collapse" hidden>崩壊の発動から見る</button><button id="replay-return">結果へ戻る</button></div><p id="replay-status" role="status"></p></div></div>
 <p id="facts"></p><div id="queue-panel"><small>次に出る天体（左から）</small><div id="queue"></div></div>
 <details><summary>天体の成長順</summary><p>同じ姿の天体2個が合体すると、次の姿になります。中央の黄色い核は合体しません。</p><div id="tier-order"><div><canvas data-tier="0" width="48" height="48" role="img"></canvas><span>小粒子</span></div><div><canvas data-tier="1" width="48" height="48" role="img"></canvas><span>隕石</span></div><div><canvas data-tier="2" width="48" height="48" role="img"></canvas><span>小惑星</span></div><div><canvas data-tier="3" width="48" height="48" role="img"></canvas><span>衛星 / 崩壊を解放</span></div><div><canvas data-tier="4" width="48" height="48" role="img"></canvas><span>小型惑星</span></div><div><canvas data-tier="5" width="48" height="48" role="img"></canvas><span>惑星</span></div><div><canvas data-tier="6" width="48" height="48" role="img"></canvas><span>巨大惑星</span></div><div><canvas data-tier="7" width="48" height="48" role="img"></canvas><span>恒星前駆体</span></div><div><canvas data-tier="8" width="48" height="48" role="img"></canvas><span>恒星級天体</span></div></div></details>
 <details><summary>合体で冷える量を比べる</summary><p>各連鎖の合体直前から再生します。</p><div class="controls"><button data-mode="1">単発</button><button data-mode="3">3連鎖目</button><button data-mode="5">5連鎖目</button></div></details>
