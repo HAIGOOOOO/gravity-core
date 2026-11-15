@@ -13,16 +13,26 @@ export const LESSON_REPLAY_SPEED = 1 / 4;
 export function createLessonReplay(initial: GameSnapshot) {
   const frames: LessonFrame[] = [{ prev: initial, curr: initial, events: [], contacts: [], maxChain: 0 }];
   let cursor = 0, contactIndex = -1, ordinal = 0, phase: ReviewPhase = 'idle', bank = 0, contactCount = 0;
+  let collapseTick: number | undefined;
   return {
     record(prev: GameSnapshot, curr: GameSnapshot, events: readonly GameEvent[], maxChain = 0) {
       const contacts = events.filter(e => e.kind === 'merge' || e.kind === 'supernova');
       frames.push({ prev, curr, events: [...events], contacts, maxChain });
       contactCount += contacts.length;
+      if (events.some(e => e.kind === 'collapse')) collapseTick = curr.tick;
       if (frames.length > MAX_FRAMES) contactCount -= frames.shift()!.contacts.length;
     },
     start() {
       cursor = 0; contactIndex = -1; bank = 0;
       phase = frames.length > 1 ? 'playing' : 'ended';
+    },
+    startFromCollapse() {
+      const index = frames.findIndex(frame => frame.curr.tick === collapseTick);
+      if (index < 0) return;
+      cursor = Math.max(0, index - 1);
+      contactIndex = -1;
+      bank = 0;
+      phase = cursor === frames.length - 1 ? 'ended' : 'playing';
     },
     contact(direction: 1 | -1 = 1) {
       if (contactCount === 0) return;
@@ -58,6 +68,7 @@ export function createLessonReplay(initial: GameSnapshot) {
       const frame = phase === 'idle' ? null : frames[cursor]!;
       return { frame, phase, playing: phase === 'playing', hasContact: contactCount > 0,
         contactCount, contactNumber: phase === 'contact' ? ordinal : 0,
+        hasCollapse: collapseTick !== undefined && collapseTick >= frames[0]!.curr.tick,
         focus: phase === 'contact' ? frame!.contacts[contactIndex] : frame?.contacts[0],
         seconds: frame ? (frame.curr.tick - frames[0]!.curr.tick) / TICK_HZ : 0 };
     },

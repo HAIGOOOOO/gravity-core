@@ -93,6 +93,26 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(lesson.read().finished).toBe('collapse');
     expect(lesson.read().interventionCooling).toBeGreaterThan(0);
   });
+  it('停止補助を変えて期限切れになっても、同じ満タンの盤面から一投をやり直せる', () => {
+    const lesson = createRuleSession('collapse', 21, true, true);
+    for (let phase = 0; phase < 2; phase++) {
+      lesson.advancePreparation();
+      for (let n = 0; n < TICK_HZ; n++) lesson.step();
+    }
+    const ready = lesson.read().curr;
+    expect(ready.intervention?.charge).toBe(BURST_MAX);
+    lesson.setGuidedCollapse(false);
+    expect(lesson.read().curr).toBe(ready);
+    expect(lesson.launch(dropAt(-Math.PI / 2))?.accepted).toBe(true);
+    expect(lesson.read().armed).toBe(false);
+    for (let n = 0; n < 2 * TICK_HZ; n++) lesson.step();
+    expect(lesson.read().finished).toBe('expired');
+    const retry = createRuleSession('collapse', 21, true, true, { collapse: lesson.collapseCheckpoint() });
+    expect(retry.before).toEqual(ready);
+    expect(retry.read().preparation).toBe('ready');
+    expect(retry.launch(dropAt(-Math.PI / 2))?.accepted).toBe(true);
+    expect(retry.read().armed).toBe(true);
+  });
   it('敗因の見本も実際の限界上昇と射出加熱で終了し、原因を取り違えない', () => {
     const pile = createRuleSession('loss'); pile.startLoss();
     for (let n = 0; n < 300; n++) pile.step();
@@ -157,7 +177,7 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(lesson.read().shots.map(shot => shot.heat)).toEqual([0, 0, 2]);
     const checkpoint = lesson.repeatCheckpoint();
     expect(checkpoint).toBeDefined();
-    const retry = createRuleSession('repeat', 21, false, false, checkpoint);
+    const retry = createRuleSession('repeat', 21, false, false, { repeat: checkpoint });
     expect(retry.before).toEqual(beforeThird);
     expect(retry.read().shots.map(shot => shot.heat)).toEqual([0, 0]);
     expect(retry.launch(dropAt(Math.PI))?.accepted).toBe(true);

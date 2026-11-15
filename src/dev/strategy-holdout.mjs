@@ -8,7 +8,7 @@ const count = Number(process.argv[3] ?? 32);
 const experiment = process.argv[4] ?? 'production';
 const suite = process.argv[5] ?? 'standard';
 const cycle = /^cycle[358]$/.test(experiment);
-const zones = /^zones(8|12)$/.test(experiment);
+const zones = /^zones(8|10|12)$/.test(experiment);
 if (!(experiment === 'production' || experiment === 'quick' || cycle || zones)) throw new Error('実験名が不明です');
 if (!['standard', 'tempo', 'aiming', 'evasion'].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
   throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion]');
@@ -27,8 +27,10 @@ const server = await createServer({
       if (!source.includes(anchor)) throw new Error('加熱の比較箇所が見つかりません');
       if (zones) {
         const extra = Number(experiment.slice('zones'.length));
+        // ＋10では間隔の境界をなくし、通常の冷却で投げる速さの差が出るか調べる。
+        const paceCondition = extra === 10 ? 'true' : 'recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ)';
         return `import { repeatedFourZones } from '../dev/strategy-zone-heat';\n` + source.replace(anchor, `
-          const fastRepeat = recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ);
+          const fastRepeat = ${paceCondition};
           const extra = fastRepeat && repeatedFourZones(recent, angle, REPEAT_LAUNCH_ANGLE) ? ${extra} : 0;
           return extra + Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;
         `);

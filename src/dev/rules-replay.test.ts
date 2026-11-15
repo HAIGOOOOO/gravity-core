@@ -51,3 +51,21 @@ it('蓄力で同じ時に合体した組も順番に選べる', () => {
   lesson.review.contact();
   expect(lesson.review.read().contactNumber).toBe(1);
 });
+
+it('崩壊の発動から開くと、準備を飛ばして発動直前から見られる', () => {
+  const lesson = createRuleSession('collapse', 21, true, true);
+  for (let phase = 0; phase < 2; phase++) {
+    lesson.advancePreparation();
+    for (let n = 0; n < TICK_HZ; n++) lesson.step();
+  }
+  const before = lesson.read().curr.tick;
+  expect(lesson.launch(dropAt(-Math.PI / 2))?.accepted).toBe(true);
+  expect(lesson.collapse().accepted).toBe(true);
+  for (let n = 0; n < 3 * TICK_HZ; n++) lesson.step();
+  const final = lesson.read().curr;
+  expect(lesson.review.read().hasCollapse).toBe(true);
+  lesson.review.startFromCollapse();
+  expect(lesson.review.read().frame?.curr.tick).toBe(before);
+  expect(lesson.review.advance(4 * DT).filter(e => e.kind === 'collapse')).toHaveLength(1);
+  expect(lesson.read().curr).toBe(final);
+});

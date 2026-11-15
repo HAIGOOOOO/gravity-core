@@ -6,9 +6,11 @@ import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
 import { drawBody } from '../render/bodies';
 import { fitCanvas } from '../shared/coords';
+import { dropAt } from '../fixtures';
 import { BURST_MAX, DT, DROP_SPEED, HEAT_MAX, HEAT_RISE_PER_SECOND, INTERVENTION_WINDOW_SECONDS, LIMIT_RADIUS, TICK_HZ, TIER_NAMES, TIER_RADIUS } from '../game/constants';
 import { GROWTH_PREVIEW_COMMAND } from '../fixtures/growth-preview';
-import { createRuleSession, type RepeatCheckpoint, type RuleMode } from './rules-session';
+import { createRuleSession, type RuleMode, type RuleSessionSource } from './rules-session';
+import { prepareDenseRulesLoad } from './rules-load';
 import { drawRuleTrace, type ContactMark } from './rules-trace';
 import { LESSON_REPLAY_SPEED } from './rules-replay';
 import { lossMessage } from '../ui/strings';
@@ -26,10 +28,22 @@ const FROM_RIGHT: LaunchCommand = { originAngleRadians: 0, vx: -DROP_SPEED, vy: 
 const FROM_LEFT: LaunchCommand = { originAngleRadians: Math.PI, vx: DROP_SPEED, vy: 0 };
 const FROM_TOP: LaunchCommand = { originAngleRadians: -Math.PI / 2, vx: 0, vy: DROP_SPEED };
 let study = createRuleSession(), aim: AimView | null = null, bank = 0, last = performance.now(), time = 0, tail = 0, dirty = true;
-let profile: { work: number[]; draw: number[]; intervals: number[]; live: number; maxBodies: number } | null = null;
+type FrameProfile = {
+  shotAt?: (tick: number) => LaunchCommand | null;
+  effectsOn: boolean;
+  startTick: number;
+  work: number[];
+  draw: number[];
+  intervals: number[];
+  live: number;
+  minBodies: number;
+  maxBodies: number;
+};
+let profile: FrameProfile | null = null;
 let feedbackUntil = 0;
 let repeatLabelsTick = -1;
 let revealBoardOnDraw = false;
+let keyboardAngle = -Math.PI / 2, keyboardAim = false;
 const names = { learn: '一投から、2連鎖へ', collapse: '一投のあとに、崩壊を使う', growth: '成長前と、動いた結果', repeat: '同じ方角と、別の方角', loss: '限界外の山による終了', 'loss-repeat': '熱99で、どちらに投げる？', play: '自由プレイ' };
 const queueIcons = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; c.setAttribute('role', 'img'); el('queue').append(c); return c; });
 for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-tier]')) {
@@ -50,13 +64,36 @@ function launch(command: LaunchCommand): void {
   }
   dirty = true;
 }
-const input = createPointerInput(board, { getSnapshot: () => study.read().curr, predict: (c) => study.predict(c), onAim: (a) => { aim = a; dirty = true; }, onLaunch: launch });
-function begin(mode: RuleMode, navigate = false, repeatFrom?: RepeatCheckpoint): void {
+const input = createPointerInput(board, { getSnapshot: () => study.read().curr, predict: (c) => study.predict(c), onAim: (a) => { keyboardAim = false; aim = a; dirty = true; }, onLaunch: launch });
+board.addEventListener('keydown', event => {
+  if (study.mode !== 'play' || profile?.shotAt || !study.read().running) return;
+  const { key } = event;
+  if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== ' ' && key !== 'Enter') return;
+  event.preventDefault();
+  if (key === ' ' || key === 'Enter') {
+    if (!event.repeat) launch(dropAt(keyboardAngle));
+    return;
+  }
+  keyboardAngle += (key === 'ArrowLeft' ? -1 : 1) * Math.PI / 24;
+  const command = dropAt(keyboardAngle);
+  const prediction = study.predict(command);
+  aim = { ...command, tier: study.read().curr.nextQueue[0], dragPx: 0, speed: DROP_SPEED, straight: true, invalid: !prediction.valid, prediction };
+  keyboardAim = true;
+  dirty = true;
+});
+board.addEventListener('blur', () => {
+  if (keyboardAim) { keyboardAim = false; aim = null; dirty = true; }
+});
+function begin(mode: RuleMode, navigate = false, source?: RuleSessionSource): void {
   text('profile-result', profile ? '練習を切り替えたため、計測を中止しました。' : '');
   profile = null;
-  study = createRuleSession(mode, 21, mode === 'collapse' && el<HTMLInputElement>('guided-collapse').checked, mode === 'collapse', repeatFrom); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
+  study = createRuleSession(mode, 21, mode === 'collapse' && el<HTMLInputElement>('guided-collapse').checked, mode === 'collapse', source); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
   liveContact = undefined; cueLeft = 0; presentationHold = 0;
   revealBoardOnDraw = false;
+  keyboardAngle = -Math.PI / 2;
+  keyboardAim = false;
+  if (mode === 'play') board.setAttribute('aria-describedby', 'keyboard-help');
+  else board.removeAttribute('aria-describedby');
   fx.checked = mode === 'play' || practiceFx; syncEffects();
   el('study-panel').scrollTop = 0;
   audio.suspend(); el('events').replaceChildren(); text('latest-event', ''); compare.checked = true;
@@ -85,6 +122,7 @@ function begin(mode: RuleMode, navigate = false, repeatFrom?: RepeatCheckpoint):
   }
   if (mode === 'growth') aim = { ...GROWTH_PREVIEW_COMMAND, tier: study.before.nextQueue[0], dragPx: 80, speed: Math.hypot(GROWTH_PREVIEW_COMMAND.vx, GROWTH_PREVIEW_COMMAND.vy), straight: false, invalid: false, prediction: study.prediction };
   unlock();
+  fitBoard();
   if (navigate && innerWidth <= 760) window.scrollTo({ top: 0 });
 }
 function draw(): void {
@@ -97,6 +135,8 @@ function draw(): void {
   text('contact-live', !review.frame && liveContact && mark ? `${fusionLabel(mark.event)}${liveContact.count > 1 ? `（同時にほか${liveContact.count - 1}組）` : mark.event.heatDelta ? ` / 熱 −${Math.abs(mark.event.heatDelta).toFixed(1)}` : ''}` : '');
   el<HTMLMeterElement>('meter').value = shown.heat;
   text('mobile-heat', `熱 ${shown.heat.toFixed(0)} / ${HEAT_MAX}`);
+  el('live-score').hidden = study.mode !== 'play';
+  if (study.mode === 'play') text('live-score', `${shown.score.toLocaleString()}点 · 最大${shown.stats.maxChain}連鎖`);
   text('heat-cause', review.frame ? `${review.playing ? '1/4速で再生中' : review.phase === 'ended' ? '再生終了' : '合体で停止'} / ${review.seconds.toFixed(2)}秒` : finishedHeatCause());
   el('heat-cause').dataset.state = review.frame ? 'replay' : shown.phase === 'over' || shown.overLimit ? 'rising' : 'cooling';
   if (review.frame && review.focus && review.phase === 'contact') {
@@ -113,6 +153,8 @@ function draw(): void {
       heatPart('崩壊', -collapse),
       heatPart(passive > 0 && curr.overLimit ? '限界外' : '自然変化', passive),
     ].filter(Boolean).join(' / '));
+  } else if (review.playing && review.frame && (shown.intervention?.activeLeftSeconds ?? 0) > 0) {
+    text('replay-heat', `崩壊中 / 熱 ${shown.heat.toFixed(1)}`);
   } else text('replay-heat', '');
   text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '金色の輪を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? '盤面の右か左を押して離す。赤い帯は加熱する方角。' : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '金色の輪から一投すると「崩壊を使う」が有効になります。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : '');
   el('satellite-guide').hidden = !!s.finished || (study.mode !== 'collapse' && study.mode !== 'play');
@@ -137,17 +179,29 @@ function draw(): void {
   text('passive', `限界外で ＋${s.overflowHeating.toFixed(1)} / 自然冷却で −${s.ambientCooling.toFixed(1)}`);
   text('balance', `開始 ${study.before.heat.toFixed(1)} ＋ 連投 ${s.shotHeating.toFixed(1)} ＋ 限界外 ${s.overflowHeating.toFixed(1)} − 合体 ${s.mergeCooling.toFixed(1)} − 崩壊 ${s.interventionCooling.toFixed(1)} − 自然冷却 ${s.ambientCooling.toFixed(1)} ＝ ${s.curr.heat.toFixed(1)}`);
   text('facts', `${review.frame ? 'この時点' : '今回'} ${(shown.score - study.before.score).toLocaleString()}点 / 合体 ${shown.stats.merges - study.before.stats.merges}回 / 最長 ${review.frame?.maxChain ?? s.maxChain}連鎖`);
+  el('facts').hidden = study.mode === 'play';
   const finished = s.finished !== null;
   el('study-panel').dataset.replaying = String(!!review.frame);
   el('result-heat').hidden = !finished || !!review.frame;
-  if (finished && !review.frame) text('result-heat', [
-    `開始 ${study.before.heat.toFixed(1)}`, heatPart('限界外', s.overflowHeating), heatPart('連投', s.shotHeating),
-    heatPart('自然冷却', -s.ambientCooling), heatPart('合体', -s.mergeCooling), heatPart('崩壊', -s.interventionCooling),
-    `結果 ${s.curr.heat.toFixed(1)}`,
-  ].filter(Boolean).join('  /  '));
-  el('replay-actions').hidden = !finished || study.mode === 'play' || study.mode === 'loss-repeat';
+  if (finished && !review.frame) {
+    const beforeThird = s.finished === 'repeat' ? study.repeatCheckpoint()?.state.heat : undefined;
+    if (beforeThird !== undefined) {
+      const thirdHeating = s.shots.at(-1)?.heat ?? 0;
+      text('result-heat', [
+        `3投目の直前 ${beforeThird.toFixed(1)}`, `射出 ＋${thirdHeating.toFixed(1)}`,
+        heatPart('射出後の変化', s.curr.heat - beforeThird - thirdHeating), `結果 ${s.curr.heat.toFixed(1)}`,
+      ].filter(Boolean).join(' / '));
+    } else text('result-heat', [
+      `開始 ${study.before.heat.toFixed(1)}`, heatPart('限界外', s.overflowHeating), heatPart('連投', s.shotHeating),
+      heatPart('自然冷却', -s.ambientCooling), heatPart('合体', -s.mergeCooling), heatPart('崩壊', -s.interventionCooling),
+      `結果 ${s.curr.heat.toFixed(1)}`,
+    ].filter(Boolean).join(' / '));
+  }
+  const retriedThirdShot = study.mode === 'repeat' && study.before.tick > 0;
+  el('replay-actions').hidden = !finished || study.mode === 'play' || study.mode === 'loss-repeat' || retriedThirdShot;
   el('replay-contact').hidden = !review.hasContact;
   el('replay-prev').hidden = !review.hasContact;
+  el('replay-collapse').hidden = !review.hasCollapse;
   el<HTMLButtonElement>('replay-prev').disabled = review.contactNumber <= 1;
   text('replay-contact', review.contactNumber && review.contactNumber === review.contactCount ? '最初の合体へ' : '次の合体へ');
   el<HTMLButtonElement>('replay-return').disabled = !review.frame;
@@ -169,7 +223,8 @@ function draw(): void {
   if (s.finished === 'try-chain') text('lesson-result', s.merges > 0 ? '合体できました。次の合体につながるよう、金色の輪からもう一度。' : '今回は合体しませんでした。金色の輪から真っすぐ落としてみましょう。');
   if (s.finished === 'loss-avoided') text('lesson-result', s.shotHeating === 0 ? '連投による加熱は0。この一投では終了しませんでした。' : `連投で熱＋${s.shotHeating.toFixed(1)}。この一投では終了しませんでした。`);
   el('result-actions').hidden = !finished || !!review.frame; el('next-lesson').hidden = s.finished === 'try-chain';
-  text('try-again', s.finished === 'repeat' ? '3投目をもう一度' : 'もう一度');
+  text('try-again', s.finished === 'repeat' ? '3投目をもう一度'
+    : study.mode === 'collapse' && study.collapseCheckpoint() ? '一投からもう一度' : 'もう一度');
   text('next-lesson', study.mode === 'loss' ? '連投の敗因へ' : study.mode === 'loss-repeat' ? '自由プレイへ' : '次へ');
   el('trace-controls').hidden = study.mode !== 'growth' || !finished || !!review.frame;
   el('trace-key').hidden = !compare.checked;
@@ -189,6 +244,7 @@ function draw(): void {
   if (performance.now() > feedbackUntil) text('input-feedback', '');
   text('shot-readiness', study.mode === 'play' && s.curr.launchCooldownLeftSeconds > 0 ? `次の一投まで ${s.curr.launchCooldownLeftSeconds.toFixed(1)}秒` : '');
   el<HTMLButtonElement>('practice-shot').disabled = !s.waiting;
+  el<HTMLInputElement>('guided-collapse').disabled = !s.waiting;
   el('practice-shot').hidden = !s.preparation || s.preparation === 'ready' && !s.waiting;
   text('practice-shot', s.preparation === 'unlock' ? '合体を進めて衛星を作る' : s.preparation === 'charge' ? '合体を続けて力をためる' : '真上から一投する');
   el('board-action').hidden = study.mode !== 'collapse' && study.mode !== 'play' || finished || !!review.frame;
@@ -199,8 +255,11 @@ function draw(): void {
   const clock = el<HTMLProgressElement>('window-left'); clock.max = INTERVENTION_WINDOW_SECONDS; clock.value = i?.used ? 0 : i?.windowLeftSeconds ?? 0;
   text('intervention-status', s.preparation === 'unlock' ? `1. 衛星を作ると解放 / 力 ${i?.charge}/${i?.max}` : s.preparation === 'charge' ? `2. 衛星を解放しました / 合体で力 ${i?.charge}/${i?.max}` : s.waiting ? `3. 力 ${i?.charge}/${i?.max}。一投すると${INTERVENTION_WINDOW_SECONDS}秒の受付開始` : s.armed ? '練習のため時間を止めています。崩壊を押すと動きます。' : s.finished === 'expired' ? '受付終了・時間切れ' : i?.used ? `受付終了・崩壊${i.activeLeftSeconds > 0 ? '中' : '完了'} / 実冷却 −${s.interventionCooling.toFixed(1)}` : i?.ready ? `あと ${i.windowLeftSeconds.toFixed(1)}秒 / ゲージ ${i.charge}/${i.max}` : '受付終了');
   el('window-left').hidden = s.preparation === 'unlock' || s.preparation === 'charge';
-  const pause = el<HTMLButtonElement>('pause'); pause.disabled = s.waiting || finished || s.armed; pause.textContent = s.running ? '一時停止' : '再開';
-  input.setEnabled((s.running || s.waiting) && ((study.mode !== 'learn' && study.mode !== 'loss-repeat') || s.waiting) && study.mode !== 'growth' && study.mode !== 'loss' && typeof study.mode !== 'number' && !finished && !s.armed && (!s.preparation || s.preparation === 'ready'));
+  const pause = el<HTMLButtonElement>('pause'); pause.disabled = s.waiting || finished || s.armed || !!profile?.shotAt; pause.textContent = s.running ? '一時停止' : '再開';
+  const keyboardEnabled = study.mode === 'play' && s.running && !profile?.shotAt;
+  if (board.tabIndex !== (keyboardEnabled ? 0 : -1)) board.tabIndex = keyboardEnabled ? 0 : -1;
+  el('keyboard-help').hidden = !keyboardEnabled;
+  input.setEnabled(!profile?.shotAt && (s.running || s.waiting) && ((study.mode !== 'learn' && study.mode !== 'loss-repeat') || s.waiting) && study.mode !== 'growth' && study.mode !== 'loss' && typeof study.mode !== 'number' && !finished && !s.armed && (!s.preparation || s.preparation === 'ready'));
   const key = shown.nextQueue.join(',');
   if (key !== queueKey) { queueKey = key; shown.nextQueue.forEach((tier, n) => {
     const c = queueIcons[n]!, ctx = c.getContext('2d')!; ctx.clearRect(0, 0, 64, 64);
@@ -232,7 +291,9 @@ el('practice-shot').addEventListener('click', () => {
 });
 el('board-collapse').addEventListener('click', () => { unlock(); study.collapse(); dirty = true; });
 el('restart-play').addEventListener('click', () => begin('play', true));
-el('guided-collapse').addEventListener('change', () => { if (study.mode === 'collapse') begin('collapse'); });
+el<HTMLInputElement>('guided-collapse').addEventListener('change', event => {
+  if (study.mode === 'collapse') study.setGuidedCollapse((event.currentTarget as HTMLInputElement).checked);
+});
 el('repeat-same').addEventListener('click', () => launch(FROM_RIGHT));
 el('repeat-other').addEventListener('click', () => launch(FROM_LEFT));
 el('loss-start').addEventListener('click', () => { if (study.mode === 'loss') { study.startLoss(); dirty = true; } else launch(FROM_RIGHT); });
@@ -240,35 +301,76 @@ el('loss-alternate').addEventListener('click', () => launch(FROM_LEFT));
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });
 el('try-again').addEventListener('click', () => {
   const repeatFrom = study.read().finished === 'repeat' ? study.repeatCheckpoint() : undefined;
-  begin(study.mode, true, repeatFrom);
+  begin(study.mode, true, { repeat: repeatFrom, collapse: study.collapseCheckpoint() });
 });
 el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : study.mode === 'growth' ? 'repeat' : study.mode === 'repeat' ? 'loss' : study.mode === 'loss' ? 'loss-repeat' : 'play', true));
 for (const action of ['start', 'contact', 'stop'] as const) el(action === 'start' ? 'replay-slow' : action === 'contact' ? 'replay-contact' : 'replay-return').addEventListener('click', () => {
   effects.clear(); audio.suspend(); tail = 0; study.review[action](); dirty = true;
 });
 el('replay-prev').addEventListener('click', () => { effects.clear(); study.review.contact(-1); dirty = true; });
+el('replay-collapse').addEventListener('click', () => {
+  effects.clear(); audio.suspend(); tail = 0; study.review.startFromCollapse(); dirty = true;
+});
 el('pause').addEventListener('click', () => { study.togglePause(); tail = 6; dirty = true; audio.suspend(); if (study.read().running) unlock(); });
 compare.addEventListener('change', () => { dirty = true; }); sound.addEventListener('change', () => { if (sound.checked) unlock(); else audio.suspend(); });
-fx.addEventListener('change', () => { if (study.mode !== 'play') practiceFx = fx.checked; syncEffects(); });
+fx.addEventListener('change', () => {
+  cancelProfile('演出の設定を変更したため、計測を中止しました。');
+  if (study.mode !== 'play') practiceFx = fx.checked;
+  syncEffects();
+});
 motion.addEventListener('change', syncEffects);
-el('profile').addEventListener('click', () => { profile = { work: [], draw: [], intervals: [], live: 0, maxBodies: 0 }; text('profile-result', '計測中…'); });
+function startProfile(shotAt?: FrameProfile['shotAt']): void {
+  profile = {
+    shotAt, effectsOn: fx.checked, startTick: study.read().curr.tick,
+    work: [], draw: [], intervals: [], live: 0, minBodies: Infinity, maxBodies: 0,
+  };
+  last = performance.now();
+  text('profile-result', '計測中…');
+  if (innerWidth <= 760) stage.scrollIntoView({ block: 'start' });
+}
+function cancelProfile(message: string): void {
+  if (!profile) return;
+  if (profile.shotAt && study.read().running) study.togglePause();
+  profile = null;
+  text('profile-result', message);
+  dirty = true;
+}
+el('profile').addEventListener('click', () => {
+  cancelProfile('');
+  startProfile();
+});
+el('dense-profile').addEventListener('click', () => {
+  const effectsOn = fx.checked;
+  const dense = prepareDenseRulesLoad();
+  begin('play', false, { play: dense.simulation });
+  fx.checked = effectsOn;
+  syncEffects();
+  startProfile(dense.shotAt);
+});
 document.addEventListener('visibilitychange', () => {
-  if (!profile || !document.hidden) return;
-  profile = null; text('profile-result', 'タブが非表示になったため、計測を中止しました。');
+  if (document.hidden) cancelProfile('タブが非表示になったため、計測を中止しました。');
 });
 new ResizeObserver(() => { const size = stage.clientWidth; renderer.resize(size); effects.resize(size); fitCanvas(trace, size); dirty = true; }).observe(stage);
 function fitBoard(): void {
   const top = document.querySelector('main')!.getBoundingClientRect().top + scrollY;
-  document.documentElement.style.setProperty('--board-size', `${Math.max(260, Math.min(640, innerHeight - top - 100))}px`);
+  // 成長の答えと線の凡例も、通常幅では盤面と同じ画面に収める。
+  const reserve = study.mode === 'growth' ? 205 : 100;
+  document.documentElement.style.setProperty('--board-size', `${Math.max(260, Math.min(640, innerHeight - top - reserve))}px`);
 }
 window.addEventListener('resize', fitBoard); document.fonts.ready.then(fitBoard); fitBoard();
 function frame(now: number): void {
+  // 準備の長い計算中に時刻が付いたコマは使わず、準備後のコマから測る。
+  if (now < last) { requestAnimationFrame(frame); return; }
   const started = profile ? performance.now() : 0;
   const elapsed = now - last, dt = Math.min(.05, elapsed / 1000); last = now;
   if (feedbackUntil > 0 && now >= feedbackUntil) { feedbackUntil = 0; dirty = true; }
   const holding = presentationHold > 0;
   if (holding && study.read().running) presentationHold = Math.max(0, presentationHold - dt);
   if (!holding && study.read().running) { bank += dt; time += dt; while (bank >= DT && study.read().running) {
+    if (profile?.shotAt) {
+      const shot = profile.shotAt(study.read().curr.tick);
+      if (shot) study.launch(shot);
+    }
     const events = study.step(), s = study.read(); bank -= DT; dirty = true;
     if (fx.checked) effects.handleEvents(events, s.curr);
     if (sound.checked) audio.handleEvents(events, s.curr);
@@ -307,11 +409,20 @@ function frame(now: number): void {
     if (profile.work.length) profile.intervals.push(elapsed);
     profile.work.push(ended - started); profile.draw.push(ended - drawStarted);
     if (running) profile.live++;
-    profile.maxBodies = Math.max(profile.maxBodies, (study.review.read().frame?.curr ?? study.read().curr).bodies.length);
+    const curr = study.review.read().frame?.curr ?? study.read().curr;
+    profile.minBodies = Math.min(profile.minBodies, curr.bodies.length);
+    profile.maxBodies = Math.max(profile.maxBodies, curr.bodies.length);
     if (profile.work.length === 180) {
-      const p95 = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length * .95)]!;
-      text('profile-result', `180コマ（進行中${profile.live}） / 最大${profile.maxBodies}体 / 更新＋描画JS p95 ${p95(profile.work).toFixed(2)}ms・最大 ${Math.max(...profile.work).toFixed(2)}ms / 描画JS p95 ${p95(profile.draw).toFixed(2)}ms / 表示間隔 p95 ${p95(profile.intervals).toFixed(1)}ms`);
-      profile = null;
+      const percentile = (samples: number[], fraction: number) =>
+        [...samples].sort((a, b) => a - b)[Math.floor(samples.length * fraction)]!;
+      const prefix = profile.shotAt ? `密集盤面・演出${profile.effectsOn ? 'あり' : 'なし'} / ` : '';
+      cancelProfile([
+        `${prefix}180コマ（進行中${profile.live}）`,
+        `${profile.minBodies}〜${profile.maxBodies}体・実時間内の進行 ${((study.read().curr.tick - profile.startTick) / TICK_HZ).toFixed(2)}秒`,
+        `更新＋描画JS p95 ${percentile(profile.work, .95).toFixed(2)}ms・最大 ${Math.max(...profile.work).toFixed(2)}ms`,
+        `描画JS p95 ${percentile(profile.draw, .95).toFixed(2)}ms`,
+        `表示間隔 p50 ${percentile(profile.intervals, .5).toFixed(1)}ms・p95 ${percentile(profile.intervals, .95).toFixed(1)}ms・最大 ${Math.max(...profile.intervals).toFixed(1)}ms`,
+      ].join(' / '));
     }
   }
   requestAnimationFrame(frame);

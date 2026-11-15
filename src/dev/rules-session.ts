@@ -1,6 +1,6 @@
 import type { GameEvent, LaunchCommand } from '../contracts/game';
 import { CORE_RADIUS, DROP_SPEED, GROW_SECONDS, TICK_HZ, TIER_RADIUS } from '../game/constants';
-import { createSimulation, restoreSimulation, type SimulationState } from '../game/simulation';
+import { createSimulation, restoreSimulation, type Simulation, type SimulationState } from '../game/simulation';
 import { GROWTH_PREVIEW_COMMAND, setupGrowthPreview } from '../fixtures/growth-preview';
 import { createInterventionPreparation, createPressurePractice } from './rules-practice';
 import { createLessonReplay } from './rules-replay';
@@ -9,17 +9,25 @@ export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'lo
 type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'loss-avoided' | 'over' | null;
 type PracticeShot = Readonly<{ angle: number; heat: number }>;
 export type RepeatCheckpoint = Readonly<{ state: SimulationState; shots: readonly PracticeShot[] }>;
+export type RuleSessionSource = Readonly<{ repeat?: RepeatCheckpoint; collapse?: SimulationState; play?: Simulation }>;
 // 練習の観察時間。外した一投も短く区切り、同じ盤面から試せるようにする。
 const LEARN_OBSERVATION_TICKS = Math.ceil(1.4 * TICK_HZ);
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
 export function createRuleSession(
   mode: RuleMode = 'learn', seed = 21, pauseForIntervention = false, prepareIntervention = false,
-  repeatFrom?: RepeatCheckpoint,
+  source?: RuleSessionSource,
 ) {
-  let sim = mode === 'learn' || mode === 'collapse' ? createPressurePractice(seed, mode === 'collapse') : createSimulation(seed, mode === 'growth' ? setupGrowthPreview() : undefined);
-  let preparation: 'unlock' | 'charge' | 'ready' | null = mode === 'collapse' && prepareIntervention ? 'unlock' : null;
-  if (preparation) sim = createInterventionPreparation(seed);
+  const repeatFrom = source?.repeat;
+  let sim = mode === 'learn' || mode === 'collapse' ? createPressurePractice(seed, mode === 'collapse')
+    : mode === 'play' && source?.play ? source.play
+    : createSimulation(seed, mode === 'growth' ? setupGrowthPreview() : undefined);
+  let collapseCheckpoint = mode === 'collapse' && prepareIntervention ? source?.collapse : undefined;
+  let preparation: 'unlock' | 'charge' | 'ready' | null = mode === 'collapse' && prepareIntervention
+    ? collapseCheckpoint ? 'ready' : 'unlock'
+    : null;
+  if (collapseCheckpoint) sim = restoreSimulation(collapseCheckpoint);
+  else if (preparation === 'unlock') sim = createInterventionPreparation(seed);
   if (typeof mode === 'number') {
     const r = TIER_RADIUS[0];
     const state = createSimulation(seed, { heat: 80, bodies: [{ tier: 0, x: 130, y: -r }, { tier: 0, x: 130, y: r }] }).exportState();
@@ -56,6 +64,7 @@ export function createRuleSession(
   let repeatCheckpoint = mode === 'repeat' ? repeatFrom : undefined;
   const shots: PracticeShot[] = [...repeatCheckpoint?.shots ?? []];
   let armed = false;
+  let guided = pauseForIntervention;
   let resultBodyId: number | null = null;
   let lastFusion: { before: number; after: number; cooling: number } | null = null;
 
@@ -64,7 +73,7 @@ export function createRuleSession(
     const heatBefore = sim.getSnapshot().heat;
     const result = sim.submitLaunch(command);
     if (result.accepted) {
-      armed = mode === 'collapse' && pauseForIntervention;
+      armed = mode === 'collapse' && guided;
       running = !armed; waiting = false; curr = sim.getSnapshot(); shotHeating += curr.heat - heatBefore;
       if (mode === 'repeat') shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
       if (mode === 'learn') learnDeadline = curr.tick + LEARN_OBSERVATION_TICKS;
@@ -107,6 +116,7 @@ export function createRuleSession(
       running = false; waiting = true; preparation = 'charge';
     } else if (preparation === 'charge' && curr.intervention && curr.intervention.charge === curr.intervention.max) {
       running = false; waiting = true; preparation = 'ready';
+      collapseCheckpoint = sim.exportState();
     }
     else if (mode === 'repeat' && curr.launchCooldownLeftSeconds <= 0) {
       // 速さの制限を変えず、次の選択ができる時点でだけ教材の時計を止める。
@@ -121,6 +131,8 @@ export function createRuleSession(
   return {
     mode, before, prediction, review,
     repeatCheckpoint: () => repeatCheckpoint,
+    collapseCheckpoint: () => collapseCheckpoint,
+    setGuidedCollapse(enabled: boolean) { guided = enabled; },
     read: () => ({ prev, curr, running, waiting, armed, finished, preparation, resultBodyId, lastFusion, shotHeating, shots: [...shots], mergeCooling, interventionCooling, passiveChange, overflowHeating, ambientCooling, maxChain,
       score: curr.score - before.score, merges: curr.stats.merges - before.stats.merges }),
     launch,
