@@ -28,17 +28,18 @@ export function eventTones(event: GameEvent): readonly Tone[] {
     case 'merge': {
       const frequency = mergeFrequency(tier);
       const seconds = mergeDuration(tier);
-      const chain = event.chain ?? 1;
+      const chain = event.chainStage ?? event.chain ?? 1;
       const at = releaseTime({ tier, chain, nova: false });
+      const note = chainFrequency(chain);
       const tones: Tone[] = [
         { frequency: frequency * 0.65, endFrequency: frequency * 1.1, wave: 'sine', gain: 0.1, seconds: at, delay: 0 },
         { frequency: 110 / (1 + tier * 0.06), endFrequency: 38, wave: 'sine', gain: 0.32, seconds: 0.34 + tier * 0.04, delay: at, attackSeconds: 0.004 },
         { frequency: 2600, endFrequency: 180, wave: 'noise', gain: 0.42, seconds: 0.26 + tier * 0.025, delay: at, attackSeconds: 0.003 },
         { frequency, endFrequency: frequency * 0.98, wave: 'triangle', gain: 0.2, seconds: seconds + 0.15, delay: at },
-        { frequency: frequency * 1.5, wave: 'sine', gain: 0.1, seconds: seconds + 0.3, delay: at + 0.07, pan: -0.35 },
+        { frequency: note, wave: 'sine', gain: 0.065 + Math.min(4, chain - 1) * 0.009, seconds: seconds + 0.3, delay: at + 0.07, pan: -0.35 },
         { frequency: frequency * 5, endFrequency: frequency * 2, wave: 'sine', gain: 0.07, seconds: 0.065, delay: at, attackSeconds: 0.003, pan: 0.35 },
       ];
-      if (chain > 1) tones.push({ frequency: chainFrequency(tier, chain), wave: 'sine', gain: 0.11, seconds: 0.4, delay: at + 0.035, pan: 0.4 });
+      if (chain > 1) tones.push({ frequency: note * 0.5, wave: 'sine', gain: 0.11, seconds: 0.4, delay: at + 0.035, pan: 0.4 });
       if (chain >= 5) for (const [i, ratio] of [2, 3].entries()) tones.push({ frequency: frequency * ratio, wave: 'triangle', gain: 0.075, seconds: 0.45, delay: at + 0.12 + i * 0.07, pan: i ? 0.55 : -0.55 });
       return tones;
     }

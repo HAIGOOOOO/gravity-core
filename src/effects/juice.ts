@@ -1,9 +1,9 @@
 import type { GameEvent, GameSnapshot } from '../contracts/game';
 import { LIMIT_RADIUS, TIER_RADIUS } from '../game/constants';
-import { createJuiceInk } from './juice-ink';
+import { burstValues, createJuiceInk } from './juice-ink';
 import { drawLocalLayer } from './juice-local';
 import { drawWideLayer } from './juice-wide';
-import { blankBurst, burstFromEvent, burstLife, JUICE_CAP, juiceRandom, juiceTimeScale, layerCount, LAYER_ENDS, pulse, visualAge } from './juice-model';
+import { blankBurst, burstFromEvent, burstLife, JUICE_CAP, juiceRandom, juiceTimeScale, layerCount, LAYER_ENDS, LAYER_STARTS, pulse, visualAge } from './juice-model';
 import type { EffectTheme } from './theme';
 import { createChainOrigins } from './juice-chain';
 
@@ -85,11 +85,11 @@ export function createJuiceEffects(target: HTMLElement, theme: EffectTheme) {
         }
         // 広い空間の層は同時2件まで。残りも局所22層で反応を残す。
         const count = Math.min(heroes.includes(b) ? 42 : 22, layerCount(b.chain, b.nova));
-        const age = visualAge(b);
+        const values = burstValues(b), age = values.t;
         const drawSet = (ids: readonly number[]) => {
           for (const id of ids) {
-            if (id > count || age > LAYER_ENDS[id - 1]) continue;
-            ctx.save(); if (id <= 22) drawLocalLayer(id, ctx, b, ink); else drawWideLayer(id, ctx, b, ink); ctx.restore();
+            if (id > count || age < LAYER_STARTS[id - 1] || age > LAYER_ENDS[id - 1]) continue;
+            ctx.save(); if (id <= 22) drawLocalLayer(id, ctx, b, ink, values); else drawWideLayer(id, ctx, b, ink, values); ctx.restore();
           }
         };
         ctx.save();

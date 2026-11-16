@@ -9,14 +9,14 @@ const experiment = process.argv[4] ?? 'production';
 const suite = process.argv[5] ?? 'standard';
 const cycle = /^cycle[358]$/.test(experiment);
 const triple = experiment === 'zones-triple9';
-const axes = experiment === 'zones-axis9';
+const axes = /^zones-axis(9|11)$/.test(experiment);
 const wide = triple || experiment === 'zones-wide9';
 const zones = /^zones(8|10|12)$/.test(experiment) || wide || axes;
 const extraHistory = axes ? 16 : triple ? 12 : null;
 if (!(experiment === 'production' || experiment === 'quick' || cycle || zones)) throw new Error('実験名が不明です');
-const variableTempoSuites = ['aiming', 'evasion', 'confirmation', 'interruptions'];
+const variableTempoSuites = ['aiming', 'evasion', 'confirmation', 'interruptions', 'mixed-input'];
 if (!['standard', 'tempo', ...variableTempoSuites].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
-  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion|confirmation|interruptions]');
+  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion|confirmation|interruptions|mixed-input]');
 }
 const seeds = Array.from({ length: count }, (_, n) => seedStart + n);
 const suiteSuffix = suite === 'standard' ? '' : `-${suite}`;
@@ -37,7 +37,7 @@ const server = await createServer({
       const anchor = 'return Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;';
       if (!source.includes(anchor)) throw new Error('加熱の比較箇所が見つかりません');
       if (zones) {
-        const extra = wide || axes ? 9 : Number(experiment.slice('zones'.length));
+        const extra = axes ? Number(experiment.slice('zones-axis'.length)) : wide ? 9 : Number(experiment.slice('zones'.length));
         const tolerance = wide ? '24 * Math.PI / 180' : 'REPEAT_LAUNCH_ANGLE';
         const zoneHistory = extraHistory ? `inputs.slice(-${extraHistory})` : 'recent';
         const test = axes ? `repeatedFourAxes(${zoneHistory}, angle)`
@@ -67,7 +67,7 @@ const server = await createServer({
 try {
   const { createSimulation } = await server.ssrLoadModule('/src/game/simulation.ts');
   const { createRng } = await server.ssrLoadModule('/src/game/rng.ts');
-  const { randomBot, safeMergeBot, spiralBot } = await server.ssrLoadModule('/src/tools/bots.ts');
+  const { randomBot, safeMergeBot, spiralBot, curveBot } = await server.ssrLoadModule('/src/tools/bots.ts');
   const { dropAt } = await server.ssrLoadModule('/src/fixtures/index.ts');
   const { LAUNCH_COOLDOWN, TICK_HZ } = await server.ssrLoadModule('/src/game/constants.ts');
   const { rulesVersion } = await server.ssrLoadModule('/src/replay/rules.ts');
@@ -97,7 +97,7 @@ try {
   ];
   const tempo = [['', fast], ['-medium', Math.round(.75 * TICK_HZ)], ['-slow', slow], ['-slower', Math.round(1.25 * TICK_HZ)]];
   const fourStart = (jitter = 0, alternate = false) => seed => {
-    const angle = ['confirmation', 'interruptions'].includes(suite) && seed % 2 !== 0 ? -Math.PI / 2 : -Math.PI / 4;
+    const angle = ['confirmation', 'interruptions', 'mixed-input'].includes(suite) && seed % 2 !== 0 ? -Math.PI / 2 : -Math.PI / 4;
     return four(angle, jitter, alternate)(seed);
   };
   const withInterruptions = seed => {
@@ -128,6 +128,7 @@ try {
     ['four-margin', fast + Math.round(.17 * TICK_HZ), fourStart(Math.PI / 90, true)],
     ['random-margin', fast + Math.round(.17 * TICK_HZ), seed => randomBot(seed).decide],
   ];
+  const interruptionsCases = [...evasionCases, ['four-interrupted', fast, withInterruptions], ['four-clumped', fast, clumped]];
   const cases = {
     tempo: tempo.flatMap(([suffix, spacing]) => [
       [`random${suffix}`, spacing, seed => randomBot(seed).decide],
@@ -136,7 +137,8 @@ try {
     aiming: aimingCases,
     evasion: evasionCases,
     confirmation: evasionCases,
-    interruptions: [...evasionCases, ['four-interrupted', fast, withInterruptions], ['four-clumped', fast, clumped]],
+    interruptions: interruptionsCases,
+    'mixed-input': [...interruptionsCases, ['fixed', fast, fixed], ['curve-aim', fast, seed => curveBot(seed).decide]],
     standard: experiment === 'production' ? allCases : allCases.filter(([name]) =>
       ['random', 'spiral', 'four', 'four-offset', 'four-jitter'].includes(name)
       || experiment === 'cycle8' && ['random-slow', 'four-slow'].includes(name)),

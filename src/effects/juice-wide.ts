@@ -1,10 +1,10 @@
 import { CHAIN_MULT_MAX, LIMIT_RADIUS } from '../game/constants';
 import { STRINGS } from '../ui/strings';
-import { arc, burstValues, line, TURN, type JuiceInk } from './juice-ink';
+import { arc, line, TURN, type BurstValues, type JuiceInk } from './juice-ink';
 import { juiceRandom, pulse, releaseProgress, type JuiceBurst } from './juice-model';
 
-export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: JuiceBurst, ink: JuiceInk): void {
-  const { t, p, r, spread, color, angle, white } = burstValues(b);
+export function drawWideLayer(id: number, ctx: CanvasRenderingContext2D, b: JuiceBurst, ink: JuiceInk, values: BurstValues): void {
+  const { t, p, r, spread, color, angle, white } = values;
   const random = (i: number) => juiceRandom(b.seed + id * 43, i);
   ctx.globalAlpha = (1 - p) * 0.7; ctx.lineCap = 'round';
   switch (id) {

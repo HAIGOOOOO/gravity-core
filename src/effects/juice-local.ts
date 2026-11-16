@@ -1,11 +1,11 @@
 import { drawBody } from '../render/bodies';
 import { TIER_RADIUS } from '../game/constants';
 import { signedNumber } from './appearance';
-import { arc, burstValues, line, TURN, type JuiceInk } from './juice-ink';
+import { arc, line, TURN, type BurstValues, type JuiceInk } from './juice-ink';
 import { juiceRandom, pulse, releaseProgress, type JuiceBurst } from './juice-model';
 
-export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: JuiceBurst, ink: JuiceInk): void {
-  const { t, p, r, spread, color, angle, white } = burstValues(b);
+export function drawLocalLayer(id: number, ctx: CanvasRenderingContext2D, b: JuiceBurst, ink: JuiceInk, values: BurstValues): void {
+  const { t, p, r, spread, color, angle, white } = values;
   const random = (i: number) => juiceRandom(b.seed + id * 101, i);
   const fade = (1 - p) ** 1.5;
   ctx.globalAlpha = fade; ctx.lineCap = 'round';

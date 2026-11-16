@@ -16,8 +16,11 @@ export function mergeFrequency(tier: number): number {
 }
 
 export function mergeDuration(tier: number): number { return 0.2 + 0.05 * tier; }
-export function chainFrequency(tier: number, chain: number): number {
-  return mergeFrequency(tier) * 2 * 2 ** (Math.max(0, chain - 1) / 6);
+const CHAIN_SEMITONES = [0, 2, 4, 7, 9] as const;
+export function chainFrequency(stage: number): number {
+  const semitones = CHAIN_SEMITONES[Math.max(0, Math.min(CHAIN_SEMITONES.length - 1, Math.trunc(stage) - 1))] ?? 0;
+  // 天体が成長して胴の音が下がっても、連鎖の音階は上がる。
+  return mergeFrequency(0) * 2 * 2 ** (semitones / 12);
 }
 
 export function createRateGate(limit: number, seconds: number) {

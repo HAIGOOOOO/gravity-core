@@ -16,9 +16,13 @@ describe('音の高さ・長さと上限', () => {
     expect(mergeFrequency(6)).toBe(261.5);
     expect(mergeDuration(8)).toBeGreaterThan(mergeDuration(0));
   });
-  it('連鎖は 1 オクターブ上から、連鎖 1 ごとに全音上げる', () => {
-    expect(chainFrequency(0, 1)).toBe(1046);
-    expect(chainFrequency(0, 3) / chainFrequency(0, 2)).toBeCloseTo(2 ** (2 / 12));
+  it('合体する天体が成長しても、連鎖の旋律は5段目まで上がる', () => {
+    const stages = [1, 2, 3, 4, 5] as const;
+    const pitches = stages.map((stage, tier) => eventTones({ ...sampleEvent('merge', tier as 0 | 1 | 2 | 3 | 4, 0, 0, stage), chainStage: stage })
+      .find(tone => tone.wave === 'sine' && tone.pan === -0.35)?.frequency);
+    expect(pitches).toEqual(stages.map(chainFrequency));
+    expect(pitches.map(pitch => Math.round(pitch!))).toEqual([1046, 1174, 1318, 1567, 1759]);
+    expect(chainFrequency(6)).toBe(chainFrequency(5));
   });
   it('着地を区切った時間枠でなく、直近 0.25 秒に 4 回までにする', () => {
     const gate = createRateGate(AUDIO.landCount, AUDIO.landWindow);

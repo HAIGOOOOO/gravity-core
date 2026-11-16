@@ -36,3 +36,4 @@ export function burstValues(b: JuiceBurst) {
   return { t, p, r, spread: r * (0.8 + 3.4 * (1 - (1 - p) ** 3)),
     color: TIER_COLOR[b.result], angle: juiceRandom(b.seed, 1) * TURN, white: '#f7f7e8' };
 }
+export type BurstValues = ReturnType<typeof burstValues>;

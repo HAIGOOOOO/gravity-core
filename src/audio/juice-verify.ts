@@ -1,8 +1,8 @@
-import type { GameEvent } from '../contracts/game';
+import type { ChainStage, GameEvent, Tier } from '../contracts/game';
 import { sampleEvent } from '../fixtures';
 import { eventTones } from './tones';
 import { createVoices } from './voices';
-import { masterVolume } from './tuning';
+import { chainFrequency, masterVolume } from './tuning';
 import { measureSound } from './analysis';
 
 const RATE = 48000;
@@ -11,6 +11,25 @@ function channelMetrics(buffer: AudioBuffer) {
   return { peak: Math.max(...channels.map(c => c.peak)), clipped: channels.reduce((n, c) => n + c.clipped, 0),
     rms: Math.sqrt(channels.reduce((n, c) => n + c.rms ** 2, 0) / channels.length) };
 }
+
+const CHAIN_LADDER = [1, 2, 3, 4, 5] as const;
+async function renderChainLadder(): Promise<AudioBuffer> {
+  const context = new OfflineAudioContext(2, RATE * 6, RATE);
+  const voices = createVoices(context);
+  voices.setVolume(masterVolume(100));
+  const play = (stage: ChainStage) => {
+    const event = sampleEvent('merge', (stage - 1) as Tier, 0, 0, stage);
+    voices.play(eventTones({ ...event, chainStage: stage }));
+  };
+  play(1);
+  const later = CHAIN_LADDER.slice(1).map((stage, index) => context.suspend((index + 1) * 1.1).then(async () => {
+    play(stage); await context.resume();
+  }));
+  const buffer = await context.startRendering();
+  await Promise.all(later);
+  return buffer;
+}
+
 /** 本番と同じ発音器を使い、単発・無音・混雑時を確認する見本専用の計測。 */
 export async function verifyJuiceSound() {
   const records: string[] = [], buffers: { name: string; buffer: AudioBuffer }[] = [];
@@ -39,6 +58,10 @@ export async function verifyJuiceSound() {
   const muted = new OfflineAudioContext(1, RATE, RATE), silence = createVoices(muted);
   silence.setVolume(0); silence.play(eventTones(sampleEvent('merge')));
   records.push(`音量0: peak ${measureSound((await muted.startRendering()).getChannelData(0), RATE).peak}`);
+  const ladder = await renderChainLadder();
+  const ladderMetrics = channelMetrics(ladder);
+  records.push(`連鎖1〜5: 旋律の設定 ${CHAIN_LADDER.map(stage => Math.round(chainFrequency(stage))).join(' → ')} Hz / peak ${ladderMetrics.peak.toFixed(3)} / 割れ${ladderMetrics.clipped}`);
+  buffers.push({ name: 'chain-ladder', buffer: ladder });
   return { text: records.join('\n'), buffers };
 }
 

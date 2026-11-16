@@ -9,8 +9,8 @@ import { createSimulation } from '../game/simulation';
 import { createBoardRenderer } from '../render';
 import { drawBoardForeground } from '../render/foreground';
 import { applyLogicalTransform } from '../shared/coords';
-import { BOARD_SIZE, GROW_SECONDS, DT, TIER_RADIUS } from '../game/constants';
-import type { GameEvent, GameSnapshot, Tier } from '../contracts/game';
+import { BOARD_SIZE, CHAIN_STAGE_MAX, GROW_SECONDS, DT, TIER_RADIUS } from '../game/constants';
+import type { ChainStage, GameEvent, GameSnapshot, Tier } from '../contracts/game';
 import type { AimView } from '../contracts/app';
 import { createAudioManager, inspectAudio } from '../audio';
 import { verifyJuiceSound, waveFile } from '../audio/juice-verify';
@@ -35,7 +35,7 @@ const baseCanvas = document.createElement('canvas'); baseCanvas.width = baseCanv
 const baseCtx = baseCanvas.getContext('2d')!;
 const theme = readTheme(overlay), pool = createEffectPool(), base = createEventEffects(pool, theme);
 let chain = 1, tier: Tier = 1, nova = false, seed = 501, age = 0, playing = false, last = performance.now();
-let mode: 'single' | 'ladder' | 'stress' = 'single', next = 0, fired = 0;
+let mode: 'single' | 'ladder' | 'stress' = 'single', next = 0, fired = 0, peakLayers = 0;
 let samples: number[] = [], frameSamples: number[] = [], recording: MediaRecorder | null = null;
 let videoUrl = '', recordingEnds = 0;
 let current: GameEvent = sampleEvent('merge', tier, 110, -100, chain);
@@ -44,7 +44,7 @@ for (const name of LAYER_NAMES) { const li = document.createElement('li'); li.te
 function reset(): void {
   audio.suspend(); audioPending = [];
   if (soundEnabled.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 70 }); audio.resume(); }
-  effects.clear(); pool.clear(); base.clear(); age = 0; next = 0; fired = 0; samples = []; frameSamples = [];
+  effects.clear(); pool.clear(); base.clear(); age = 0; next = 0; fired = 0; peakLayers = 0; samples = []; frameSamples = [];
   document.querySelector('#frames')!.replaceChildren();
   effects.setReducedMotion(reduced.checked); base.setReduced(reduced.checked);
 }
@@ -60,11 +60,14 @@ function emit(level = chain): void {
   before = sim.getSnapshot();
   const event = sim.stepFixed().find(event => event.kind === (nova ? 'supernova' : 'merge'));
   const preset = sampleEvent(nova ? 'supernova' : 'merge', tier, x, y, level);
-  current = { ...preset, ...event, chain: level, scoreDelta: preset.scoreDelta, sequence: seed + fired };
+  // 盤面の合体は本物。演出の段は実際の一回目の合体で上書きせず、比較の指定を使う。
+  const chainStage = Math.min(CHAIN_STAGE_MAX, level) as ChainStage;
+  current = { ...preset, ...event, chain: level, chainStage, scoreDelta: preset.scoreDelta, sequence: seed + fired };
   for (let i = 0; i < Math.ceil(GROW_SECONDS / DT); i++) sim.stepFixed();
   after = sim.getSnapshot(); sceneAge = 0;
   audioPending.push({ event: current, snapshot: after });
   effects.handleEvents([current], after); base.handle(current); fired++;
+  peakLayers = Math.max(peakLayers, inspectEffects(overlay).layers);
 }
 function begin(level: number, large: Tier = 1, supernova = false): void {
   chain = level; tier = large; nova = supernova; seed++; mode = 'single'; reset(); emit(); playing = true;
@@ -99,7 +102,7 @@ function paint(): void {
 function percentile(values: number[], fraction: number): number { const sorted = [...values].sort((a, b) => a - b); return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0; }
 function report(): void {
   const state = inspectEffects(overlay);
-  readout.textContent = `${nova ? '超新星' : `${chain}連鎖`} / 構成 ${layerCount(chain, nova)}層 / 出来事 ${fired} / 生存 ${state.bursts}/8\n描画 p95 ${percentile(samples, 0.95).toFixed(2)}ms / 最大 ${Math.max(0, ...samples).toFixed(2)}ms / ${samples.length}標本 / 時間の依頼 ${effects.timeScale?.().toFixed(2) ?? '1'}\n圧縮 ${Math.round(releaseTime({ chain, tier, nova }) * 1000)}ms / カメラ ${target.style.transform ? '反応中' : '復帰済み'} / 表示間隔p95 ${percentile(frameSamples, 0.95).toFixed(1)}ms（比較ページ全体）`;
+  readout.textContent = `${nova ? '超新星' : `${chain}連鎖`} / 演出の最大構成 ${peakLayers}層 / 出来事 ${fired} / 生存 ${state.bursts}/8\n描画 p95 ${percentile(samples, 0.95).toFixed(2)}ms / 最大 ${Math.max(0, ...samples).toFixed(2)}ms / ${samples.length}標本 / 時間の依頼 ${effects.timeScale?.().toFixed(2) ?? '1'}\n圧縮 ${Math.round(releaseTime({ chain, tier, nova }) * 1000)}ms / カメラ ${target.style.transform ? '反応中' : '復帰済み'} / 表示間隔p95 ${percentile(frameSamples, 0.95).toFixed(1)}ms（比較ページ全体）`;
   document.querySelector('#time')!.textContent = `${age.toFixed(3)}秒`; timeline.value = `${Math.round(age * 60)}`;
 }
 function advance(dt: number): void { age += dt; sceneAge += dt; effects.update(dt); pool.update(dt); base.update(dt); }
@@ -136,7 +139,8 @@ document.querySelector('#verify-sound')!.addEventListener('click', async event =
     const files = document.querySelector('#sound-files')!; files.replaceChildren();
     for (const item of result.buffers) {
       const link = document.createElement('a'), url = URL.createObjectURL(waveFile(item.buffer)); soundUrls.push(url);
-      link.href = url; link.download = `juice-${item.name}.wav`; link.textContent = `${item.name}の音を保存　`; files.append(link);
+      const label = { merge: '合体', supernova: '超新星', mixed: '混在時', 'chain-ladder': '連鎖1〜5' }[item.name] ?? item.name;
+      link.href = url; link.download = `juice-${item.name}.wav`; link.textContent = `${label}の音を保存　`; files.append(link);
     }
   } catch (error) { output.textContent = `音の測定に失敗: ${String(error)}`; } finally { button.disabled = false; }
 });
