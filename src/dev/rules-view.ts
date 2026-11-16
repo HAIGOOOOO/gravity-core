@@ -9,11 +9,12 @@ import { fitCanvas } from '../shared/coords';
 import { dropAt } from '../fixtures';
 import { BURST_MAX, DT, DROP_SPEED, HEAT_MAX, HEAT_RISE_PER_SECOND, INTERVENTION_WINDOW_SECONDS, LIMIT_RADIUS, TICK_HZ, TIER_NAMES, TIER_RADIUS } from '../game/constants';
 import { GROWTH_PREVIEW_COMMAND } from '../fixtures/growth-preview';
-import { createRuleSession, type RuleMode, type RuleSessionSource } from './rules-session';
+import { createRuleSession, type PracticeShot, type RuleMode, type RuleSessionSource } from './rules-session';
 import { prepareDenseRulesLoad } from './rules-load';
 import { drawRuleTrace, type ContactMark } from './rules-trace';
 import { LESSON_REPLAY_SPEED } from './rules-replay';
-import { lossMessage } from '../ui/strings';
+import { repeatHeatingZones } from './rules-repeat-zones';
+import { lossMessage, STRINGS } from '../ui/strings';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 const text = (id: string, value: string) => { const node = el(id); if (node.textContent !== value) node.textContent = value; };
@@ -42,6 +43,7 @@ type FrameProfile = {
 let profile: FrameProfile | null = null;
 let feedbackUntil = 0;
 let repeatLabelsTick = -1;
+let lastRepeatShot: PracticeShot | undefined;
 let revealBoardOnDraw = false;
 let keyboardAngle = -Math.PI / 2, keyboardAim = false;
 const names = { learn: '一投から、2連鎖へ', collapse: '一投のあとに、崩壊を使う', growth: '成長前と、動いた結果', repeat: '同じ方角と、別の方角', loss: '限界外の山による終了', 'loss-repeat': '熱99で、どちらに投げる？', play: '自由プレイ' };
@@ -53,6 +55,14 @@ for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-t
 let queueKey = '';
 const fusionLabel = (e: GameEvent) => e.sourceTier === undefined ? '合体' : `${TIER_NAMES[e.sourceTier]}2個 → ${e.resultTier === undefined ? '超新星' : TIER_NAMES[e.resultTier]}`;
 const heatPart = (label: string, delta: number) => Math.abs(delta) >= .05 ? `${label} ${delta > 0 ? '＋' : '−'}${Math.abs(delta).toFixed(1)}` : '';
+const directions = ['右', '右下', '下', '左下', '左', '左上', '上', '右上'] as const;
+function directionName(angle: number): (typeof directions)[number] {
+  const sector = Math.round(angle * 4 / Math.PI);
+  return directions[(sector % 8 + 8) % 8]!;
+}
+function repeatCommand(opposite = false): LaunchCommand {
+  return dropAt((study.read().shots.at(-1)?.angle ?? 0) + (opposite ? Math.PI : 0));
+}
 function syncEffects(): void { effects.clear(); effects.setReducedMotion(motion.matches); dirty = true; }
 function unlock(): void { if (sound.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 65 }); audio.resume(); } }
 function launch(command: LaunchCommand): void {
@@ -99,6 +109,8 @@ function begin(mode: RuleMode, navigate = false, source?: RuleSessionSource): vo
   audio.suspend(); el('events').replaceChildren(); text('latest-event', ''); compare.checked = true;
   text('input-feedback', ''); feedbackUntil = 0;
   repeatLabelsTick = -1;
+  if (!source?.repeat) lastRepeatShot = undefined;
+  text('page-title', mode === 'repeat' ? '連投で熱が上がる' : '連鎖で、熱を逃がす。');
   text('mode-title', typeof mode === 'number' ? `${mode}回目の合体だけを再生` : names[mode]);
   text('mode', mode === 'learn' ? '同じ天体が触れると合体します。2回続くと冷える量が増えます。' : mode === 'collapse' ? '崩壊は天体を中心へ引き寄せます。衛星を作り、合体で力をためてから使います。' : mode === 'growth' ? '赤破線は、山が静止している場合の目安。山が動くと結果も変わります。' : mode === 'repeat' ? '衛星のある盤面から3投。初めの2投は同じ方角でも加熱しません。3投目の方角を選んでみてください。' : mode === 'play' ? '' : '途中からの冷却見本です。この合体の結果だけを確認します。');
   el('learn-actions').hidden = mode !== 'learn'; el('collapse-actions').hidden = mode !== 'collapse'; el('growth-actions').hidden = mode !== 'growth';
@@ -113,8 +125,9 @@ function begin(mode: RuleMode, navigate = false, source?: RuleSessionSource): vo
     if (mode === 'loss-repeat') text('loss-alternate', `左から（熱＋${heatLabel(FROM_LEFT)}）`);
   }
   if (mode === 'repeat' || mode === 'loss-repeat') {
-    const same = study.predict(FROM_RIGHT);
-    aim = { ...FROM_RIGHT, tier: study.before.nextQueue[0], dragPx: 0, speed: DROP_SPEED, straight: true, invalid: !same.valid, prediction: same };
+    const command = mode === 'repeat' ? repeatCommand() : FROM_RIGHT;
+    const prediction = study.predict(command);
+    aim = { ...command, tier: study.before.nextQueue[0], dragPx: 0, speed: DROP_SPEED, straight: true, invalid: !prediction.valid, prediction };
   }
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-mode]')) {
     const parentLesson = mode === 'loss-repeat' && button.dataset.mode === 'loss' && button.closest('.lesson-nav') !== null;
@@ -128,10 +141,13 @@ function begin(mode: RuleMode, navigate = false, source?: RuleSessionSource): vo
 function draw(): void {
   const s = study.read(), i = s.curr.intervention;
   const review = study.review.read(), shown = review.frame?.curr ?? s.curr;
+  const third = study.mode === 'repeat' ? s.shots[2] : undefined;
+  const showHeatZones = study.mode === 'repeat' || study.mode === 'loss-repeat';
+  const heatZones = showHeatZones && (review.frame ? (shown.recentLaunches?.length ?? 0) < 3 : !s.finished && !third) ? repeatHeatingZones(shown) : [];
   const mark = review.frame ? (review.focus ? { prev: review.frame.prev, event: review.focus } : undefined) : (fx.checked ? undefined : liveContact);
   renderer.draw({ prev: review.frame?.prev ?? s.prev, curr: shown, alpha: review.frame || presentationHold > 0 ? 1 : s.running ? Math.min(1, bank / DT) : 1, timeSeconds: review.frame ? shown.tick / TICK_HZ : time, aim: review.frame ? null : aim, reducedMotion: motion.matches, aimGuide: !s.finished && !(liveContact && !aim && !fx.checked), dimmed: false });
   if (fx.checked) effects.draw();
-  drawRuleTrace(trace.getContext('2d')!, study, compare.checked, shown, !!review.frame, mark);
+  drawRuleTrace(trace.getContext('2d')!, study, compare.checked, shown, !!review.frame, heatZones, mark, third);
   text('contact-live', !review.frame && liveContact && mark ? `${fusionLabel(mark.event)}${liveContact.count > 1 ? `（同時にほか${liveContact.count - 1}組）` : mark.event.heatDelta ? ` / 熱 −${Math.abs(mark.event.heatDelta).toFixed(1)}` : ''}` : '');
   el<HTMLMeterElement>('meter').value = shown.heat;
   text('mobile-heat', `熱 ${shown.heat.toFixed(0)} / ${HEAT_MAX}`);
@@ -156,10 +172,13 @@ function draw(): void {
   } else if (review.playing && review.frame && (shown.intervention?.activeLeftSeconds ?? 0) > 0) {
     text('replay-heat', `崩壊中 / 熱 ${shown.heat.toFixed(1)}`);
   } else text('replay-heat', '');
-  text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '金色の輪を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? '盤面の右か左を押して離す。赤い帯は加熱する方角。' : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '金色の輪から一投すると「崩壊を使う」が有効になります。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : '');
+  const repeatHint = heatZones.length ? '赤い帯の方角から投げると熱が上がります。'
+    : s.shots.length === 2 ? 'いまはどの方角から投げても、射出の熱は ＋0 です。' : '外周の好きな方角を押して、離すと一投できます。';
+  text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '金色の輪を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? repeatHint : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '金色の輪から一投すると「崩壊を使う」が有効になります。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : '');
   el('satellite-guide').hidden = !!s.finished || (study.mode !== 'collapse' && study.mode !== 'play');
   function finishedHeatCause(): string {
     if (s.curr.phase === 'over') return '';
+    if (third) return s.finished ? '' : `3投目の射出で熱 ＋${third.heat.toFixed(1)}`;
     if (s.finished) return s.curr.overLimit ? '練習は停止中。赤い輪の天体は、時間を進めると熱を上げます。' : '練習は停止中。限界外の天体はありません。';
     if (s.preparation === 'unlock') return s.running ? '合体で衛星を作っています' : '時間停止中 / 衛星を作るところから';
     if (s.preparation === 'charge') return s.running ? `合体で力をためています ${i?.charge}/${i?.max}` : `衛星を解放 / 力 ${i?.charge}/${i?.max}`;
@@ -170,23 +189,24 @@ function draw(): void {
     return s.curr.overLimit ? `限界外の赤い山で加熱 ＋${HEAT_RISE_PER_SECOND}/秒` : '限界内 / 自然に冷却';
   }
   text('mobile-queue', `${review.frame ? '当時の次' : '次'}: ${shown.nextQueue.map(tier => TIER_NAMES[tier]).join(' → ')}`);
+  el('mobile-queue').hidden = !!s.finished && !review.frame;
   text('cooling', `合体で −${s.mergeCooling.toFixed(1)}`);
   text('shot-heating', `連投で ＋${s.shotHeating.toFixed(1)}`);
   text('collapse-cooling', `崩壊で −${s.interventionCooling.toFixed(1)}`);
   text('passive', `限界外で ＋${s.overflowHeating.toFixed(1)} / 自然冷却で −${s.ambientCooling.toFixed(1)}`);
   text('balance', `開始 ${study.before.heat.toFixed(1)} ＋ 連投 ${s.shotHeating.toFixed(1)} ＋ 限界外 ${s.overflowHeating.toFixed(1)} − 合体 ${s.mergeCooling.toFixed(1)} − 崩壊 ${s.interventionCooling.toFixed(1)} − 自然冷却 ${s.ambientCooling.toFixed(1)} ＝ ${s.curr.heat.toFixed(1)}`);
   text('facts', `${review.frame ? 'この時点' : '今回'} ${(shown.score - study.before.score).toLocaleString()}点 / 合体 ${shown.stats.merges - study.before.stats.merges}回 / 最長 ${review.frame?.maxChain ?? s.maxChain}連鎖`);
-  el('facts').hidden = study.mode === 'play';
+  el('facts').hidden = study.mode === 'play' || (study.mode === 'repeat' && !review.frame);
   const finished = s.finished !== null;
+  if (study.mode === 'loss-repeat') text('mode-title', s.finished === 'over' ? '射出で熱100に到達' : s.finished === 'loss-avoided' ? '射出直後も継続' : names['loss-repeat']);
   el('study-panel').dataset.replaying = String(!!review.frame);
   el('result-heat').hidden = !finished || !!review.frame;
   if (finished && !review.frame) {
     const beforeThird = s.finished === 'repeat' ? study.repeatCheckpoint()?.state.heat : undefined;
-    if (beforeThird !== undefined) {
-      const thirdHeating = s.shots.at(-1)?.heat ?? 0;
+    if (beforeThird !== undefined && third) {
       text('result-heat', [
-        `3投目の直前 ${beforeThird.toFixed(1)}`, `射出 ＋${thirdHeating.toFixed(1)}`,
-        heatPart('射出後の変化', s.curr.heat - beforeThird - thirdHeating), `結果 ${s.curr.heat.toFixed(1)}`,
+        `射出 ${beforeThird.toFixed(1)} → ${(beforeThird + third.heat).toFixed(1)}（＋${third.heat.toFixed(1)}）`,
+        heatPart('その後の変化', s.curr.heat - beforeThird - third.heat), `停止時 ${s.curr.heat.toFixed(1)}`,
       ].filter(Boolean).join(' / '));
     } else text('result-heat', [
       `開始 ${study.before.heat.toFixed(1)}`, heatPart('限界外', s.overflowHeating), heatPart('連投', s.shotHeating),
@@ -194,20 +214,25 @@ function draw(): void {
       `結果 ${s.curr.heat.toFixed(1)}`,
     ].filter(Boolean).join(' / '));
   }
-  const retriedThirdShot = study.mode === 'repeat' && study.before.tick > 0;
-  el('replay-actions').hidden = !finished || study.mode === 'play' || study.mode === 'loss-repeat' || retriedThirdShot;
+  text('repeat-comparison', s.finished === 'repeat' && !review.frame && lastRepeatShot && third
+    ? `射出で増えた熱　前回 ${directionName(lastRepeatShot.angle)} ＋${lastRepeatShot.heat.toFixed(1)} ／ 今回 ${directionName(third.angle)} ＋${third.heat.toFixed(1)}` : '');
+  el('replay-actions').hidden = !finished || study.mode === 'play' || study.mode === 'loss-repeat';
   el('replay-contact').hidden = !review.hasContact;
   el('replay-prev').hidden = !review.hasContact;
   el('replay-collapse').hidden = !review.hasCollapse;
+  text('replay-slow', study.mode === 'repeat' ? '3投目を1/4速で見る' : '1/4速で見返す');
   el<HTMLButtonElement>('replay-prev').disabled = review.contactNumber <= 1;
   text('replay-contact', review.contactNumber && review.contactNumber === review.contactCount ? '最初の合体へ' : '次の合体へ');
   el<HTMLButtonElement>('replay-return').disabled = !review.frame;
   text('replay-status', review.phase === 'contact' && review.focus ? `合体 ${review.contactNumber}/${review.contactCount} · ${fusionLabel(review.focus)}。金の破線は合体前、緑の輪は生まれた天体。` : review.phase === 'playing' ? '入力待ちの時間は省略。音なしで再生します。' : review.phase === 'ended' ? '再生が終わりました。「結果へ戻る」で結果を表示します。' : review.hasContact ? '合体の瞬間へ戻せます。低速再生は直近10秒まで。' : '直近10秒まで、音なしで見返せます。');
   el('lesson-result').hidden = !!review.frame;
-  el('lesson-result').dataset.state = s.finished === 'over' ? 'defeat' : s.finished === 'expired' || s.finished === 'try-chain' ? 'warning' : 'success';
+  el('lesson-result').dataset.state = s.finished === 'over' ? 'defeat' : s.finished === 'expired' || s.finished === 'try-chain' || (third?.heat ?? 0) > 0 ? 'warning' : 'success';
   el('heat-breakdown').hidden = !!review.frame;
   el('repeat-actions').hidden = study.mode !== 'repeat' || finished;
-  text('aim-feedback', aim?.prediction?.mergePreview?.mayCrossLimit ? '成長の目安：限界を越す可能性があります' : aim?.prediction?.launchHeat ? `この照準で投げると熱 ＋${aim.prediction.launchHeat.toFixed(0)}` : '');
+  const prediction = aim?.prediction;
+  text('aim-feedback', prediction?.end === 'overheat' ? STRINGS.launchOverheat
+    : prediction?.mergePreview?.mayCrossLimit ? '成長の目安：限界を越す可能性があります'
+    : prediction?.launchHeat ? `この照準で投げると熱 ＋${prediction.launchHeat.toFixed(1)}` : '');
   el('defeat-panel').hidden = !s.curr.loss || !!review.frame;
   if (s.curr.loss) text('defeat-panel', lossMessage(s.curr.loss));
   el('mode').hidden = finished || study.mode === 'play'; el('practice-actions').hidden = finished || study.mode === 'learn' && !s.waiting;
@@ -216,10 +241,11 @@ function draw(): void {
   const fusion = s.lastFusion;
   text('fusion-change', fusion ? `合体直前 ${fusion.before.toFixed(1)} → 直後 ${fusion.after.toFixed(1)}（−${fusion.cooling.toFixed(1)}）` : '');
   el('fusion-change').hidden = !fusion;
-  text('lesson-result', s.finished === 'expired' ? '崩壊の受付が終わりました。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '成長が終わりました。' : s.finished === 'repeat' ? `3投の加熱：${s.shots.map(shot => `＋${shot.heat.toFixed(0)}`).join(' → ')}。もう一度で、別の方角を試せます。` : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖 / 合体で熱 −${s.mergeCooling.toFixed(0)}` : s.finished === 'over' ? 'ゲーム終了' : '');
+  text('lesson-result', s.finished === 'expired' ? '崩壊の受付が終わりました。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '成長が終わりました。' : s.finished === 'repeat' && third ? `3投目 · ${directionName(third.angle)}から射出` : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖 / 合体で熱 −${s.mergeCooling.toFixed(0)}` : s.finished === 'over' ? 'ゲーム終了' : '');
   if (s.finished === 'try-chain') text('lesson-result', s.merges > 0 ? '合体できました。次の合体につながるよう、金色の輪からもう一度。' : '今回は合体しませんでした。金色の輪から真っすぐ落としてみましょう。');
-  if (s.finished === 'loss-avoided') text('lesson-result', s.shotHeating === 0 ? '連投による加熱は0。この一投では終了しませんでした。' : `連投で熱＋${s.shotHeating.toFixed(1)}。この一投では終了しませんでした。`);
+  if (s.finished === 'loss-avoided') text('lesson-result', `射出で熱 ＋${s.shotHeating.toFixed(1)}。この一投の直後は続行できます。`);
   el('result-actions').hidden = !finished || !!review.frame; el('next-lesson').hidden = s.finished === 'try-chain';
+  el('repeat-limit').hidden = s.finished !== 'repeat';
   text('try-again', s.finished === 'repeat' ? '3投目をもう一度'
     : study.mode === 'collapse' && study.collapseCheckpoint() ? '一投からもう一度' : 'もう一度');
   text('next-lesson', study.mode === 'loss' ? '連投の敗因へ' : study.mode === 'loss-repeat' ? '自由プレイへ' : '次へ');
@@ -232,11 +258,13 @@ function draw(): void {
   el<HTMLButtonElement>('repeat-same').disabled = !s.waiting; el<HTMLButtonElement>('repeat-other').disabled = !s.waiting;
   if (study.mode === 'repeat' && s.waiting && s.curr.tick !== repeatLabelsTick) {
     repeatLabelsTick = s.curr.tick;
-    const same = study.predict(FROM_RIGHT);
-    const other = study.predict(FROM_LEFT);
-    text('repeat-same', `${s.shots.length + 1}投目：右から（熱＋${(same.launchHeat ?? 0).toFixed(0)}）`);
-    text('repeat-other', `左から（熱＋${(other.launchHeat ?? 0).toFixed(0)}）`);
-    text('repeat-history', s.shots.length ? `ここまで：${s.shots.map((shot, n) => `${n + 1}投目 ＋${shot.heat.toFixed(0)}`).join(' / ')}` : 'まずは右から、1投目。');
+    const same = repeatCommand(), other = repeatCommand(true);
+    for (const [id, command] of [['repeat-same', same], ['repeat-other', other]] as const) {
+      const heat = study.predict(command).launchHeat ?? 0;
+      text(id, `${directionName(command.originAngleRadians)}から（射出で＋${heat.toFixed(0)}）`);
+      el(id).dataset.hot = String(heat > 0);
+    }
+    text('repeat-history', s.shots.length ? `${s.shots.map((shot, n) => `${n + 1}投目 ${directionName(shot.angle)}`).join(' ／ ')}。次は${s.shots.length + 1}投目。` : '1投目の方角を選ぶ');
   }
   if (performance.now() > feedbackUntil) text('input-feedback', '');
   text('shot-readiness', study.mode === 'play' && s.curr.launchCooldownLeftSeconds > 0 ? `次の一投まで ${s.curr.launchCooldownLeftSeconds.toFixed(1)}秒` : '');
@@ -291,18 +319,23 @@ el('restart-play').addEventListener('click', () => begin('play', true));
 el<HTMLInputElement>('guided-collapse').addEventListener('change', event => {
   if (study.mode === 'collapse') study.setGuidedCollapse((event.currentTarget as HTMLInputElement).checked);
 });
-el('repeat-same').addEventListener('click', () => launch(FROM_RIGHT));
-el('repeat-other').addEventListener('click', () => launch(FROM_LEFT));
+el('repeat-same').addEventListener('click', () => launch(repeatCommand()));
+el('repeat-other').addEventListener('click', () => launch(repeatCommand(true)));
 el('loss-start').addEventListener('click', () => { if (study.mode === 'loss') { study.startLoss(); dirty = true; } else launch(FROM_RIGHT); });
 el('loss-alternate').addEventListener('click', () => launch(FROM_LEFT));
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });
 el('try-again').addEventListener('click', () => {
   const repeatFrom = study.read().finished === 'repeat' ? study.repeatCheckpoint() : undefined;
+  if (repeatFrom) lastRepeatShot = study.read().shots[2];
   begin(study.mode, true, { repeat: repeatFrom, collapse: study.collapseCheckpoint() });
 });
 el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : study.mode === 'growth' ? 'repeat' : study.mode === 'repeat' ? 'loss' : study.mode === 'loss' ? 'loss-repeat' : 'play', true));
 for (const action of ['start', 'contact', 'stop'] as const) el(action === 'start' ? 'replay-slow' : action === 'contact' ? 'replay-contact' : 'replay-return').addEventListener('click', () => {
-  effects.clear(); audio.suspend(); tail = 0; study.review[action](); dirty = true;
+  effects.clear(); audio.suspend(); tail = 0;
+  const checkpoint = study.mode === 'repeat' ? study.repeatCheckpoint() : undefined;
+  if (action === 'start' && checkpoint) study.review.startFromTick(checkpoint.state.tick);
+  else study.review[action]();
+  dirty = true;
 });
 el('replay-prev').addEventListener('click', () => { effects.clear(); study.review.contact(-1); dirty = true; });
 el('replay-collapse').addEventListener('click', () => {
@@ -356,6 +389,10 @@ function fitBoard(): void {
   const replayActions = el('replay-actions');
   const slot = el(innerWidth <= 760 ? 'board-replay' : 'aside-replay');
   if (replayActions.parentElement !== slot) slot.append(replayActions);
+  const result = el('result-block');
+  const mobileResult = innerWidth <= 760 && ['repeat', 'loss', 'loss-repeat'].includes(String(study.mode));
+  const resultSlot = el(mobileResult ? 'board-result' : 'aside-result');
+  if (result.parentElement !== resultSlot) resultSlot.append(result);
 }
 window.addEventListener('resize', fitBoard); document.fonts.ready.then(fitBoard); fitBoard();
 function frame(now: number): void {

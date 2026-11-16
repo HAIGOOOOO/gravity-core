@@ -69,3 +69,23 @@ it('崩壊の発動から開くと、準備を飛ばして発動直前から見�
   expect(lesson.review.advance(4 * DT).filter(e => e.kind === 'collapse')).toHaveLength(1);
   expect(lesson.read().curr).toBe(final);
 });
+
+it('連投の見返しは、初回も再試行も同じ3投目の直前から始まる', () => {
+  const first = createRuleSession('repeat');
+  for (let shot = 0; shot < 2; shot++) {
+    first.launch(dropAt(0));
+    for (let n = 0; n < TICK_HZ; n++) first.step();
+  }
+  const repeat = first.repeatCheckpoint()!;
+  const retry = createRuleSession('repeat', 21, false, false, { repeat });
+  for (const [lesson, angle, added] of [[first, 0, 2], [retry, Math.PI, 0]] as const) {
+    lesson.launch(dropAt(angle));
+    for (let n = 0; n < TICK_HZ; n++) lesson.step();
+    const final = lesson.read().curr;
+    lesson.review.startFromTick(repeat.state.tick);
+    expect(lesson.review.read().frame?.curr).toMatchObject({ tick: repeat.state.tick, heat: repeat.state.heat });
+    const events = lesson.review.advance(4 * DT);
+    expect(events.filter(e => e.kind === 'launch').map(e => e.heatDelta ?? 0)).toEqual([added]);
+    expect(lesson.read().curr).toBe(final);
+  }
+});

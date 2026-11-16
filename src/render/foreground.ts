@@ -8,6 +8,7 @@ import { drawLossMarker } from './loss';
 
 /** 操作の線は光の面と混ぜず、暗い下縁を付けて最前面へ置く。 */
 export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardFrame): void {
+  const overheat = frame.aim?.prediction?.end === 'overheat';
   ctx.save();
   drawPlayingBodies(ctx, frame);
   // 実際に流れる向きを射出リングの外へ示す。動きを減らす時は印を回さない。
@@ -25,7 +26,7 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
   ctx.strokeStyle = frame.curr.overLimit ? '#FF7D83' : 'rgba(145,160,184,0.85)';
   ctx.lineWidth = frame.curr.overLimit ? 3 : 1.5; ctx.setLineDash([10, 8]); ctx.stroke(); ctx.setLineDash([]);
   drawLossMarker(ctx, frame.curr);
-  const targets = frame.aimGuide ? frame.curr.bodies.filter((b) => b.chain > 0 && b.chainUntilTick > frame.curr.tick) : [];
+  const targets = frame.aimGuide && !overheat ? frame.curr.bodies.filter((b) => b.chain > 0 && b.chainUntilTick > frame.curr.tick) : [];
   const hero = targets.reduce<(typeof targets)[number] | null>((best, b) => !best || b.chain > best.chain ? b : best, null);
   for (const b of targets) {
     const left = Math.min(1, (b.chainUntilTick - frame.curr.tick) / (CHAIN_WINDOW_SECONDS * TICK_HZ));
@@ -44,11 +45,11 @@ export function drawBoardForeground(ctx: CanvasRenderingContext2D, frame: BoardF
     drawBody(ctx, aim.tier, ox, oy, TIER_RADIUS[aim.tier], { alpha: 0.8 });
     const prediction = aim.prediction;
     if (prediction && (prediction.launchHeat ?? 0) > 0) {
-      const label = launchHeatLabel(prediction.launchHeat!);
+      const label = overheat ? STRINGS.launchOverheat : launchHeatLabel(prediction.launchHeat!);
       const x = Math.max(-260, Math.min(260, ox * .65)), y = Math.max(-360, Math.min(360, oy * .82));
       ctx.font = '700 25px system-ui,sans-serif'; ctx.textAlign = 'center';
       ctx.strokeStyle = '#101b1a'; ctx.lineWidth = 7; ctx.strokeText(label, x, y);
-      ctx.fillStyle = '#ffbf85'; ctx.fillText(label, x, y);
+      ctx.fillStyle = overheat ? '#ff9398' : '#ffbf85'; ctx.fillText(label, x, y);
     }
     const growth = frame.aimGuide ? prediction?.mergePreview : undefined;
     if (growth) {

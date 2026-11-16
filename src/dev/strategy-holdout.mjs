@@ -8,11 +8,15 @@ const count = Number(process.argv[3] ?? 32);
 const experiment = process.argv[4] ?? 'production';
 const suite = process.argv[5] ?? 'standard';
 const cycle = /^cycle[358]$/.test(experiment);
-const zones = /^zones(8|10|12)$/.test(experiment) || experiment === 'zones-wide9';
+const triple = experiment === 'zones-triple9';
+const axes = experiment === 'zones-axis9';
+const wide = triple || experiment === 'zones-wide9';
+const zones = /^zones(8|10|12)$/.test(experiment) || wide || axes;
+const extraHistory = axes ? 16 : triple ? 12 : null;
 if (!(experiment === 'production' || experiment === 'quick' || cycle || zones)) throw new Error('実験名が不明です');
-const variableTempoSuites = ['aiming', 'evasion', 'confirmation'];
+const variableTempoSuites = ['aiming', 'evasion', 'confirmation', 'interruptions'];
 if (!['standard', 'tempo', ...variableTempoSuites].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
-  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion|confirmation]');
+  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion|confirmation|interruptions]');
 }
 const seeds = Array.from({ length: count }, (_, n) => seedStart + n);
 const suiteSuffix = suite === 'standard' ? '' : `-${suite}`;
@@ -20,21 +24,29 @@ const path = `docs/notes/C/strategy-${experiment}${suiteSuffix}-${seedStart}-${c
 const server = await createServer({
   configFile: false, server: { middlewareMode: true, ws: false }, appType: 'custom',
   plugins: !cycle && !zones ? [] : [{
-    name: 'strategy-holdout-cycle',
+    name: 'strategy-holdout-heat',
     enforce: 'pre',
     transform(source, id) {
-      if (!id.replaceAll('\\', '/').endsWith('/src/game/launch-heat.ts')) return;
+      const normalizedId = id.replaceAll('\\', '/');
+      if (extraHistory && normalizedId.endsWith('/src/game/simulation.ts')) {
+        const history = 'recentLaunches: inputLog.slice(-REPEAT_LAUNCH_MEMORY)';
+        if (!source.includes(history)) throw new Error('試作の加熱予測に渡す履歴が見つかりません');
+        return source.replace(history, `recentLaunches: inputLog.slice(-${extraHistory})`);
+      }
+      if (!normalizedId.endsWith('/src/game/launch-heat.ts')) return;
       const anchor = 'return Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;';
       if (!source.includes(anchor)) throw new Error('加熱の比較箇所が見つかりません');
       if (zones) {
-        const wide = experiment === 'zones-wide9';
-        const extra = wide ? 9 : Number(experiment.slice('zones'.length));
+        const extra = wide || axes ? 9 : Number(experiment.slice('zones'.length));
         const tolerance = wide ? '24 * Math.PI / 180' : 'REPEAT_LAUNCH_ANGLE';
+        const zoneHistory = extraHistory ? `inputs.slice(-${extraHistory})` : 'recent';
+        const test = axes ? `repeatedFourAxes(${zoneHistory}, angle)`
+          : `repeatedFourZones(${zoneHistory}, angle, ${tolerance}, ${triple ? 3 : 2})`;
         // ＋10では間隔の境界をなくし、通常の冷却で投げる速さの差が出るか調べる。
-        const paceCondition = wide || extra === 10 ? 'true' : 'recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ)';
-        return `import { repeatedFourZones } from '../dev/strategy-zone-heat';\n` + source.replace(anchor, `
+        const paceCondition = wide || axes || extra === 10 ? 'true' : 'recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ)';
+        return `import { ${axes ? 'repeatedFourAxes' : 'repeatedFourZones'} } from '../dev/strategy-zone-heat';\n` + source.replace(anchor, `
           const fastRepeat = ${paceCondition};
-          const extra = fastRepeat && repeatedFourZones(recent, angle, ${tolerance}) ? ${extra} : 0;
+          const extra = fastRepeat && ${test} ? ${extra} : 0;
           return extra + Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;
         `);
       }
@@ -85,8 +97,23 @@ try {
   ];
   const tempo = [['', fast], ['-medium', Math.round(.75 * TICK_HZ)], ['-slow', slow], ['-slower', Math.round(1.25 * TICK_HZ)]];
   const fourStart = (jitter = 0, alternate = false) => seed => {
-    const angle = suite === 'confirmation' && seed % 2 !== 0 ? -Math.PI / 2 : -Math.PI / 4;
+    const angle = ['confirmation', 'interruptions'].includes(suite) && seed % 2 !== 0 ? -Math.PI / 2 : -Math.PI / 4;
     return four(angle, jitter, alternate)(seed);
+  };
+  const withInterruptions = seed => {
+    const decide = fourStart(Math.PI / 90, true)(seed);
+    let shots = 0;
+    return () => {
+      const shot = decide();
+      // 6投ごとに元の方角から45度外す。
+      return ++shots % 6 === 0 ? dropAt(shot.originAngleRadians + Math.PI / 4) : shot;
+    };
+  };
+  const clumped = seed => {
+    const order = [0, 1, 1, 2, 3, 2, 0, 3];
+    const start = seed % 2 === 0 ? -Math.PI / 4 : -Math.PI / 2;
+    let shot = 0;
+    return () => dropAt(start + order[shot++ % order.length] * Math.PI / 2);
   };
   const aimingCases = [
     ['random', fast, seed => randomBot(seed).decide],
@@ -109,6 +136,7 @@ try {
     aiming: aimingCases,
     evasion: evasionCases,
     confirmation: evasionCases,
+    interruptions: [...evasionCases, ['four-interrupted', fast, withInterruptions], ['four-clumped', fast, clumped]],
     standard: experiment === 'production' ? allCases : allCases.filter(([name]) =>
       ['random', 'spiral', 'four', 'four-offset', 'four-jitter'].includes(name)
       || experiment === 'cycle8' && ['random-slow', 'four-slow'].includes(name)),

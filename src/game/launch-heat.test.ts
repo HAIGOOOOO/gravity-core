@@ -31,8 +31,14 @@ describe('同じ方角への連投の熱', () => {
     }
     const ready = restoreSimulation({ ...sim.exportState(), heat: 99, cooldown: 0 });
     const before = ready.getSnapshot(), log = ready.getInputLog();
-    expect(ready.predict(dropAt(0)).launchHeat).toBe(1);
-    expect(ready.predict(dropAt(0)).launchHeat).toBe(1);
+    const prediction = ready.predict(dropAt(0));
+    expect(prediction).toMatchObject({ valid: true, launchHeat: 1, end: 'overheat', willMerge: false, hitBodyId: null });
+    expect(prediction.points).toHaveLength(1);
+    expect(prediction.mergePreview).toBeUndefined();
+    expect(ready.predict(dropAt(0))).toEqual(prediction);
+    const alternate = ready.predict(dropAt(Math.PI));
+    expect(alternate).toMatchObject({ valid: true, launchHeat: 0 });
+    expect(alternate.points.length).toBeGreaterThan(1);
     expect(ready.submitLaunch({ originAngleRadians: 0, vx: 0, vy: 0 }).accepted).toBe(false);
     expect(ready.getSnapshot()).toEqual(before); expect(ready.getInputLog()).toEqual(log);
     expect(ready.submitLaunch(dropAt(0)).accepted).toBe(true);

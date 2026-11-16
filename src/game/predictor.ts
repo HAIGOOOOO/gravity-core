@@ -94,6 +94,12 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand, fl
   const ticks = Math.round(PREDICT_SECONDS / DT);
   const sampleEvery = Math.max(1, Math.round(PREDICT_SAMPLE_SECONDS / DT));
   const points: PathPoint[] = [{ x: shot.x, y: shot.y, t: 0 }];
+  const launchHeat = Math.min(HEAT_MAX - snapshot.heat, launchHeating(snapshot.tick, snapshot.bestTierThisRun, snapshot.recentLaunches ?? [], command.originAngleRadians, angles));
+  const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points, launchHeat };
+  // 射出で熱100に届くと、次の物理計算に入る前に終了する。
+  if (launchHeat > 0 && snapshot.heat + launchHeat >= HEAT_MAX) {
+    return { ...base, end: 'overheat', hitBodyId: null, willMerge: false };
+  }
   let end: Prediction['end'] = 'timeLimit';
   let hitBodyId: number | null = null;
   let willMerge = false;
@@ -116,8 +122,6 @@ export function predictLaunch(snapshot: GameSnapshot, command: LaunchCommand, fl
     if (i % sampleEvery === 0 || end !== 'timeLimit') points.push({ x: shot.x, y: shot.y, t: i * DT });
   }
 
-  const launchHeat = Math.min(HEAT_MAX - snapshot.heat, launchHeating(snapshot.tick, snapshot.bestTierThisRun, snapshot.recentLaunches ?? [], command.originAngleRadians, angles));
-  const base = { valid: reason === null, ...(reason ? { rejectReason: reason } : {}), points, launchHeat };
   // 山が動いているときは、線と終わり方は出すが「何に当たるか」は答えない（終点は「不確か」の見た目で描く）
   if (uncertain) return driftPrediction({ ...base, end, hitBodyId: null, willMerge: false, uncertain: true }, angles);
   const path = { ...base, end, hitBodyId, willMerge };

@@ -132,8 +132,8 @@ export type Prediction = Readonly<{
   launchHeat?: number;
   rejectReason?: LaunchRejectReason;
   points: readonly PathPoint[];
-  /** core: 核に着く / body: 天体に当たる / timeLimit: 時間内にどこにも着かない */
-  end: 'core' | 'body' | 'timeLimit';
+  /** core: 核に着く / body: 天体に当たる / timeLimit: 時間内にどこにも着かない / overheat: 飛ぶ前に熱100で終了 */
+  end: 'core' | 'body' | 'timeLimit' | 'overheat';
   /** 最初に当たる天体。当たらなければ null */
   hitBodyId: BodyId | null;
   /** 最初に当たる天体が同じ Tier（当たれば合体する） */

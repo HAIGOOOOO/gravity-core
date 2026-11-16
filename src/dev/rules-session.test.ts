@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRuleSession } from './rules-session';
+import { createRuleSession, REPEAT_OBSERVATION_TICKS } from './rules-session';
 import { GROWTH_PREVIEW_COMMAND } from '../fixtures/growth-preview';
 import { dropAt } from '../fixtures';
 import { BURST_MAX, COLLAPSE_COOL_PER_SECOND, COLLAPSE_SECONDS, TICK_HZ, TIER_RADIUS } from '../game/constants';
@@ -161,7 +161,10 @@ describe('ルールの練習も同じ計算を使う', () => {
       for (let n = 0; n < TICK_HZ; n++) lesson.step();
     }
     expect(lesson.predict(dropAt(Math.PI)).launchHeat).toBe(0);
-    lesson.launch(dropAt(Math.PI)); lesson.step();
+    lesson.launch(dropAt(Math.PI));
+    lesson.step();
+    expect(lesson.read().finished).toBeNull();
+    for (let n = 0; n < TICK_HZ; n++) lesson.step();
     expect(lesson.read().finished).toBe('repeat'); expect(lesson.read().shotHeating).toBe(0);
     expect(lesson.read().shots.map(s => s.heat)).toEqual([0, 0, 0]);
   });
@@ -181,8 +184,10 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(retry.before).toEqual(beforeThird);
     expect(retry.read().shots.map(shot => shot.heat)).toEqual([0, 0]);
     expect(retry.launch(dropAt(Math.PI))?.accepted).toBe(true);
-    retry.step();
-    expect(retry.read()).toMatchObject({ finished: 'repeat', shotHeating: 0, curr: { tick: beforeThird.tick + 1 } });
+    for (let n = 0; n < TICK_HZ; n++) retry.step();
+    expect(retry.read()).toMatchObject({ finished: 'repeat', shotHeating: 0 });
+    expect(retry.read().curr.tick).toBeGreaterThan(beforeThird.tick + 1);
+    expect(retry.read().curr.tick).toBe(beforeThird.tick + REPEAT_OBSERVATION_TICKS);
     expect(retry.read().shots.map(shot => shot.heat)).toEqual([0, 0, 0]);
   });
 });

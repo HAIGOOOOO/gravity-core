@@ -7,11 +7,13 @@ import { createLessonReplay } from './rules-replay';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
 type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'loss-avoided' | 'over' | null;
-type PracticeShot = Readonly<{ angle: number; heat: number }>;
+export type PracticeShot = Readonly<{ angle: number; heat: number }>;
 export type RepeatCheckpoint = Readonly<{ state: SimulationState; shots: readonly PracticeShot[] }>;
 export type RuleSessionSource = Readonly<{ repeat?: RepeatCheckpoint; collapse?: SimulationState; play?: Simulation }>;
 // 練習の観察時間。外した一投も短く区切り、同じ盤面から試せるようにする。
 const LEARN_OBSERVATION_TICKS = Math.ceil(1.4 * TICK_HZ);
+// 射出の熱を表示し、そのまま天体が盤面へ進むところまで観察する。
+export const REPEAT_OBSERVATION_TICKS = Math.ceil(.65 * TICK_HZ);
 
 /** 見本も本物の計算を進め、説明の間と結果で時間だけを止める。 */
 export function createRuleSession(
@@ -77,7 +79,7 @@ export function createRuleSession(
       running = !armed; waiting = false; curr = sim.getSnapshot(); shotHeating += curr.heat - heatBefore;
       if (mode === 'repeat') shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
       if (mode === 'learn') learnDeadline = curr.tick + LEARN_OBSERVATION_TICKS;
-      if (mode === 'repeat' && shots.length >= 3) finishAt = curr.tick + 1;
+      if (mode === 'repeat' && shots.length >= 3) finishAt = curr.tick + REPEAT_OBSERVATION_TICKS;
       // 敗因の比較は一投直後まで。別の方角ならその時点で生き残ったことだけを示す。
       if (mode === 'loss-repeat') finishAt = curr.tick + 1;
     }
@@ -118,7 +120,7 @@ export function createRuleSession(
       running = false; waiting = true; preparation = 'ready';
       collapseCheckpoint = sim.exportState();
     }
-    else if (mode === 'repeat' && curr.launchCooldownLeftSeconds <= 0) {
+    else if (mode === 'repeat' && shots.length < 3 && curr.launchCooldownLeftSeconds <= 0) {
       // 速さの制限を変えず、次の選択ができる時点でだけ教材の時計を止める。
       running = false; waiting = true;
       if (shots.length === 2 && !repeatCheckpoint) {
