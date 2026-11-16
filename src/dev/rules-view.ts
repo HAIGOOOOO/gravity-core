@@ -44,8 +44,10 @@ let profile: FrameProfile | null = null;
 let feedbackUntil = 0;
 let repeatLabelsTick = -1;
 let lastRepeatShot: PracticeShot | undefined;
+let lastLossShot: PracticeShot | undefined;
 let revealBoardOnDraw = false;
 let keyboardAngle = -Math.PI / 2, keyboardAim = false;
+let keyboardAimTick = -1;
 const names = { learn: '一投から、2連鎖へ', collapse: '一投のあとに、崩壊を使う', growth: '成長前と、動いた結果', repeat: '同じ方角と、別の方角', loss: '限界外の山による終了', 'loss-repeat': '熱99で、どちらに投げる？', play: '自由プレイ' };
 const queueIcons = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; c.setAttribute('role', 'img'); el('queue').append(c); return c; });
 for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-tier]')) {
@@ -67,7 +69,7 @@ function syncEffects(): void { effects.clear(); effects.setReducedMotion(motion.
 function unlock(): void { if (sound.checked) { audio.unlock(); audio.setSettings({ sfx: true, volume: 65 }); audio.resume(); } }
 function launch(command: LaunchCommand): void {
   unlock(); const result = study.launch(command);
-  if (result?.accepted) aim = null;
+  if (result?.accepted) { aim = null; keyboardAim = false; }
   else if (result && !result.accepted) {
     text('input-feedback', result.reason === 'cooldown' ? '次の天体を準備中です。少し待って、もう一度。' : result.reason === 'overlap' ? 'この位置には天体を置けません。別の方角から。' : result.reason === 'gameOver' ? '終了しました。もう一度から試せます。' : '引く長さを変えてください。');
     feedbackUntil = performance.now() + 1800;
@@ -75,8 +77,15 @@ function launch(command: LaunchCommand): void {
   dirty = true;
 }
 const input = createPointerInput(board, { getSnapshot: () => study.read().curr, predict: (c) => study.predict(c), onAim: (a) => { keyboardAim = false; aim = a; dirty = true; }, onLaunch: launch });
+function updateKeyboardAim(tick: number, tier: Tier): void {
+  const command = dropAt(keyboardAngle), prediction = study.predict(command);
+  aim = { ...command, tier, dragPx: 0, speed: DROP_SPEED, straight: true,
+    invalid: prediction.rejectReason === 'overlap' || prediction.rejectReason === 'speed', prediction };
+  keyboardAimTick = tick;
+}
 board.addEventListener('keydown', event => {
-  if (study.mode !== 'play' || profile?.shotAt || !study.read().running) return;
+  const { curr, running } = study.read();
+  if (study.mode !== 'play' || profile?.shotAt || !running) return;
   const { key } = event;
   if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== ' ' && key !== 'Enter') return;
   event.preventDefault();
@@ -85,9 +94,7 @@ board.addEventListener('keydown', event => {
     return;
   }
   keyboardAngle += (key === 'ArrowLeft' ? -1 : 1) * Math.PI / 24;
-  const command = dropAt(keyboardAngle);
-  const prediction = study.predict(command);
-  aim = { ...command, tier: study.read().curr.nextQueue[0], dragPx: 0, speed: DROP_SPEED, straight: true, invalid: !prediction.valid, prediction };
+  updateKeyboardAim(curr.tick, curr.nextQueue[0]);
   keyboardAim = true;
   dirty = true;
 });
@@ -97,6 +104,7 @@ board.addEventListener('blur', () => {
 function begin(mode: RuleMode, navigate = false, source?: RuleSessionSource): void {
   text('profile-result', profile ? '練習を切り替えたため、計測を中止しました。' : '');
   profile = null;
+  if (mode !== 'loss-repeat' || study.mode !== 'loss-repeat') lastLossShot = undefined;
   study = createRuleSession(mode, 21, mode === 'collapse' && el<HTMLInputElement>('guided-collapse').checked, mode === 'collapse', source); input.cancel(); aim = null; effects.clear(); tail = 0; bank = 0; time = 0; dirty = true;
   liveContact = undefined; cueLeft = 0; presentationHold = 0;
   revealBoardOnDraw = false;
@@ -140,10 +148,14 @@ function begin(mode: RuleMode, navigate = false, source?: RuleSessionSource): vo
 }
 function draw(): void {
   const s = study.read(), i = s.curr.intervention;
+  // キーを放している間も、山の回転による軌道と連投熱の変化を照準に反映する。
+  if (keyboardAim && s.running && s.curr.tick !== keyboardAimTick) updateKeyboardAim(s.curr.tick, s.curr.nextQueue[0]);
   const review = study.review.read(), shown = review.frame?.curr ?? s.curr;
   const third = study.mode === 'repeat' ? s.shots[2] : undefined;
+  const lossShot = study.mode === 'loss-repeat' ? s.shots[0] : undefined;
   const showHeatZones = study.mode === 'repeat' || study.mode === 'loss-repeat';
-  const heatZones = showHeatZones && (review.frame ? (shown.recentLaunches?.length ?? 0) < 3 : !s.finished && !third) ? repeatHeatingZones(shown) : [];
+  const heatZones = showHeatZones && (review.frame ? (shown.recentLaunches?.length ?? 0) < 3 : !s.finished && !third && !lossShot)
+    ? repeatHeatingZones(shown) : [];
   const mark = review.frame ? (review.focus ? { prev: review.frame.prev, event: review.focus } : undefined) : (fx.checked ? undefined : liveContact);
   renderer.draw({ prev: review.frame?.prev ?? s.prev, curr: shown, alpha: review.frame || presentationHold > 0 ? 1 : s.running ? Math.min(1, bank / DT) : 1, timeSeconds: review.frame ? shown.tick / TICK_HZ : time, aim: review.frame ? null : aim, reducedMotion: motion.matches, aimGuide: !s.finished && !(liveContact && !aim && !fx.checked), dimmed: false });
   if (fx.checked) effects.draw();
@@ -174,7 +186,7 @@ function draw(): void {
   } else text('replay-heat', '');
   const repeatHint = heatZones.length ? '赤い帯の方角から投げると熱が上がります。'
     : s.shots.length === 2 ? 'いまはどの方角から投げても、射出の熱は ＋0 です。' : '外周の好きな方角を押して、離すと一投できます。';
-  text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '金色の輪を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? repeatHint : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '金色の輪から一投すると「崩壊を使う」が有効になります。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : '');
+  text('control-hint', s.finished ? '' : study.mode === 'learn' && s.waiting ? '金色の輪を押して離すと、一投できます。' : study.mode === 'repeat' && s.waiting ? repeatHint : study.mode === 'collapse' && s.preparation === 'ready' && s.waiting ? '金色の輪から一投すると「崩壊を使う」が有効になります。' : study.mode === 'play' ? '盤面を押して離すと一投。引いて離すと曲げて投げます。' : study.mode === 'loss-repeat' && heatZones.length ? '赤い帯から投げると、射出で熱100に達します。' : '');
   el('satellite-guide').hidden = !!s.finished || (study.mode !== 'collapse' && study.mode !== 'play');
   function finishedHeatCause(): string {
     if (s.curr.phase === 'over') return '';
@@ -198,7 +210,9 @@ function draw(): void {
   text('facts', `${review.frame ? 'この時点' : '今回'} ${(shown.score - study.before.score).toLocaleString()}点 / 合体 ${shown.stats.merges - study.before.stats.merges}回 / 最長 ${review.frame?.maxChain ?? s.maxChain}連鎖`);
   el('facts').hidden = study.mode === 'play' || (study.mode === 'repeat' && !review.frame);
   const finished = s.finished !== null;
-  if (study.mode === 'loss-repeat') text('mode-title', s.finished === 'over' ? '射出で熱100に到達' : s.finished === 'loss-avoided' ? '射出直後も継続' : names['loss-repeat']);
+  if (study.mode === 'loss-repeat') text('mode-title', s.finished === 'over'
+    ? s.curr.loss?.kind === 'repeatLaunch' ? '射出で熱100に到達' : '射出のあとに熱100に到達'
+    : s.finished === 'loss-avoided' ? '射出直後も継続' : (lossShot ? '射出後の盤面' : names['loss-repeat']));
   el('study-panel').dataset.replaying = String(!!review.frame);
   el('result-heat').hidden = !finished || !!review.frame;
   if (finished && !review.frame) {
@@ -214,8 +228,10 @@ function draw(): void {
       `結果 ${s.curr.heat.toFixed(1)}`,
     ].filter(Boolean).join(' / '));
   }
-  text('repeat-comparison', s.finished === 'repeat' && !review.frame && lastRepeatShot && third
-    ? `射出で増えた熱　前回 ${directionName(lastRepeatShot.angle)} ＋${lastRepeatShot.heat.toFixed(1)} ／ 今回 ${directionName(third.angle)} ＋${third.heat.toFixed(1)}` : '');
+  const previousChoice = study.mode === 'loss-repeat' ? lastLossShot : lastRepeatShot;
+  const currentChoice = lossShot ?? third;
+  text('repeat-comparison', finished && !review.frame && previousChoice && currentChoice
+    ? `射出で増えた熱　前回 ${directionName(previousChoice.angle)} ＋${previousChoice.heat.toFixed(1)} ／ 今回 ${directionName(currentChoice.angle)} ＋${currentChoice.heat.toFixed(1)}` : '');
   el('replay-actions').hidden = !finished || study.mode === 'play' || study.mode === 'loss-repeat';
   el('replay-contact').hidden = !review.hasContact;
   el('replay-prev').hidden = !review.hasContact;
@@ -244,8 +260,11 @@ function draw(): void {
   text('lesson-result', s.finished === 'expired' ? '崩壊の受付が終わりました。' : s.finished === 'collapse' ? `崩壊を使えました。崩壊の冷却は −${s.interventionCooling.toFixed(1)}。` : s.finished === 'growth' ? '成長が終わりました。' : s.finished === 'repeat' && third ? `3投目 · ${directionName(third.angle)}から射出` : s.finished === 'chain' ? `${s.curr.stats.maxChain}連鎖 / 合体で熱 −${s.mergeCooling.toFixed(0)}` : s.finished === 'over' ? 'ゲーム終了' : '');
   if (s.finished === 'try-chain') text('lesson-result', s.merges > 0 ? '合体できました。次の合体につながるよう、金色の輪からもう一度。' : '今回は合体しませんでした。金色の輪から真っすぐ落としてみましょう。');
   if (s.finished === 'loss-avoided') text('lesson-result', `射出で熱 ＋${s.shotHeating.toFixed(1)}。この一投の直後は続行できます。`);
+  if (s.finished === 'loss-observed') text('lesson-result', s.lossContact === 'merge' ? '射出した天体が合体しました。'
+    : s.lossContact === 'land' ? '射出した天体が着地しました。' : '射出から0.65秒後の盤面です。');
   el('result-actions').hidden = !finished || !!review.frame; el('next-lesson').hidden = s.finished === 'try-chain';
   el('repeat-limit').hidden = s.finished !== 'repeat';
+  el('loss-watch').hidden = s.finished !== 'loss-avoided';
   text('try-again', s.finished === 'repeat' ? '3投目をもう一度'
     : study.mode === 'collapse' && study.collapseCheckpoint() ? '一投からもう一度' : 'もう一度');
   text('next-lesson', study.mode === 'loss' ? '連投の敗因へ' : study.mode === 'loss-repeat' ? '自由プレイへ' : '次へ');
@@ -323,10 +342,12 @@ el('repeat-same').addEventListener('click', () => launch(repeatCommand()));
 el('repeat-other').addEventListener('click', () => launch(repeatCommand(true)));
 el('loss-start').addEventListener('click', () => { if (study.mode === 'loss') { study.startLoss(); dirty = true; } else launch(FROM_RIGHT); });
 el('loss-alternate').addEventListener('click', () => launch(FROM_LEFT));
+el('loss-watch').addEventListener('click', () => { unlock(); study.watchLossFlight(); dirty = true; });
 el('growth-launch').addEventListener('click', () => { launch(GROWTH_PREVIEW_COMMAND); aim = null; });
 el('try-again').addEventListener('click', () => {
   const repeatFrom = study.read().finished === 'repeat' ? study.repeatCheckpoint() : undefined;
   if (repeatFrom) lastRepeatShot = study.read().shots[2];
+  if (study.mode === 'loss-repeat') lastLossShot = study.read().shots[0];
   begin(study.mode, true, { repeat: repeatFrom, collapse: study.collapseCheckpoint() });
 });
 el('next-lesson').addEventListener('click', () => begin(study.mode === 'learn' ? 'collapse' : study.mode === 'collapse' ? 'growth' : study.mode === 'growth' ? 'repeat' : study.mode === 'repeat' ? 'loss' : study.mode === 'loss' ? 'loss-repeat' : 'play', true));

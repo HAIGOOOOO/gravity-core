@@ -31,6 +31,18 @@ export function drawRuleTrace(ctx: CanvasRenderingContext2D, study: RuleSession,
       ctx.beginPath(); ctx.arc(body.x, body.y, body.radius + 8, 0, Math.PI * 2); ctx.stroke();
     }
   }
+  if (study.mode === 'loss' && snapshot.loss?.kind === 'overLimit') {
+    const { x, y, radius } = snapshot.loss.culprit;
+    applyLogicalTransform(ctx);
+    const side = x > 0 ? -1 : 1;
+    const textX = x + side * (radius + 120);
+    const textY = Math.max(-390, Math.min(390, y - 12));
+    ctx.strokeStyle = '#ff9398'; ctx.lineWidth = 3; ctx.beginPath();
+    ctx.moveTo(x + side * (radius + 9), y); ctx.lineTo(textX - side * 90, textY); ctx.stroke();
+    ctx.font = '700 29px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#0b1119'; ctx.lineWidth = 8; ctx.strokeText('熱100の原因', textX, textY);
+    ctx.fillStyle = '#ffd3d5'; ctx.fillText('熱100の原因', textX, textY); ctx.textBaseline = 'alphabetic';
+  }
   if (mark) {
     applyLogicalTransform(ctx); ctx.lineWidth = 5; ctx.strokeStyle = '#f6e3aa'; ctx.setLineDash([7, 6]);
     for (const id of mark.event.bodyIds?.slice(0, 2) ?? []) {

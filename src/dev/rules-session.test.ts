@@ -138,6 +138,14 @@ describe('ルールの練習も同じ計算を使う', () => {
     expect(result.curr.heat).toBeLessThan(100);
     left.step();
     expect(left.read().curr).toBe(result.curr);
+    right.watchLossFlight();
+    expect(right.read()).toMatchObject({ finished: 'over', running: false });
+    left.watchLossFlight();
+    expect(left.read()).toMatchObject({ finished: null, running: true, curr: { tick: result.curr.tick } });
+    expect(left.launch(alternate)).toBeNull();
+    for (let n = 1; n < REPEAT_OBSERVATION_TICKS; n++) left.step();
+    expect(left.read()).toMatchObject({ finished: 'loss-observed', running: false, curr: { phase: 'active', tick: left.before.tick + REPEAT_OBSERVATION_TICKS } });
+    expect(left.read().curr.stats.launches).toBe(result.curr.stats.launches);
   });
   it('連投は本人の最初の2投を加熱せず、3投目で実加熱し、待機中は進まない', () => {
     const lesson = createRuleSession('repeat');

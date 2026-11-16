@@ -6,7 +6,7 @@ import { createInterventionPreparation, createPressurePractice } from './rules-p
 import { createLessonReplay } from './rules-replay';
 
 export type RuleMode = 'play' | 'learn' | 'collapse' | 'growth' | 'repeat' | 'loss' | 'loss-repeat' | 1 | 3 | 5;
-type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'loss-avoided' | 'over' | null;
+type Finish = 'chain' | 'try-chain' | 'growth' | 'collapse' | 'expired' | 'repeat' | 'loss-avoided' | 'loss-observed' | 'over' | null;
 export type PracticeShot = Readonly<{ angle: number; heat: number }>;
 export type RepeatCheckpoint = Readonly<{ state: SimulationState; shots: readonly PracticeShot[] }>;
 export type RuleSessionSource = Readonly<{ repeat?: RepeatCheckpoint; collapse?: SimulationState; play?: Simulation }>;
@@ -67,6 +67,8 @@ export function createRuleSession(
   const shots: PracticeShot[] = [...repeatCheckpoint?.shots ?? []];
   let armed = false;
   let guided = pauseForIntervention;
+  let watchingLossFlight = false, lossShotId: number | undefined;
+  let lossContact: 'land' | 'merge' | null = null;
   let resultBodyId: number | null = null;
   let lastFusion: { before: number; after: number; cooling: number } | null = null;
 
@@ -77,11 +79,11 @@ export function createRuleSession(
     if (result.accepted) {
       armed = mode === 'collapse' && guided;
       running = !armed; waiting = false; curr = sim.getSnapshot(); shotHeating += curr.heat - heatBefore;
-      if (mode === 'repeat') shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
+      if (mode === 'repeat' || mode === 'loss-repeat') shots.push({ angle: command.originAngleRadians, heat: curr.heat - heatBefore });
       if (mode === 'learn') learnDeadline = curr.tick + LEARN_OBSERVATION_TICKS;
       if (mode === 'repeat' && shots.length >= 3) finishAt = curr.tick + REPEAT_OBSERVATION_TICKS;
       // 敗因の比較は一投直後まで。別の方角ならその時点で生き残ったことだけを示す。
-      if (mode === 'loss-repeat') finishAt = curr.tick + 1;
+      if (mode === 'loss-repeat') { finishAt = curr.tick + 1; lossShotId = result.bodyId; }
     }
     return result;
   }
@@ -89,6 +91,12 @@ export function createRuleSession(
     if (!running) return [];
     prev = curr;
     const events = sim.stepFixed(); curr = sim.getSnapshot();
+    if (watchingLossFlight && lossContact !== 'merge' && lossShotId !== undefined) {
+      for (const event of events) {
+        if (event.kind === 'land' && event.bodyIds?.[0] === lossShotId) lossContact ??= 'land';
+        if ((event.kind === 'merge' || event.kind === 'supernova') && event.bodyIds?.slice(0, 2).includes(lossShotId)) lossContact = 'merge';
+      }
+    }
     const delta = events.reduce((sum, e) => sum + (e.kind === 'merge' || e.kind === 'supernova' ? e.heatDelta ?? 0 : 0), 0);
     const cooling = curr.intervention?.coolingThisTick ?? 0;
     // 合体は自然変化より先。教材では射出前との比較に埋もれないよう瞬間の冷却も残す。
@@ -109,7 +117,8 @@ export function createRuleSession(
       }
     }
     if (curr.phase === 'over') finished = 'over';
-    else if (curr.tick >= finishAt) finished = mode === 'growth' ? 'growth' : mode === 'repeat' ? 'repeat' : mode === 'loss-repeat' ? 'loss-avoided' : 'chain';
+    else if (curr.tick >= finishAt) finished = mode === 'growth' ? 'growth' : mode === 'repeat' ? 'repeat'
+      : mode === 'loss-repeat' ? (watchingLossFlight ? 'loss-observed' : 'loss-avoided') : 'chain';
     else if (finishAt === Infinity && curr.tick >= learnDeadline) finished = 'try-chain';
     else if (mode === 'collapse' && curr.intervention?.used && curr.intervention.activeLeftSeconds === 0) finished = 'collapse';
     else if (mode === 'collapse' && curr.stats.launches > before.stats.launches && !waiting && curr.intervention?.windowLeftSeconds === 0 && !curr.intervention.used) finished = 'expired';
@@ -135,12 +144,17 @@ export function createRuleSession(
     repeatCheckpoint: () => repeatCheckpoint,
     collapseCheckpoint: () => collapseCheckpoint,
     setGuidedCollapse(enabled: boolean) { guided = enabled; },
-    read: () => ({ prev, curr, running, waiting, armed, finished, preparation, resultBodyId, lastFusion, shotHeating, shots: [...shots], mergeCooling, interventionCooling, passiveChange, overflowHeating, ambientCooling, maxChain,
+    read: () => ({ prev, curr, running, waiting, armed, finished, preparation, resultBodyId, lastFusion, shotHeating, shots: [...shots], lossContact, mergeCooling, interventionCooling, passiveChange, overflowHeating, ambientCooling, maxChain,
       score: curr.score - before.score, merges: curr.stats.merges - before.stats.merges }),
     launch,
     collapse() { const result = sim.submitGravity({ kind: 'collapse' }); curr = sim.getSnapshot(); if (result.accepted) { armed = false; running = true; } return result; },
     predict: (command: LaunchCommand) => sim.predict(command),
     startLoss() { if (mode === 'loss' && waiting) { waiting = false; running = true; } },
+    watchLossFlight() {
+      if (mode !== 'loss-repeat' || finished !== 'loss-avoided') return;
+      finished = null; running = true; watchingLossFlight = true;
+      finishAt = curr.tick + REPEAT_OBSERVATION_TICKS - 1;
+    },
     advancePreparation() { if (waiting && (preparation === 'unlock' || preparation === 'charge')) { waiting = false; running = true; } },
     step,
     togglePause() { if (!waiting && !finished && !armed) running = !running; },
