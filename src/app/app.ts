@@ -27,6 +27,7 @@ import { createTimeGovernor } from '../shared/time';
 import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
 import { createReplayCapture, type CapturedReplay, type ReplayRecord } from '../replay';
+import { encodeReplayShare } from '../share';
 import { createRankingStore, createSaveStore } from '../storage';
 import { createHud, createLayout, createOverlays } from '../ui';
 import { STRINGS, resultText } from '../ui/strings';
@@ -328,7 +329,11 @@ export function startApp(): AppHandle {
       case 'copyResult':
         if (result) {
           const r = result.record;
-          navigator.clipboard?.writeText(resultText(r.score, TIER_NAMES[r.bestTier]!, r.maxChain)).catch(() => {});
+          // 同じプレイを再現できる受け取りページ（担当 B の dev/share.html）のリンクを添える。
+          const code = lastReplay ? encodeReplayShare(lastReplay) : '';
+          const link = code ? `
+${new URL(`./dev/share.html#code=${code}`, location.href).href}` : '';
+          navigator.clipboard?.writeText(resultText(r.score, TIER_NAMES[r.bestTier]!, r.maxChain) + link).catch(() => {});
         }
         break;
     }
