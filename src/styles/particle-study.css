@@ -1,0 +1,24 @@
+:root { font-family: 'Yu Gothic UI', system-ui, sans-serif; color: #202923; background: #f1ead8; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+header, main { max-width: 1160px; padding: 24px; margin: auto; }
+header { border-bottom: 2px solid; }
+header > p:first-child { font-size: 12px; letter-spacing: .12em; }
+h1 { font-size: clamp(30px,4vw,48px); letter-spacing: -.04em; }
+h2 { font-size: 20px; }
+p { font-size: 13px; line-height: 1.7; }
+#demo-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+button { background: transparent; color: inherit; font: inherit; font-size: 13px; min-height: 44px; padding: 8px 14px; border: 1px solid; cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 3px solid #a62d26; outline-offset: 3px; }
+#grain-studies { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; }
+article { min-width: 0; border-top: 4px solid; padding-top: 8px; }
+article canvas { display: block; margin: auto; max-width: 100%; }
+article p { text-align: center; }
+section { border-top: 1px solid; margin-top: 36px; padding-top: 16px; }
+#recognition { display: flex; gap: 16px; flex-wrap: wrap; filter: grayscale(1); }
+#recognition > div { display: grid; place-items: center; min-width: 64px; font-size: 12px; }
+#stress { width: 100%; max-width: 640px; height: auto; display: block; }
+a { color: inherit; line-height: 3; margin-right: 20px; }
+body[data-dark='true'] { color: #f1ead8; background: #070b18; }
+body[data-monochrome='true'] article canvas { filter: grayscale(1); }
+@media (max-width: 700px) { #grain-studies { grid-template-columns: 1fr; } header, main { padding: 18px; } }

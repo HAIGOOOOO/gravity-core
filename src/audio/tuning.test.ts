@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUDIO, chainFrequency, createRateGate, masterVolume, mergeDuration, mergeFrequency } from './tuning';
+import { AUDIO, chainFrequency, createRateGate, masterVolume, mergeAccentDelay, mergeDuration, mergeFrequency } from './tuning';
 import { eventTones } from './tones';
 import { sampleEvent } from '../fixtures';
 
@@ -23,6 +23,8 @@ describe('音の高さ・長さと上限', () => {
     expect(pitches).toEqual(stages.map(chainFrequency));
     expect(pitches.map(pitch => Math.round(pitch!))).toEqual([1046, 1174, 1318, 1567, 1759]);
     expect(chainFrequency(6)).toBe(chainFrequency(5));
+    expect(stages.map(stage => mergeAccentDelay(0, stage))).toEqual([.065, .075, .10, .125, .16]);
+    expect(mergeAccentDelay(6, 1)).toBe(.14);
   });
   it('着地を区切った時間枠でなく、直近 0.25 秒に 4 回までにする', () => {
     const gate = createRateGate(AUDIO.landCount, AUDIO.landWindow);

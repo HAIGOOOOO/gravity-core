@@ -1,8 +1,7 @@
 import type { GameEvent } from '../contracts/game';
 import { impactStrength } from '../effects/appearance';
-import { AUDIO, chainFrequency, mergeDuration, mergeFrequency } from './tuning';
+import { AUDIO, chainFrequency, mergeAccentDelay, mergeDuration, mergeFrequency } from './tuning';
 import { launchTones } from './launch';
-import { releaseTime } from '../effects/juice-model';
 
 export type Tone = {
   frequency: number; endFrequency?: number; wave: OscillatorType | 'noise';
@@ -29,7 +28,7 @@ export function eventTones(event: GameEvent): readonly Tone[] {
       const frequency = mergeFrequency(tier);
       const seconds = mergeDuration(tier);
       const chain = event.chainStage ?? event.chain ?? 1;
-      const at = releaseTime({ tier, chain, nova: false });
+      const at = mergeAccentDelay(tier, chain);
       const note = chainFrequency(chain);
       const tones: Tone[] = [
         { frequency: frequency * 0.65, endFrequency: frequency * 1.1, wave: 'sine', gain: 0.1, seconds: at, delay: 0 },

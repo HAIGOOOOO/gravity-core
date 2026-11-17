@@ -2,15 +2,14 @@ import type { EffectsLayer } from '../contracts/app';
 import { applyLogicalTransform, fitCanvas } from '../shared/coords';
 import { drawPool } from './draw';
 import { createEventEffects } from './events';
+import { createJuiceLayer } from './juice-layer';
 import { REDUCED_RING_SECONDS } from './motion';
 import { createEffectPool, type EffectPool } from './pool';
 import { createPresentation } from './presentation';
 import { readTheme } from './theme';
-import { createJuiceEffects } from './juice';
 import { createCoolingReceipt } from './cooling';
 
 const pools = new WeakMap<HTMLCanvasElement, EffectPool>();
-const juiceLayers = new WeakMap<HTMLCanvasElement, ReturnType<typeof createJuiceEffects>>();
 
 /** 見本ページの負荷確認用。ゲーム側の受け渡しの型は増やさない。 */
 export function inspectEffects(canvas: HTMLCanvasElement) {
@@ -19,8 +18,6 @@ export function inspectEffects(canvas: HTMLCanvasElement) {
     particles: pool?.particles.reduce((sum, p) => sum + Number(p.active), 0) ?? 0,
     rings: pool?.rings.reduce((sum, p) => sum + Number(p.active), 0) ?? 0,
     texts: pool?.texts.reduce((sum, p) => sum + Number(p.active), 0) ?? 0,
-    bursts: juiceLayers.get(canvas)?.count ?? 0,
-    layers: juiceLayers.get(canvas)?.layers ?? 0,
   };
 }
 
@@ -32,9 +29,8 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
   const theme = readTheme(canvas);
   const events = createEventEffects(pool, theme);
   const presentation = createPresentation(shakeTarget, theme);
-  const juice = createJuiceEffects(shakeTarget, theme);
+  const juice = createJuiceLayer();
   const cooling = createCoolingReceipt();
-  juiceLayers.set(canvas, juice);
 
   return {
     resize(cssSize) {
@@ -42,19 +38,22 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       Object.assign(theme, readTheme(canvas));
     },
     handleEvents(batch, snapshot) {
-      juice.sync(snapshot);
+      void snapshot;
       for (const event of batch) {
-        cooling.handle(event);
+        events.handle(event);
+        juice.handle(event);
+        // 超新星は本線の演出内に冷却量がある。通常の合体は実測をここで伝える。
+        if (event.kind === 'merge') cooling.handle(event);
         if (event.kind === 'merge' || event.kind === 'supernova') {
-          juice.handle(event, snapshot);
-        } else events.handle(event);
+          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova');
+        }
       }
     },
     update(seconds) {
       pool.update(seconds);
       events.update(seconds);
-      presentation.update(seconds);
       juice.update(seconds);
+      presentation.update(seconds);
       cooling.update(seconds);
     },
     draw() {
@@ -63,9 +62,9 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       applyLogicalTransform(ctx);
+      juice.draw(ctx);
       events.draw(ctx);
       drawPool(ctx, pool, theme);
-      juice.draw(ctx);
       presentation.draw(ctx);
       cooling.draw(ctx, theme);
       ctx.restore();
@@ -73,8 +72,8 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     playGameOver() { presentation.gameOver(); },
     setReducedMotion(on) {
       events.setReduced(on);
-      presentation.setReduced(on);
       juice.setReduced(on);
+      presentation.setReduced(on);
       if (!on) return;
       for (const particle of pool.particles) particle.active = false;
       for (const ring of pool.rings) {
@@ -86,8 +85,8 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     },
     clear() {
       events.clear();
-      presentation.clear();
       juice.clear();
+      presentation.clear();
       cooling.clear();
       pool.clear();
       if (ctx) {
@@ -95,6 +94,5 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     },
-    timeScale() { return juice.timeScale(); },
   };
 }

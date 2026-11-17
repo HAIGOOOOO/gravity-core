@@ -16,6 +16,11 @@ export function mergeFrequency(tier: number): number {
 }
 
 export function mergeDuration(tier: number): number { return 0.2 + 0.05 * tier; }
+const MERGE_ACCENT_DELAYS = [0.065, 0.075, 0.10, 0.125, 0.16] as const;
+export function mergeAccentDelay(tier: number, stage: number): number {
+  const index = Math.max(0, Math.min(MERGE_ACCENT_DELAYS.length - 1, Math.trunc(stage) - 1));
+  return Math.max(MERGE_ACCENT_DELAYS[index] ?? MERGE_ACCENT_DELAYS[0], tier >= 6 ? 0.14 : 0);
+}
 const CHAIN_SEMITONES = [0, 2, 4, 7, 9] as const;
 export function chainFrequency(stage: number): number {
   const semitones = CHAIN_SEMITONES[Math.max(0, Math.min(CHAIN_SEMITONES.length - 1, Math.trunc(stage) - 1))] ?? 0;
