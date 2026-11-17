@@ -1,0 +1,9 @@
+{
+  "durationSeconds": 86.56290000000595,
+  "drawnFrames": 94,
+  "averageDrawsPerSecond": 1.0859155596680972,
+  "frameGapP95Milliseconds": 1020.8000000119209,
+  "lastTick": 444,
+  "maxChain": 5,
+  "peakAndTailCaptured": true
+}

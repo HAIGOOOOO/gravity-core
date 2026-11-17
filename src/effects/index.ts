@@ -2,6 +2,7 @@ import type { EffectsLayer } from '../contracts/app';
 import { applyLogicalTransform, fitCanvas } from '../shared/coords';
 import { drawPool } from './draw';
 import { createEventEffects } from './events';
+import { createJuiceLayer } from './juice-layer';
 import { REDUCED_RING_SECONDS } from './motion';
 import { createEffectPool, type EffectPool } from './pool';
 import { createPresentation } from './presentation';
@@ -27,6 +28,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
   const theme = readTheme(canvas);
   const events = createEventEffects(pool, theme);
   const presentation = createPresentation(shakeTarget, theme);
+  const juice = createJuiceLayer();
 
   return {
     resize(cssSize) {
@@ -37,6 +39,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       void snapshot;
       for (const event of batch) {
         events.handle(event);
+        juice.handle(event);
         if (event.kind === 'merge' || event.kind === 'supernova') {
           presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova');
         }
@@ -45,6 +48,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     update(seconds) {
       pool.update(seconds);
       events.update(seconds);
+      juice.update(seconds);
       presentation.update(seconds);
     },
     draw() {
@@ -53,6 +57,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       applyLogicalTransform(ctx);
+      juice.draw(ctx);
       events.draw(ctx);
       drawPool(ctx, pool, theme);
       presentation.draw(ctx);
@@ -61,6 +66,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     playGameOver() { presentation.gameOver(); },
     setReducedMotion(on) {
       events.setReduced(on);
+      juice.setReduced(on);
       presentation.setReduced(on);
       if (!on) return;
       for (const particle of pool.particles) particle.active = false;
@@ -73,6 +79,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     },
     clear() {
       events.clear();
+      juice.clear();
       presentation.clear();
       pool.clear();
       if (ctx) {
