@@ -20,7 +20,7 @@ let clip: ClipName = 'merge', choice: MotionChoice = 'flow', seconds = FIRST_FRA
 let playing = false, previewStill = true, last = 0, frameRequest = 0;
 
 function draw(): void {
-  const sample = sampleDotsMotion(clip, seconds);
+  const sample = sampleDotsMotion(clip, seconds, reduced.checked);
   for (const { canvas, ctx, choice: variant } of boards) {
     if (compact.matches && variant !== choice) continue;
     const width = Math.round(canvas.clientWidth * (devicePixelRatio || 1));

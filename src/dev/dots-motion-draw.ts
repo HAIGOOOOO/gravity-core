@@ -1,6 +1,7 @@
 import { DOT_COLORS, GRID, bodyRadius, ease, mixPoint, unit, type DotBody, type MotionChoice, type MotionEvent, type Point } from './dots-motion-model';
 
 const center = GRID / 2;
+const GROUND = '#05060a';
 const LOW = 'rgba(200, 210, 235, 0.07)';
 const ACTIVE = ['#cfdcff', '#ffd88a', '#8fb0ff'] as const;
 
@@ -19,31 +20,44 @@ for (let i = 0; i < 100; i++) {
 
 function drawField(ctx: CanvasRenderingContext2D, choice: MotionChoice, event: MotionEvent | null, reduced: boolean): void {
   ctx.fillStyle = LOW;
-  if (!event || (!event.nova && choice === 'flow')) { ctx.fill(background); return; }
+  ctx.fill(background);
+  if (!event || (!event.nova && choice === 'flow')) return;
 
   const crest = Math.sin(Math.PI * event.phase);
   const waveRadius = event.phase * 72;
+  const erased = new Path2D();
   const dim = new Path2D(), lit = new Path2D(), tip = new Path2D();
   const { result, from } = event;
   const spread = 10 + event.stage * 2.3;
-  for (let row = 0; row < GRID; row++) {
-    for (let col = 0; col < GRID; col++) {
+  const waveWidth = choice === 'flip' ? 2.2 : 4.4;
+  const reach = event.nova ? waveRadius + waveWidth : spread;
+  const left = Math.max(0, Math.floor(result.x - reach)), right = Math.min(GRID, Math.ceil(result.x + reach));
+  const top = Math.max(0, Math.floor(result.y - reach)), bottom = Math.min(GRID, Math.ceil(result.y + reach));
+  for (let row = top; row < bottom; row++) {
+    for (let col = left; col < right; col++) {
       const x = col + .5, y = row + .5;
       const dx = result.x - x, dy = result.y - y;
       const distance = Math.hypot(dx, dy);
-      const inWave = event.nova && Math.abs(distance - waveRadius) <= (choice === 'flip' ? 2.2 : 4.4);
+      const inWave = event.nova && Math.abs(distance - waveRadius) <= waveWidth;
       const weight = event.nova ? (inWave ? 1 : 0) : unit(1 - distance / spread) * crest;
+      if (weight === 0) continue;
       const displacement = choice === 'field' && !reduced ? .6 * weight * (event.nova ? -1 : 1) : 0;
       const tx = distance > 0 ? x + dx / distance * displacement : x;
       const ty = distance > 0 ? y + dy / distance * displacement : y;
       // 反転の帯は接触点を通り、一つの点を一度だけ照らす。
       const projection = (x - result.x) * (result.x - from.x) + (y - result.y) * (result.y - from.y);
       const flip = choice === 'flip' && weight > .19 && Math.abs(projection / 12 - (event.phase - .5) * spread) < 1.6;
+      const bright = inWave || flip || (choice === 'field' && weight > .23);
+      if (!bright && displacement === 0) continue;
+      // 地の点は共通のパスで描き、変化する点だけ元の位置を消して描き直す。
+      dot(erased, x, y, .28);
       if (inWave && Math.abs(distance - waveRadius) < 1.2) dot(tip, tx, ty, .38);
-      else if (inWave || flip || (choice === 'field' && weight > .23)) dot(lit, tx, ty, .28);
+      else if (bright) dot(lit, tx, ty, .28);
       else dot(dim, tx, ty, .18);
     }
   }
+  ctx.fillStyle = GROUND; ctx.fill(erased);
+  ctx.fillStyle = LOW;
   ctx.fill(dim);
   ctx.fillStyle = ACTIVE[choice === 'flow' ? 0 : choice === 'flip' ? 1 : 2];
   ctx.globalAlpha = .25; ctx.fill(lit);
@@ -56,7 +70,7 @@ function drawBody(ctx: CanvasRenderingContext2D, body: DotBody, style: BodyStyle
   const radius = bodyRadius(body.tier);
   const scale = style.scale ?? 1;
   if (scale <= .07) return;
-  ctx.fillStyle = '#05060a';
+  ctx.fillStyle = GROUND;
   ctx.beginPath(); ctx.arc(body.x, body.y, (radius + .5) * scale, 0, Math.PI * 2); ctx.fill();
   const shell = new Path2D(), surface = new Path2D(), core = new Path2D();
   for (let row = -Math.floor(radius); row <= radius; row++) {
@@ -95,15 +109,20 @@ function drawCore(ctx: CanvasRenderingContext2D, heat: number, time: number): vo
 }
 
 function drawFlow(ctx: CanvasRenderingContext2D, event: MotionEvent): void {
-  const { from, result, phase, stage } = event;
-  const path = new Path2D();
+  const { trailFrom, result, phase, stage } = event;
+  const tail = new Path2D(), crest = new Path2D();
   for (let n = 0; n < 14 + stage * 2; n++) {
-    const t = phase * 1.65 - n * .043;
+    const t = phase * 1.65 - n * .05;
     if (t < 0 || t > 1) continue;
-    const at = mixPoint(from, result, t);
-    dot(path, at.x + Math.sin(n * 2.7) * (1 - t), at.y + Math.cos(n * 2.7) * (1 - t), t > .66 ? .38 : .28);
+    const at = mixPoint(trailFrom, result, t);
+    const width = (1 - t) * 1.2;
+    const bright = n % 3 === 0;
+    dot(bright ? crest : tail, at.x + Math.sin(n * 2.7) * width, at.y + Math.cos(n * 2.7) * width, bright ? .46 : .28);
   }
-  ctx.fillStyle = DOT_COLORS[event.into.tier]; ctx.globalAlpha = .8; ctx.fill(path); ctx.globalAlpha = 1;
+  ctx.globalAlpha = .8;
+  ctx.fillStyle = DOT_COLORS[event.into.tier]; ctx.fill(tail);
+  ctx.fillStyle = DOT_COLORS[event.result.tier]; ctx.fill(crest);
+  ctx.globalAlpha = 1;
 }
 
 function drawContact(ctx: CanvasRenderingContext2D, choice: MotionChoice, event: MotionEvent, reduced: boolean): void {
@@ -130,7 +149,7 @@ export function paintDotsMotion(ctx: CanvasRenderingContext2D, size: number, cho
   frame: Readonly<{ bodies: readonly DotBody[]; heat: number; event: MotionEvent | null }>, time: number, reduced: boolean): void {
   const scale = size / GRID;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, GRID, GRID);
+  ctx.fillStyle = GROUND; ctx.fillRect(0, 0, GRID, GRID);
   drawField(ctx, choice, frame.event, reduced);
   ctx.fillStyle = LOW; ctx.fill(ring);
   drawCore(ctx, frame.heat, time);

@@ -22,4 +22,15 @@ describe('点の動きの比較に使う共通場面', () => {
     expect(sampleDotsMotion('nova', 3).bodies).toHaveLength(4);
     expect(sampleDotsMotion('nova', 3).heat).toBe(46);
   });
+
+  it('合体前の天体の接近はつながり、動きを減らす設定では位置を固定する', () => {
+    const initial = sampleDotsMotion('merge', 0).bodies[0]!;
+    const before = sampleDotsMotion('merge', .82 - .000001).bodies[0]!;
+    const atStart = sampleDotsMotion('merge', .82).event!.from;
+    expect(before.x).toBeLessThan(initial.x);
+    expect(before.x).toBeCloseTo(atStart.x, 4);
+    expect(before.y).toBeCloseTo(atStart.y, 4);
+    expect(sampleDotsMotion('merge', .82, true).event!.from).toEqual(initial);
+    expect(sampleDotsMotion('merge', 3, true)).toEqual(sampleDotsMotion('merge', 3));
+  });
 });
