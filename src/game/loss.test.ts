@@ -5,7 +5,8 @@ import { createReplayRecord } from '../replay/record';
 import { runReplay } from '../replay/engine';
 import { analyzeCause } from '../replay/cause';
 import { dropAt } from '../fixtures';
-import { TICK_HZ } from './constants';
+import { GRIP_HEAT_PER_SECOND, HEAT_MAX, TICK_HZ } from './constants';
+import { defaultGravityTuning } from './gravity';
 
 const body = (id: number, x: number) => ({ id, tier: 4 as const, x, y: 0, vx: 0, vy: 0, radius: 41,
   bornTick: 0, chain: 0, chainUntilTick: 0, overLimit: x > 300, landed: true, growLeft: 0 });
@@ -54,5 +55,20 @@ describe('終了した瞬間の敗因', () => {
     if (run.ok) expect(run.events.filter(e => e.event.kind === 'gameOver')).toHaveLength(1);
     const cause = analyzeCause(record); expect(cause.ok).toBe(true);
     if (cause.ok) expect(cause.cause?.loss).toEqual(sim.getSnapshot().loss);
+  });
+
+  it('限界内で重力操作だけが熱を上げた時は、加熱速度と終了した刻みを残す', () => {
+    const setup = { heat: HEAT_MAX - .1 };
+    const plain = createSimulation(1, setup);
+    plain.stepFixed();
+    expect(plain.getSnapshot().phase).toBe('active');
+
+    const sim = createSimulation(1, setup, defaultGravityTuning());
+    expect(sim.submitGravity({ kind: 'grip', on: true })).toEqual({ accepted: true });
+    const events = sim.stepFixed();
+    const loss = { kind: 'gravity', tick: 1, heatPerSecond: GRIP_HEAT_PER_SECOND };
+    expect(events.filter(event => event.kind === 'gameOver')).toEqual([expect.objectContaining({ loss })]);
+    expect(sim.getSnapshot()).toMatchObject({ phase: 'over', overLimit: false, heat: HEAT_MAX, loss });
+    expect(restoreSimulation(sim.exportState()).getSnapshot().loss).toEqual(loss);
   });
 });

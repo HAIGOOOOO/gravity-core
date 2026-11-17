@@ -7,47 +7,65 @@ const seedStart = Number(process.argv[2] ?? 1101);
 const count = Number(process.argv[3] ?? 32);
 const experiment = process.argv[4] ?? 'production';
 const suite = process.argv[5] ?? 'standard';
+const uncappedGrowth = experiment === 'uncapped-growth';
+const fixedPressure = experiment === 'fixed-pressure2';
 const cycle = /^cycle[358]$/.test(experiment);
 const triple = experiment === 'zones-triple9';
-const axes = /^zones-axis(9|11)$/.test(experiment);
+const axesCarry = experiment === 'zones-axis9carry5';
+const axesSustained = experiment === 'zones-axis24-sustained9';
+const axes24 = experiment === 'zones-axis24-9' || axesSustained;
+const axes = /^zones-axis(9|11)$/.test(experiment) || axesCarry || axes24;
 const wide = triple || experiment === 'zones-wide9';
 const zones = /^zones(8|10|12)$/.test(experiment) || wide || axes;
-const extraHistory = axes ? 16 : triple ? 12 : null;
-if (!(experiment === 'production' || experiment === 'quick' || cycle || zones)) throw new Error('実験名が不明です');
+const extraHistory = axes24 ? 24 : axes ? 16 : triple ? 12 : null;
+const heatVariant = cycle || zones || fixedPressure;
+if (!(experiment === 'production' || experiment === 'quick' || heatVariant || uncappedGrowth)) throw new Error('実験名が不明です');
 const variableTempoSuites = ['aiming', 'evasion', 'confirmation', 'interruptions', 'mixed-input'];
-if (!['standard', 'tempo', ...variableTempoSuites].includes(suite) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
-  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|aiming|evasion|confirmation|interruptions|mixed-input]');
+const tempoSuite = suite === 'tempo' || suite === 'tempo-fixed';
+if (!(suite === 'standard' || tempoSuite || variableTempoSuites.includes(suite)) || !Number.isInteger(seedStart) || seedStart < 1 || !Number.isInteger(count) || count < 8 || count > 128) {
+  throw new Error('使い方: node src/dev/strategy-holdout.mjs [開始シード] [8〜128シード] [実験名] [standard|tempo|tempo-fixed|aiming|evasion|confirmation|interruptions|mixed-input]');
 }
 const seeds = Array.from({ length: count }, (_, n) => seedStart + n);
 const suiteSuffix = suite === 'standard' ? '' : `-${suite}`;
 const path = `docs/notes/C/strategy-${experiment}${suiteSuffix}-${seedStart}-${count}.json`;
 const server = await createServer({
   configFile: false, server: { middlewareMode: true, ws: false }, appType: 'custom',
-  plugins: !cycle && !zones ? [] : [{
-    name: 'strategy-holdout-heat',
+  plugins: !heatVariant && !uncappedGrowth ? [] : [{
+    name: 'strategy-holdout-variant',
     enforce: 'pre',
     transform(source, id) {
       const normalizedId = id.replaceAll('\\', '/');
+      if (uncappedGrowth && normalizedId.endsWith('/src/game/simulation.ts')) {
+        const correction = 'if (growth.has(b.id) && radial > 0) {';
+        if (!source.includes(correction)) throw new Error('成長の外向き速度補正が見つかりません');
+        return source.replace(correction, 'if (false) {');
+      }
       if (extraHistory && normalizedId.endsWith('/src/game/simulation.ts')) {
         const history = 'recentLaunches: inputLog.slice(-REPEAT_LAUNCH_MEMORY)';
         if (!source.includes(history)) throw new Error('試作の加熱予測に渡す履歴が見つかりません');
         return source.replace(history, `recentLaunches: inputLog.slice(-${extraHistory})`);
       }
-      if (!normalizedId.endsWith('/src/game/launch-heat.ts')) return;
-      const anchor = 'return Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;';
+      if (!heatVariant || !normalizedId.endsWith('/src/game/launch-heat.ts')) return;
+      const base = 'Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP';
+      const anchor = `return ${base};`;
       if (!source.includes(anchor)) throw new Error('加熱の比較箇所が見つかりません');
+      if (fixedPressure) return source.replace(anchor, `return ${base} + (world === REPEAT_LAUNCH_MEMORY ? 2 : 0);`);
       if (zones) {
-        const extra = axes ? Number(experiment.slice('zones-axis'.length)) : wide ? 9 : Number(experiment.slice('zones'.length));
+        const extra = axesCarry || axes24 ? 9 : axes ? Number(experiment.slice('zones-axis'.length))
+          : wide ? 9 : Number(experiment.slice('zones'.length));
         const tolerance = wide ? '24 * Math.PI / 180' : 'REPEAT_LAUNCH_ANGLE';
         const zoneHistory = extraHistory ? `inputs.slice(-${extraHistory})` : 'recent';
-        const test = axes ? `repeatedFourAxes(${zoneHistory}, angle)`
+        const window = axesSustained ? "'sustained'" : extraHistory;
+        const test = axes ? `repeatedFourAxes(${zoneHistory}, angle, ${window})`
           : `repeatedFourZones(${zoneHistory}, angle, ${tolerance}, ${triple ? 3 : 2})`;
+        // 帯を外した一投は軽くし、過去の偏りが崩れた時点で追加熱を解く。
+        const miss = axesCarry ? `repeatedFourAxes(${zoneHistory}) ? 5 : 0` : '0';
         // ＋10では間隔の境界をなくし、通常の冷却で投げる速さの差が出るか調べる。
         const paceCondition = wide || axes || extra === 10 ? 'true' : 'recent.length === 8 && tick - recent[0]!.tick <= Math.round(8 * 0.67 * TICK_HZ)';
         return `import { ${axes ? 'repeatedFourAxes' : 'repeatedFourZones'} } from '../dev/strategy-zone-heat';\n` + source.replace(anchor, `
           const fastRepeat = ${paceCondition};
-          const extra = fastRepeat && ${test} ? ${extra} : 0;
-          return extra + Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;
+          const extra = fastRepeat && ${test} ? ${extra} : ${miss};
+          return extra + ${base};
         `);
       }
       return source.replace(anchor, `
@@ -58,7 +76,7 @@ const server = await createServer({
           && newer.every((shot, i) => distance(shot.originAngleRadians, older[i]!.originAngleRadians) <= REPEAT_LAUNCH_ANGLE
             && newer.slice(0, i).every(other => distance(shot.originAngleRadians, other.originAngleRadians) > 2 * REPEAT_LAUNCH_ANGLE));
         const extra = cycle ? ${Number(experiment.slice(-1))} : 0;
-        return extra + Math.max(0, Math.max(world, moving) - REPEAT_LAUNCH_FREE_PREVIOUS) * REPEAT_LAUNCH_HEAT_STEP;
+        return extra + ${base};
       `);
     },
   }],
@@ -129,17 +147,20 @@ try {
     ['random-margin', fast + Math.round(.17 * TICK_HZ), seed => randomBot(seed).decide],
   ];
   const interruptionsCases = [...evasionCases, ['four-interrupted', fast, withInterruptions], ['four-clumped', fast, clumped]];
+  const tempoCases = tempo.flatMap(([suffix, spacing]) => [
+    [`random${suffix}`, spacing, seed => randomBot(seed).decide],
+    [`four${suffix}`, spacing, four(-Math.PI / 4)],
+    ...(suite === 'tempo-fixed' ? [[`fixed${suffix}`, spacing, fixed]] : []),
+  ]);
   const cases = {
-    tempo: tempo.flatMap(([suffix, spacing]) => [
-      [`random${suffix}`, spacing, seed => randomBot(seed).decide],
-      [`four${suffix}`, spacing, four(-Math.PI / 4)],
-    ]),
+    tempo: tempoCases,
+    'tempo-fixed': tempoCases,
     aiming: aimingCases,
     evasion: evasionCases,
     confirmation: evasionCases,
     interruptions: interruptionsCases,
     'mixed-input': [...interruptionsCases, ['fixed', fast, fixed], ['curve-aim', fast, seed => curveBot(seed).decide]],
-    standard: experiment === 'production' ? allCases : allCases.filter(([name]) =>
+    standard: experiment === 'production' || uncappedGrowth || fixedPressure ? allCases : allCases.filter(([name]) =>
       ['random', 'spiral', 'four', 'four-offset', 'four-jitter'].includes(name)
       || experiment === 'cycle8' && ['random-slow', 'four-slow'].includes(name)),
   }[suite];
@@ -178,8 +199,11 @@ try {
         if (events.some(e => e.kind === 'gameOver')) break;
       }
       const s = sim.getSnapshot();
+      if (!Number.isFinite(s.heat) || !Number.isFinite(heatFromShots)) {
+        throw new Error(`熱量が不正です（${experiment}・${strategy}・seed ${seed}）`);
+      }
       runs.push({ seed, score: s.score, seconds: s.tick / TICK_HZ, heatFromShots, rejects,
-        launches: s.stats.launches, bestTier: s.bestTierThisRun, timedOut: s.phase !== 'over' });
+        launches: s.stats.launches, bestTier: s.bestTierThisRun, timedOut: s.phase !== 'over', lossKind: s.loss?.kind ?? null });
     }
     report.runs.push({ strategy, runs });
     const summary = { strategy, shotSpacingSeconds: spacing / TICK_HZ, maxTimingJitterSeconds: maxTimingJitter / TICK_HZ,
@@ -191,7 +215,7 @@ try {
   }
   // 同じ種の組を一緒に引き直し、中央値比の標本によるぶれを見る。
   for (const { strategy, runs } of report.runs) {
-    const reference = suite === 'tempo' ? strategy.replace(/^four/, 'random')
+    const reference = tempoSuite ? strategy.replace(/^(four|fixed)/, 'random')
       : strategy.endsWith('-slow') ? 'random-slow'
       : strategy.endsWith('-margin') ? 'random-margin' : 'random';
     if (reference === strategy) continue;

@@ -69,3 +69,16 @@ index dd9a400..66f5e9d 100644
      paintBodyIcon(body, record.bestTier as Tier);
      tierName.textContent = `${STRINGS.bestTier} · ${TIER_NAMES[record.bestTier]}`;
      const values = [String(record.maxChain), durationLabel(record.seconds), String(record.launches), String(record.merges)];
+diff --git a/src/ui/strings.ts b/src/ui/strings.ts
+index adea3a1..594b578 100644
+--- a/src/ui/strings.ts
++++ b/src/ui/strings.ts
+@@ -55,7 +55,7 @@ export const STRINGS = {
+   playTime: 'プレイ時間',
+   launches: '射出数',
+   merges: '合体数',
+-  resultReason: '積もった山が限界リングを越え、核熱量が100に達しました。',
++  resultReason: '核熱量が100に達しました。',
+   rankingNote: 'この端末の上位10件',
+   emptyRanking: 'まだ記録がありません。最初の記録を作ろう。',
+   backToGame: 'ゲームへ戻る',

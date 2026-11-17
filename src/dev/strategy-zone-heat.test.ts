@@ -37,7 +37,31 @@ it('直角に並ぶ4帯は、別の方角3投と円の端をまたぐぶれを�
   const fourWithGaps = history([351, 90, 180, 270, 2, 97, 179, 274, 45, 88, 181, 275, 357, 135, 182, 225]);
   expect(repeatedFourAxes(fourWithGaps, radians(356))).toBe(true);
   expect(repeatedFourAxes(fourWithGaps, radians(45))).toBe(false);
+  expect(repeatedFourAxes(fourWithGaps)).toBe(true);
   expect(repeatedFourAxes(fourWithGaps.slice(1), radians(356))).toBe(false);
   const uneven = history([0, 90, 180, 270, 0, 90, 180, 270, 0, 90, 180, 45, 0, 90, 180, 135]);
   expect(repeatedFourAxes(uneven, 0)).toBe(false);
+});
+
+it('24投を見る場合は、4つの帯それぞれで4投以上、かつ全体で19投以上を求める', () => {
+  const last = [0, 90, 180, 270, 45, 135, 225, 315];
+  const repeated = Array.from({ length: 4 }, () => [0, 90, 180, 270]).flat();
+  const ample = history([...repeated, ...last]);
+  const changed = history([...repeated, ...last.slice(0, 3), 315, ...last.slice(4)]);
+  expect(repeatedFourAxes(ample, radians(-2), 24)).toBe(true);
+  expect(repeatedFourAxes(ample.slice(1), radians(-2), 24)).toBe(false);
+  expect(repeatedFourAxes(changed, 0, 24)).toBe(true); // 19投、各4投以上
+  expect(repeatedFourAxes(history([...repeated, 0, 90, 45, 315, 45, 135, 225, 315]), 0, 24)).toBe(false);
+  expect(repeatedFourAxes(history([...repeated.slice(0, -1), 0, 0, 90, 180, 45, 45, 135, 225, 315]), 0, 24)).toBe(false);
+});
+
+it('持続の判定は、前半と後半のどちらでも4つの方角が2度ずつ必要', () => {
+  const even = history(Array.from({ length: 6 }, () => [0, 90, 180, 270]).flat());
+  const oneHalf = history([
+    0, 90, 180, 0, 90, 180, 0, 90, 180, 0, 90, 180,
+    270, 0, 270, 90, 270, 180, 270, 0, 270, 90, 270, 180,
+  ]);
+  expect(repeatedFourAxes(even, 0, 'sustained')).toBe(true);
+  expect(repeatedFourAxes(oneHalf, 0, 24)).toBe(true);
+  expect(repeatedFourAxes(oneHalf, 0, 'sustained')).toBe(false);
 });

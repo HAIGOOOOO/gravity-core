@@ -34,26 +34,33 @@ export function repeatedFourZones(recent: readonly RecentLaunch[], next: number,
   return false;
 }
 
-/** 計測専用。離れた4方向を回る射出の中に、最大3投だけ別の方角が混ざる場合も調べる。 */
-export function repeatedFourAxes(recent: readonly RecentLaunch[], next: number): boolean {
-  if (recent.length !== 16) return false;
+/** 計測専用。離れた4方向に寄った射出を、別の方角を挟んでも数える。 */
+export function repeatedFourAxes(recent: readonly RecentLaunch[], next?: number, window: 16 | 24 | 'sustained' = 16): boolean {
+  const historyLength = window === 16 ? 16 : 24;
+  if (recent.length !== historyLength) return false;
+  const minInBand = historyLength === 16 ? 3 : 4;
+  const minMatched = historyLength === 16 ? 13 : 19;
   const quarter = FULL_TURN / ZONES;
   const sectorWidth = Math.PI / 6;
   const rays = recent.map(launch => wrap(launch.originAngleRadians));
   // 各候補は、選択中か過去の射出が帯の左端に乗る向き。直角にずれた帯を4本置く。
-  for (const ray of [wrap(next), ...rays]) {
+  for (const ray of next === undefined ? rays : [wrap(next), ...rays]) {
     const start = ray % quarter;
-    if (wrap(next - start) % quarter > sectorWidth) continue;
+    if (next !== undefined && wrap(next - start) % quarter > sectorWidth) continue;
     const counts = [0, 0, 0, 0];
+    const firstHalf = window === 'sustained' ? [0, 0, 0, 0] : null;
     let matched = 0;
-    for (const angle of rays) {
+    for (const [index, angle] of rays.entries()) {
       const offset = wrap(angle - start);
       const sector = Math.floor(offset / quarter);
       if (offset % quarter > sectorWidth) continue;
       counts[sector]!++;
+      if (firstHalf && index < historyLength / 2) firstHalf[sector]!++;
       matched++;
     }
-    if (matched >= 13 && counts.every(count => count >= 3)) return true;
+    if (matched < minMatched || !counts.every(count => count >= minInBand)) continue;
+    // 二つの半分で各方角に2回ずつ。1回だけ山が偏った場合を拾いにくくする。
+    if (!firstHalf || firstHalf.every((count, band) => count >= 2 && counts[band]! - count >= 2)) return true;
   }
   return false;
 }
