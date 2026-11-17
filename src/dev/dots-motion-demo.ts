@@ -1,5 +1,5 @@
 import { paintDotsMotion, paintNextDot } from './dots-motion-draw';
-import { CLIP_SECONDS, FRAME_AT, sampleDotsMotion, type ClipName, type MotionChoice } from './dots-motion-model';
+import { CLIP_SECONDS, FIRST_FRAME, sampleDotsMotion, type ClipName, type MotionChoice } from './dots-motion-model';
 
 const clipButtons = [...document.querySelectorAll<HTMLButtonElement>('button[data-clip]')];
 const choiceButtons = [...document.querySelectorAll<HTMLButtonElement>('button[data-choice]')];
@@ -16,7 +16,7 @@ const reduced = document.querySelector<HTMLInputElement>('#reduced-motion')!;
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const compact = matchMedia('(max-width: 850px)');
 reduced.checked = motion.matches;
-let clip: ClipName = 'merge', choice: MotionChoice = 'flow', seconds: number = FRAME_AT.merge;
+let clip: ClipName = 'merge', choice: MotionChoice = 'flow', seconds = FIRST_FRAME;
 let playing = false, previewStill = true, last = 0, frameRequest = 0;
 
 function draw(): void {
@@ -50,13 +50,17 @@ function tick(now: number): void {
   else frameRequest = requestAnimationFrame(tick);
 }
 
-playButton.addEventListener('click', () => {
-  if (playing) { stop(); return; }
-  if (seconds >= CLIP_SECONDS || previewStill) seconds = 0;
+function play(from: number): void {
+  seconds = from;
   previewStill = false; playing = true; last = performance.now();
   playButton.textContent = '一時停止';
   draw();
   frameRequest = requestAnimationFrame(tick);
+}
+
+playButton.addEventListener('click', () => {
+  if (playing) stop();
+  else play(seconds >= CLIP_SECONDS || previewStill ? 0 : seconds);
 });
 timeline.addEventListener('input', () => {
   stop();
@@ -67,10 +71,8 @@ timeline.addEventListener('input', () => {
 for (const button of clipButtons) button.addEventListener('click', () => {
   stop();
   clip = button.dataset.clip as ClipName;
-  seconds = FRAME_AT[clip];
-  previewStill = true;
   for (const option of clipButtons) option.setAttribute('aria-pressed', String(option === button));
-  draw();
+  play(0);
 });
 for (const button of choiceButtons) button.addEventListener('click', () => {
   choice = button.dataset.choice as MotionChoice;

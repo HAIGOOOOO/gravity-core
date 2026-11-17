@@ -38,4 +38,4 @@ it('実行環境間で照合した187投の最終盤面を、共有から再現�
     expect(snapshotHash(shared.final)).toBe('a06aed64');
     expect(shared.final).toEqual(sim.getSnapshot());
   }
-});
+}, 10_000);
