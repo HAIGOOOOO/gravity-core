@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>点の格子の盤面案 — GRAVITY CORE</title>
+  <script type="module" crossorigin src="../assets/dots-board-B5w5Cw2r.js"></script>
+  <link rel="modulepreload" crossorigin href="../assets/constants-BSqsUWnw.js">
+  <link rel="stylesheet" crossorigin href="../assets/dots-board-V56sH0DS.css">
+</head>
+<body>
+  <main>
+    <article class="phone" aria-label="スマートフォン縦画面の盤面案">
+      <header>
+        <p class="brand">GRAVITY CORE</p>
+        <dl class="metrics">
+          <div><dt>残り時間</dt><dd>01:42</dd></div>
+          <div><dt>得点</dt><dd>12,480</dd></div>
+        </dl>
+      </header>
+      <canvas id="board-study" width="732" height="732" role="img" aria-label="中心の恒星と6つの天体。上側で小惑星が合体する瞬間"></canvas>
+      <footer>
+        <div class="heat"><span>核熱量</span><span id="heat-dots" aria-hidden="true"></span><strong>38<span class="heat-max">/100</span></strong></div>
+        <div class="queue"><p>次の天体</p><canvas id="queue-study" width="684" height="120" role="img" aria-label="次は小粒子、隕石、小惑星"></canvas></div>
+      </footer>
+    </article>
+    <section class="comparison" aria-labelledby="study-heading">
+      <h1 id="study-heading">点の格子の盤面案</h1>
+      <p>同じ6天体が合体する場面を、3つの描き方で比較します。残り時間と得点は表示例です。</p>
+      <div id="demo-controls" aria-label="盤面案を切り替える">
+        <button type="button" data-variant="a" aria-pressed="true">A 集積</button>
+        <button type="button" data-variant="b" aria-pressed="false">B 輪郭</button>
+        <button type="button" data-variant="c" aria-pressed="false">C 点の衝撃波</button>
+      </div>
+      <p id="study-caption" aria-live="polite"></p>
+      <p>本体では押した方角から天体を落とし、同じ段階が触れると合体します。限界を越えて核熱量が100になると終了です。</p>
+      <label><input type="checkbox" id="study-gray"/> 白黒で比べる</label>
+      <p><a href="./chain.html">現在の5連鎖の見本</a></p>
+    </section>
+  </main>
+</body>
+</html>
