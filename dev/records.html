@@ -15,6 +15,7 @@
   <div id="demo-controls">
     <button type="button" id="record-short">30秒の見本で照合</button>
     <button type="button" id="record-long">2分の見本で照合</button>
+    <button type="button" id="record-legacy">古い記録の平均を照合</button>
   </div>
   <button type="button" id="record-cancel" hidden>準備を中止</button>
   <p id="record-status" role="status">照合する見本を選んでください。</p>
@@ -39,6 +40,19 @@
       </details>
     </section>
   </div>
+  <details id="legacy-result" hidden>
+    <summary>古い記録の不明項目と平均</summary>
+    <p>同じ見本を、古い形式と現在の形式にした2件で照合します。古い記録に残っていない項目は「不明」と表示し、平均から除きます。</p>
+    <p>この照合用データはページ内でだけ保存・読み戻しします。この端末のプレイ履歴は変更しません。</p>
+    <p class="records-table-hint">表を横にスクロールすると、平均と使用件数が見られます。</p>
+    <div class="records-table-wrap" role="region" aria-label="古い記録と平均の照合表（横にスクロールできます）" tabindex="0">
+    <table>
+      <thead><tr><th scope="col">項目</th><th scope="col">古い形式</th><th scope="col">現在の形式</th><th scope="col">平均</th><th scope="col">使用件数</th></tr></thead>
+      <tbody id="legacy-comparison"></tbody>
+    </table>
+    </div>
+    <p id="legacy-status" role="status"></p>
+  </details>
 </main>
 <script type="module" src="/src/dev/records-demo.ts"></script>
 </body>
