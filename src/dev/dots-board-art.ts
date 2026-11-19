@@ -1,10 +1,12 @@
-import type { Tier } from '../contracts/game';
-import { BOARD_SIZE, LAUNCH_RADIUS, LIMIT_RADIUS } from '../game/constants';
+import type { BodyView, GameSnapshot, Tier } from '../contracts/game';
+import { BOARD_SIZE, CORE_RADIUS, HEAT_MAX, LAUNCH_RADIUS, LIMIT_RADIUS } from '../game/constants';
+import type { DotsImpact } from './dots-motion';
+import { drawDotsImpact } from './dots-motion-effects';
 
 export type DotsVariant = 'a' | 'b' | 'c';
 type DotRadius = .18 | .28 | .38 | .46;
 type Brightness = .07 | .25 | .5 | .8 | 1;
-type Body = { x: number; y: number; tier: Tier };
+type Body = { x: number; y: number; tier: Tier; radius?: number; angle?: number };
 
 const BACKGROUND = '#05060a';
 const DUST = '#c8d2eb';
@@ -45,10 +47,14 @@ function context(canvas: HTMLCanvasElement, width: number, height: number): Canv
 }
 
 function planet(ctx: CanvasRenderingContext2D, body: Body, pitch: number, variant: DotsVariant, size = RADIUS[body.tier]!): void {
+  ctx.save();
+  ctx.translate(body.x, body.y);
+  ctx.rotate(body.angle ?? 0);
+  pitch = Math.min(pitch, size / 3.25);
   const steps = Math.floor(size / pitch);
   const color = STELLAR[body.tier];
   // 背景の格子とは独立した点の並び。暗い縁取りで重なりを分ける。
-  dot(ctx, body.x, body.y, size + pitch * .28, BACKGROUND, 1);
+  dot(ctx, 0, 0, size + pitch * .28, BACKGROUND, 1);
   for (let row = -steps; row <= steps; row++) {
     for (let col = -steps; col <= steps; col++) {
       const x = col * pitch;
@@ -73,16 +79,16 @@ function planet(ctx: CanvasRenderingContext2D, body: Body, pitch: number, varian
         light = rim || onAxis || belt ? 1 : facing > .14 ? .8 : .25;
         radius = rim || belt ? .38 : .18;
       }
-      dot(ctx, body.x + x, body.y + y, pitch * radius, color, light);
+      dot(ctx, x, y, pitch * radius, color, light);
     }
   }
+  ctx.restore();
 }
 
-function star(ctx: CanvasRenderingContext2D, pitch: number, variant: DotsVariant): void {
-  const width = 26;
+function star(ctx: CanvasRenderingContext2D, pitch: number, variant: DotsVariant, heat = HEAT, width = 26): void {
   dot(ctx, CENTER, CENTER, width + pitch * .5, BACKGROUND, 1);
   const cells = Math.ceil(width / pitch);
-  const fillRadius = width * Math.sqrt(HEAT);
+  const fillRadius = width * Math.sqrt(Math.max(0, heat));
   for (let row = -cells; row <= cells; row++) {
     for (let col = -cells; col <= cells; col++) {
       const x = col * pitch;
@@ -99,7 +105,8 @@ function star(ctx: CanvasRenderingContext2D, pitch: number, variant: DotsVariant
   }
 }
 
-function field(ctx: CanvasRenderingContext2D, pitch: number, columns: number, variant: DotsVariant): void {
+function field(ctx: CanvasRenderingContext2D, pitch: number, columns: number, variant: DotsVariant,
+  bodies: readonly Body[] = BODIES, dynamic = false, bright = false): void {
   const wavefronts = [42, 69, 102, 138, 176, 219, 270, 324];
   for (let row = 0; row < columns; row++) {
     for (let col = 0; col < columns; col++) {
@@ -107,11 +114,11 @@ function field(ctx: CanvasRenderingContext2D, pitch: number, columns: number, va
       const y = (row + .5) * pitch;
       let pullX = 0;
       let pullY = 0;
-      for (const body of BODIES) {
+      for (const body of bodies) {
         const dx = body.x - x;
         const dy = body.y - y;
         const distance = Math.max(pitch, Math.hypot(dx, dy));
-        const radius = RADIUS[body.tier]!;
+        const radius = body.radius ?? RADIUS[body.tier]!;
         const pull = Math.min(.4, radius * radius / (distance * distance) * .22);
         pullX += dx / distance * pull;
         pullY += dy / distance * pull;
@@ -123,12 +130,12 @@ function field(ctx: CanvasRenderingContext2D, pitch: number, columns: number, va
       const angle = Math.atan2(y - IMPACT.y, x - IMPACT.x);
       const band = wavefronts.findIndex((distance, index) =>
         Math.abs(ringDistance - distance - Math.sin(angle * 3 + index * .45) * 3) <= (index < 4 ? 4.1 : 3));
-      if (variant === 'c' && band >= 0) {
+      if (!dynamic && variant === 'c' && band >= 0) {
         const strong = band < 4 || Math.cos(angle * 2 - .9) > .1;
         const color = band < 2 ? STELLAR[3] : band < 4 ? STELLAR[4] : STELLAR[6];
         dot(ctx, px, py, pitch * (strong ? .55 : .28), color, strong ? .8 : .25);
       } else {
-        dot(ctx, px, py, pitch * .18, DUST, variant === 'c' ? .25 : .07);
+        dot(ctx, px, py, pitch * .18, DUST, bright || !dynamic && variant === 'c' ? .25 : .07);
       }
     }
   }
@@ -201,4 +208,44 @@ export function paintDotsQueue(canvas: HTMLCanvasElement, variant: DotsVariant):
     ctx.textAlign = 'center';
     ctx.fillText(`TIER ${tier}`, x, 49);
   }
+}
+
+export function paintMovingDotsBoard(
+  canvas: HTMLCanvasElement,
+  variant: DotsVariant,
+  snapshot: GameSnapshot,
+  bodies: readonly BodyView[],
+  impacts: readonly DotsImpact[],
+  elapsed: number,
+  reduced: boolean,
+): void {
+  const columns = variant === 'a' ? 64 : 80;
+  const pitch = BOARD / columns;
+  const ctx = context(canvas, BOARD, BOARD);
+  const scale = BOARD / BOARD_SIZE;
+  const views = bodies.map(body => ({
+    x: CENTER + body.x * scale,
+    y: CENTER + body.y * scale,
+    radius: body.radius * scale,
+    tier: body.tier,
+    angle: reduced ? 0 : Math.sin(body.id * 1.9) + elapsed * .17,
+  }));
+  const latest = impacts.at(-1);
+  field(ctx, pitch, columns, variant, views, true, Boolean(latest && latest.age < .48));
+  for (const impact of impacts) drawDotsImpact(ctx, impact, pitch, reduced, STELLAR);
+  guide(ctx, LAUNCH_RADIUS, pitch, DUST, .25);
+  guide(ctx, LIMIT_RADIUS, pitch, snapshot.overLimit ? STELLAR[0] : INK, .8);
+  star(ctx, pitch, variant, snapshot.heat / HEAT_MAX, CORE_RADIUS * scale);
+  for (const body of views) planet(ctx, body, pitch, variant, body.radius);
+  if (latest) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.font = `700 ${18 + (latest.event.chain ?? 1) * 4}px "Yu Gothic UI",sans-serif`;
+    ctx.fillText(`${latest.event.chain}連鎖`, CENTER, 309);
+    ctx.font = '13px Consolas,monospace';
+    ctx.fillStyle = STELLAR[3];
+    ctx.fillText(`+${latest.event.scoreDelta?.toLocaleString('ja-JP')}`, CENTER, 330);
+  }
+  ctx.globalAlpha = 1;
 }
