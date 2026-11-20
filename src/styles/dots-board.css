@@ -1,0 +1,47 @@
+:root {
+  color-scheme: dark;
+  background: #05060a;
+  color: #eeede8;
+  font-family: "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  --muted: #a8a79f;
+  --rule: rgba(236, 235, 230, .07);
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { margin: auto; max-width: 960px; padding: 24px; display: grid; grid-template-columns: minmax(0, 390px) minmax(0, 1fr); gap: clamp(36px, 8vw, 96px); }
+.phone { width: 100%; aspect-ratio: 390 / 844; position: relative; container-type: inline-size; }
+.phone header, .phone footer { position: absolute; inset-inline: 6.15%; }
+.phone header { top: 5.45%; }
+.brand { margin: 0 0 8cqw; color: var(--muted); font: 600 3.33cqw var(--mono); letter-spacing: .2em; }
+.metrics { display: flex; justify-content: space-between; margin: 0; border-bottom: 1px solid var(--rule); padding-bottom: 4cqw; }
+.metrics div:last-child { text-align: right; }
+.metrics dt, .queue p, .heat { color: var(--muted); font-size: 3.59cqw; letter-spacing: .08em; }
+.metrics dd { margin: .8cqw 0 0; font: 600 9.23cqw/1.05 var(--mono); letter-spacing: -.055em; }
+#board-study { position: absolute; inset: 24.88% 3.08% auto; width: 93.84%; height: auto; display: block; }
+.phone footer { top: 74.65%; }
+.heat { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; border-block: 1px solid var(--rule); padding-block: 4cqw; }
+.heat strong { color: #eeede8; font: 600 4.1cqw var(--mono); }
+.heat-max { color: var(--muted); font: 400 3.15cqw var(--mono); }
+#heat-dots { flex: 1; display: flex; gap: 1.15cqw; justify-content: flex-end; }
+#heat-dots i { width: 1.53cqw; height: 1.53cqw; border-radius: 50%; background: #eeede8; opacity: .25; }
+#heat-dots i[data-lit] { background: #ff8a45; opacity: 1; }
+.queue { padding-top: 4cqw; }
+.queue p { margin: 0 0 1cqw; }
+.queue canvas { display: block; width: 100%; height: auto; }
+.comparison { align-self: start; padding-top: 50px; }
+.comparison h1 { font-size: clamp(24px, 4vw, 42px); margin: 0 0 18px; }
+.comparison p, label { line-height: 1.7; color: var(--muted); }
+#demo-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+button { min-height: 44px; padding: 8px 12px; background: transparent; color: inherit; border: 1px solid #6c6b65; font: inherit; cursor: pointer; }
+button[aria-pressed="true"] { border-bottom: 2px dotted #cfdcff; color: #cfdcff; }
+:focus-visible { outline: 2px solid #cfdcff; outline-offset: 4px; }
+a { color: #cfdcff; }
+.is-gray .phone { filter: grayscale(1); }
+.is-shot main { display: block; max-width: 390px; padding: 0; }
+.is-shot .comparison { display: none; }
+@media (max-width: 700px) {
+  main { display: flex; flex-direction: column; align-items: center; padding: 12px; gap: 16px; }
+  .comparison { order: -1; width: min(100%,390px); padding: 12px 0 0; }
+  .phone { max-width: 390px; }
+}
