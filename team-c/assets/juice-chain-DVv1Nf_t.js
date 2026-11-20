@@ -1,0 +1,1 @@
+import{z as e}from"./constants-zhQ2uErb.js";import{s as t}from"./heat-DOV8-2V_.js";function n(){let n=(e,t,n)=>({tier:e,x:Math.cos(n)*t,y:Math.sin(n)*t}),r=-Math.PI/2;return t(1,{bodies:[n(0,44+e[0],r),n(0,44+e[0]*3,r),...[1,2,3,4].map((t,i)=>n(t,44+e[t]+35,r+(i%2?-1:1)*.55*(1+i*.25)))]})}export{n as t};
