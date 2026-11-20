@@ -33,6 +33,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
   const cooling = createCoolingReceipt();
 
   return {
+    timeScale: juice.timeScale,
     resize(cssSize) {
       fitCanvas(canvas, cssSize);
       Object.assign(theme, readTheme(canvas));
