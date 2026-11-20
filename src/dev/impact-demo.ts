@@ -1,14 +1,13 @@
 import './impact.css';
 import type { GameEvent } from '../contracts/game';
-import { CORE_RADIUS, DT, MAX_FRAME_SECONDS, TIER_RADIUS } from '../game/constants';
-import { createSimulation, restoreSimulation } from '../game/simulation';
+import { DT, MAX_FRAME_SECONDS } from '../game/constants';
+import { createSimulation } from '../game/simulation';
 import { createEffectsLayer } from '../effects';
 import { createBoardRenderer } from '../render';
 import { createTimeGovernor } from '../shared/time';
-import { createJuiceChain } from './juice-chain';
 import { createImpactCapture } from './impact-capture';
+import { impactSetup, type ImpactScene as Scene } from './impact-fixtures';
 
-type Scene = 'merge' | 'chain' | 'nova';
 const board = document.querySelector<HTMLCanvasElement>('#board')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#effects')!;
 const stage = document.querySelector<HTMLElement>('.impact-stage')!;
@@ -25,24 +24,17 @@ effects.setReducedMotion(reduced.checked);
 reduced.addEventListener('change', () => effects.setReducedMotion(reduced.checked));
 
 function simulationFor(scene: Scene) {
-  if (scene === 'chain') {
-    const state = createJuiceChain().exportState();
-    return restoreSimulation({ ...state, heat: 70 });
-  }
-  const tier = scene === 'nova' ? 8 : 2, radius = TIER_RADIUS[tier];
-  return createSimulation(13, { heat: 86, bodies: [
-    { tier, x: -radius * .99, y: -CORE_RADIUS - radius * 2 },
-    { tier, x: radius * .99, y: -CORE_RADIUS - radius * 2 },
-    { tier: 4, x: -180, y: 110 }, { tier: 6, x: 190, y: 90 },
-  ] });
+  return createSimulation(13, impactSetup(scene));
 }
 
 let scene: Scene = 'merge', sim = simulationFor(scene), prev = sim.getSnapshot();
 let elapsed = 0, acc = 0, paused = false, previous = performance.now();
 let log: GameEvent[] = [];
+let freezeOnPeak = false, peakAt = Infinity;
 function start(next = scene): void {
   scene = next; sim = simulationFor(scene); prev = sim.getSnapshot();
   elapsed = 0; acc = 0; log = []; paused = false; pause.textContent = '一時停止';
+  freezeOnPeak = false; peakAt = Infinity;
   effects.clear(); governor.reset(); previous = performance.now();
   for (const control of controls) control.setAttribute('aria-pressed', String(control.dataset.scene === scene));
 }
@@ -51,6 +43,10 @@ document.querySelector('#again')!.addEventListener('click', () => { if (!capture
 pause.addEventListener('click', () => {
   if (capture.active) return;
   paused = !paused; pause.textContent = paused ? '再生' : '一時停止';
+});
+document.querySelector('#freeze')!.addEventListener('click', () => {
+  if (capture.active) return;
+  start(); freezeOnPeak = true;
 });
 document.querySelector('#record')!.addEventListener('click', () => {
   if (capture.active) return;
@@ -70,10 +66,13 @@ function frame(now: number): void {
       prev = sim.getSnapshot();
       const events = sim.stepFixed();
       log.push(...events.filter(event => event.kind === 'merge' || event.kind === 'supernova'));
+      if (freezeOnPeak && events.some(event => event.kind === 'supernova'
+        || event.kind === 'merge' && (scene !== 'chain' || (event.chain ?? 1) >= 5))) peakAt = elapsed + .2;
       effects.handleEvents(events, sim.getSnapshot()); acc -= DT;
     }
     if (elapsed < .35 || sim.getSnapshot().tick >= 720) acc = 0;
     effects.update(dt);
+    if (elapsed >= peakAt) { paused = true; pause.textContent = '再生'; }
   }
   const curr = sim.getSnapshot();
   renderer.draw({ prev, curr, alpha: Math.min(1, acc / DT), timeSeconds: elapsed, aim: null, reducedMotion: reduced.checked, aimGuide: true, dimmed: false });

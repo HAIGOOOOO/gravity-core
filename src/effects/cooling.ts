@@ -24,10 +24,8 @@ export function createCoolingReceipt() {
       ctx.save(); ctx.globalAlpha = Math.min(1, (HOLD_SECONDS - age) / FADE_SECONDS);
       ctx.font = `700 30px ${theme.font}`; ctx.textAlign = 'center';
       const text = `${STRINGS.effectHeat} −${Number(amount.toFixed(1))}`;
-      const width = ctx.measureText(text).width + 32;
-      ctx.fillStyle = '#101b1a'; ctx.fillRect(-width / 2, -442, width, 42);
-      ctx.strokeStyle = '#b2e6bc'; ctx.lineWidth = 2; ctx.strokeRect(-width / 2, -442, width, 42);
-      ctx.fillStyle = '#c5f4cb'; ctx.fillText(text, 0, -410); ctx.restore();
+      ctx.strokeStyle = '#05060a'; ctx.lineWidth = 5; ctx.strokeText(text, 0, -410);
+      ctx.fillStyle = '#cfdcff'; ctx.fillText(text, 0, -410); ctx.restore();
     },
     clear(): void { amount = 0; age = Infinity; lastSequence = -1; },
   };

@@ -41,12 +41,11 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     handleEvents(batch, snapshot) {
       void snapshot;
       for (const event of batch) {
-        events.handle(event);
+        if (event.kind !== 'merge' && event.kind !== 'supernova') events.handle(event);
         juice.handle(event);
-        // 超新星は本線の演出内に冷却量がある。通常の合体は実測をここで伝える。
-        if (event.kind === 'merge') cooling.handle(event);
+        cooling.handle(event);
         if (event.kind === 'merge' || event.kind === 'supernova') {
-          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova');
+          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova', event.chain ?? 1);
         }
       }
     },

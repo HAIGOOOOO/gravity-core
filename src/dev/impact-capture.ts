@@ -6,7 +6,7 @@ export function createImpactCapture(host: HTMLElement, status: HTMLElement, vide
   canvas.width = SIZE; canvas.height = SIZE + FOOTER;
   const ctx = canvas.getContext('2d')!;
   let recorder: MediaRecorder | null = null, stream: MediaStream | null = null;
-  let chunks: Blob[] = [], started = 0, frames = 0, scene = '';
+  let chunks: Blob[] = [], started = 0, frames = 0, scene = '', lastLabel = '';
   const urls: string[] = [];
   function add(blob: Blob, filename: string, text: string): void {
     const link = document.createElement('a');
@@ -33,7 +33,7 @@ export function createImpactCapture(host: HTMLElement, status: HTMLElement, vide
           const blob = new Blob(chunks, { type: mime });
           add(blob, scene + '.webm', '動画を保存');
           video.src = urls[0]!; video.hidden = false;
-          status.textContent = `5秒の無音録画を作りました（${frames}描画）。`;
+          status.textContent = `5秒の無音録画を作りました（${frames}描画）。${lastLabel}`;
         };
         recorder.onerror = () => {
           stream?.getTracks().forEach(track => track.stop());
@@ -58,6 +58,7 @@ export function createImpactCapture(host: HTMLElement, status: HTMLElement, vide
       ctx.drawImage(effects, -SIZE / 2, -SIZE / 2, SIZE, SIZE); ctx.restore();
       ctx.fillStyle = '#eeede8'; ctx.font = '17px sans-serif'; ctx.fillText(label, 12, SIZE + 25);
       frames++;
+      lastLabel = label;
       if ((performance.now() - started) / 1000 >= SECONDS) recorder.stop();
     },
   };
