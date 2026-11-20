@@ -4,14 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>記録の数値を照合する — GRAVITY CORE</title>
-  <script type="module" crossorigin src="../assets/records-DPSWbRng.js"></script>
+  <script type="module" crossorigin src="../assets/records-Cs4koEOh.js"></script>
   <link rel="modulepreload" crossorigin href="../assets/constants-BSqsUWnw.js">
   <link rel="modulepreload" crossorigin href="../assets/bodies-DgZqABTl.js">
-  <link rel="modulepreload" crossorigin href="../assets/heat-BFK1Eoj4.js">
-  <link rel="modulepreload" crossorigin href="../assets/render-CffMiMAO.js">
-  <link rel="modulepreload" crossorigin href="../assets/highlights-_qUbynE-.js">
-  <link rel="modulepreload" crossorigin href="../assets/share-A3uEnGAc.js">
-  <link rel="modulepreload" crossorigin href="../assets/storage-CWy_ZgR0.js">
+  <link rel="modulepreload" crossorigin href="../assets/heat-QRam205V.js">
+  <link rel="modulepreload" crossorigin href="../assets/render-B1Lp55a1.js">
+  <link rel="modulepreload" crossorigin href="../assets/simulation-BRI03I-E.js">
+  <link rel="modulepreload" crossorigin href="../assets/highlights-DpCj8hVP.js">
+  <link rel="modulepreload" crossorigin href="../assets/verify-byAs1Iz7.js">
+  <link rel="modulepreload" crossorigin href="../assets/share-DQgwXBnu.js">
+  <link rel="modulepreload" crossorigin href="../assets/storage-ClXITW3z.js">
   <link rel="stylesheet" crossorigin href="../assets/records-BV4R1R-J.css">
   <link rel="stylesheet" crossorigin href="../assets/replay-demo-B9C60M15.css">
 </head>
@@ -50,6 +52,14 @@
       </details>
     </section>
   </div>
+  <section aria-labelledby="record-history-heading">
+    <h2 id="record-history-heading">保存したプレイの履歴</h2>
+    <p>このページで作る記録は、自動で遊んだ見本です。あなたが遊んだ得点ではありません。保存ボタンを押した時だけ、この端末の履歴へ追加します。</p>
+    <button type="button" id="record-save" disabled>この見本を履歴に保存</button>
+    <p id="record-save-status" role="status">保存する自動の見本を選んでください。</p>
+    <p id="record-history-count"></p>
+    <ul id="record-history-list"></ul>
+  </section>
   <details id="legacy-result" hidden>
     <summary>古い記録の不明項目と平均</summary>
     <p>同じ見本を、古い形式と現在の形式にした2件で照合します。古い記録に残っていない項目は「不明」と表示し、平均から除きます。</p>

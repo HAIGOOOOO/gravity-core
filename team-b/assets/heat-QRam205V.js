@@ -1,0 +1,1 @@
+import{b as e}from"./constants-BSqsUWnw.js";function t(t){return t>=e[2]?`critical`:t>=e[1]?`overheat`:t>=e[0]?`rising`:`stable`}var n={stable:`安定`,rising:`上昇`,overheat:`過熱`,critical:`臨界`},r={stable:`--cool`,rising:`--warn`,overheat:`--overheat`,critical:`--danger`},i={stable:`#83D9FF`,rising:`#FFD66B`,overheat:`#FFA978`,critical:`#FF7D83`};export{t as i,r as n,n as r,i as t};
