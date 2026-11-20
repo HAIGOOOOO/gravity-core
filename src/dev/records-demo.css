@@ -6,4 +6,8 @@
 .records-page table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .records-page th, .records-page td { padding: 10px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .records-page #record-score { color: var(--core-hot); }
+.records-page .records-table-wrap { max-width: 100%; overflow-x: auto; }
+.records-page #legacy-result table { min-width: 540px; }
+.records-page .records-table-hint { display: none; }
+@media (max-width: 720px) { .records-page .records-table-hint { display: block; } }
 @media (max-width: 720px) { .records-page #record-result > section:nth-child(2) { order: -1; } }
