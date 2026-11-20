@@ -17,5 +17,10 @@
 
 ## 11/21の改訂用
 
+- `assets/c-merge-cover.png`・`assets/c-merge.png`・`assets/c-chain.png`: 担当Cからmainへ届いた `docs/notes/C/slides/merge.webm` の0.7秒・2.3秒、`chain.webm` の0.5秒をEdgeのvideoとcanvasで静止画として取得。元の画はCの自動撮影で、ゲームの状態・得点・描画を書き換えていない。配置時の切り出しだけをPowerPoint内で行う。
+- `assets/d-1.png`・`d-2.png`・`d-3.png`: 担当Dの `D_発表版_2026-11-19.pptx` の6枚目の盤面画像をそのまま抽出。順に集積、輪郭、点の衝撃波。案3は11/20に選定済みで、本体の完成した盤面として示さない。
+- `assets/b-result.png`: Bの見本の実際のPNG保存機能から11/21に取得。`b-replay-ui.png`・`b-replay.png` は同じ共有コードの再生終端で、ページsectionの撮影と盤面canvasの原寸PNG。受信・再生とも12,330点、10分・33投。本人の実プレイや得点ではない。
+- `assets/main-video.png`: [本体の自動撮影動画](https://haigooooo.github.io/gravity-core/main/videos/game.webm)の50秒をEdgeのvideoから取得。人の実プレイとせず、本体の実画面として使う。
+- 上記は本プロジェクト制作チームの素材。本プロジェクトの作業・発表用に使い、画面に含まれる既存素材の権利は元の条件に従う。新しい外部の絵・ロゴ・フォントファイルを追加した物ではない。
 - `assets/main-qr.png`: 本プロジェクトの公開本体URLをReportLabでQR符号へ変換した物。外部の画像素材ではない。別の読取器jsQRで元のURLへ戻ることと、390pxのブラウザで本体が開くことを確認した。jsQRのコードは私用の検査にだけ使い、PPTXやゲームへ追加していない。
 - 読取器の出典: https://github.com/cozmo/jsQR （Apache-2.0）。生成・読取とも、データは公開URLだけ。画像に文字や装飾を加えていない。
