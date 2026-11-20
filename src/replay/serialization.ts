@@ -2,9 +2,11 @@
 import type { LaunchInput, RunStats } from '../contracts/game';
 import type { SimulationSetup } from '../game/simulation';
 import { TIER_COUNT } from '../game/constants';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import { decodePlay, encodePlay, MAX_INPUTS } from '../share/codec';
-import { REPLAY_FORMAT, type ReplayRecord } from './record';
+import type { ReplayRecord } from './record';
 import { MAX_REPLAY_TICKS } from './limits';
+import { NATIVE_REPLAY_FORMAT, REPLAY_FORMAT } from './rules';
 
 // 読む前に文字数を制限し、巨大なJSONの展開で画面が固まるのを防ぐ。
 export const MAX_REPLAY_TEXT_LENGTH = 1024 * 1024;
@@ -14,7 +16,7 @@ export const MAX_REPLAY_TEXT_LENGTH = 1024 * 1024;
 /** 入力は共有と同じ可逆の圧縮へ。全体のルール指紋と最終照合値は外側に残す。 */
 export function serializeReplay(record: ReplayRecord): string {
   if (record.inputs.some((input) => input.charged === true)) return '';
-  const inputs = encodePlay({ ...record, rulesVersion: REPLAY_FORMAT });
+  const inputs = encodePlay(record);
   if (!inputs) return '';
   return JSON.stringify({ ...record, packing: 1, inputs });
 }
@@ -30,7 +32,8 @@ function isInput(v: unknown): v is LaunchInput {
     isFiniteNum(i.originAngleRadians) &&
     isFiniteNum(i.vx) &&
     isFiniteNum(i.vy) &&
-    (i.charged === undefined || typeof i.charged === 'boolean')
+    (i.charged === undefined || typeof i.charged === 'boolean') &&
+    (i.collapseTick === undefined || isNonNegativeInt(i.collapseTick))
   );
 }
 
@@ -83,12 +86,14 @@ export function parseReplay(text: string): ReplayRecord | null {
   if (r.packing !== undefined) {
     if (r.packing !== 1 || typeof r.inputs !== 'string') return null;
     const decoded = decodePlay(r.inputs);
-    if (!decoded.ok || decoded.play.rulesVersion !== REPLAY_FORMAT ||
+    if (!decoded.ok ||
+      (decoded.play.rulesVersion !== r.rulesVersion &&
+        !(r.format === NATIVE_REPLAY_FORMAT && decoded.play.rulesVersion === NATIVE_REPLAY_FORMAT)) ||
       decoded.play.seed !== r.seed || decoded.play.endTick !== r.endTick) return null;
     r.inputs = decoded.play.inputs;
     delete r.packing;
   }
-  if (r.format !== REPLAY_FORMAT) return null;
+  if (r.format !== REPLAY_FORMAT && r.format !== NATIVE_REPLAY_FORMAT) return null;
   if (typeof r.rulesVersion !== 'string') return null;
   if (!isNonNegativeInt(r.seed) || r.seed > 0xffffffff) return null;
   if (!Array.isArray(r.inputs) || r.inputs.length > MAX_INPUTS || !r.inputs.every(isInput)) return null;
@@ -98,6 +103,7 @@ export function parseReplay(text: string): ReplayRecord | null {
     if (input.tick < previous || input.tick > r.endTick || input.charged === true) return null;
     previous = input.tick;
   }
+  if (!expandLaunchInputs(r.inputs as LaunchInput[], r.endTick as number)) return null;
   if (!isFiniteNum(r.finalScore)) return null;
   if (!isNonNegativeInt(r.finalBodyCount)) return null;
   if (typeof r.initialHash !== 'string') return null;

@@ -1,0 +1,84 @@
+diff --git a/src/app/app.ts b/src/app/app.ts
+index bb66d10..13a83dd 100644
+--- a/src/app/app.ts
++++ b/src/app/app.ts
+@@ -170,7 +170,7 @@ export function startApp(): AppHandle {
+       gameVersion: GAME_VERSION,
+     };
+     const isBest = record.score > save.bestScore;
+-    result = { record, isBest, rank: null };
++    result = { record, isBest, rank: null, loss: snap.loss };
+     lastCapture = capture ? capture.finish() : null;
+     lastReplay = lastCapture ? lastCapture.record : null;
+     void ranking.submit(record, sim.getInputLog()).then(({ rank }) => {
+diff --git a/src/contracts/app.ts b/src/contracts/app.ts
+index 8f05f1e..d8aab94 100644
+--- a/src/contracts/app.ts
++++ b/src/contracts/app.ts
+@@ -18,6 +18,7 @@ import type {
+   GameSnapshot,
+   LaunchCommand,
+   LaunchInput,
++  LossSummary,
+   Prediction,
+   Tier,
+ } from './game';
+@@ -210,6 +211,7 @@ export type ResultView = {
+   record: RunRecord;
+   isBest: boolean;
+   rank: number | null;
++  loss?: LossSummary;
+ };
+
+ export type OverlayData = {
+diff --git a/src/ui/result.ts b/src/ui/result.ts
+index dd9a400..66f5e9d 100644
+--- a/src/ui/result.ts
++++ b/src/ui/result.ts
+@@ -3,13 +3,14 @@ import type { Tier } from '../contracts/game';
+ import { TIER_NAMES } from '../game/constants';
+ import { bodyIcon, paintBodyIcon } from './body-icon';
+ import { element, action } from './dom';
+-import { STRINGS, rankLabel } from './strings';
++import { STRINGS, lossMessage, rankLabel } from './strings';
+ import { durationLabel } from './format';
+
+ export function appendResult(card: HTMLElement, data: OverlayData, onIntent: (intent: UiIntent) => void): (next: OverlayData) => void {
+   const score = element('strong', 'result-score');
+   const best = element('p', 'result-best', STRINGS.bestUpdated);
+   const rank = element('p', 'result-rank'); rank.setAttribute('aria-live', 'polite');
++  const reason = element('p', 'result-reason');
+   const body = bodyIcon(0);
+   const tierName = element('span');
+   const tier = element('div', 'result-tier'); tier.append(body, tierName);
+@@ -28,14 +29,15 @@ export function appendResult(card: HTMLElement, data: OverlayData, onIntent: (in
+   for (const [text, intent] of [[STRINGS.retry, 'restart'], [STRINGS.seeRanking, 'openRanking'], [STRINGS.copyResult, 'copyResult'], [STRINGS.backToTitle, 'backToTitle']] as const) {
+     buttons.append(action(text, () => onIntent({ kind: intent }), intent === 'restart' ? 'primary' : ''));
+   }
+-  card.append(score, best, rank, tier, stats, element('p', 'result-reason', STRINGS.resultReason), label, buttons);
++  card.append(score, best, rank, tier, stats, reason, label, buttons);
+   function update(next: OverlayData): void {
+     if (!next.result) return;
+-    const { record, isBest, rank: position } = next.result;
++    const { record, isBest, rank: position, loss } = next.result;
+     score.textContent = record.score.toLocaleString('ja-JP');
+     best.hidden = !isBest;
+     rank.textContent = position === null ? '' : rankLabel(position);
+     rank.hidden = position === null;
++    reason.textContent = loss ? lossMessage(loss) : STRINGS.resultReason;
+     paintBodyIcon(body, record.bestTier as Tier);
+     tierName.textContent = `${STRINGS.bestTier} · ${TIER_NAMES[record.bestTier]}`;
+     const values = [String(record.maxChain), durationLabel(record.seconds), String(record.launches), String(record.merges)];
+diff --git a/src/ui/strings.ts b/src/ui/strings.ts
+index adea3a1..594b578 100644
+--- a/src/ui/strings.ts
++++ b/src/ui/strings.ts
+@@ -55,7 +55,7 @@ export const STRINGS = {
+   playTime: 'プレイ時間',
+   launches: '射出数',
+   merges: '合体数',
+-  resultReason: '積もった山が限界リングを越え、核熱量が100に達しました。',
++  resultReason: '核熱量が100に達しました。',
+   rankingNote: 'この端末の上位10件',
+   emptyRanking: 'まだ記録がありません。最初の記録を作ろう。',
+   backToGame: 'ゲームへ戻る',

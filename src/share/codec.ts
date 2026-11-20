@@ -1,19 +1,22 @@
 // シード、受理された入力、再生する長さを base64url の共有コードにする。得点は含めない。
-// 形式3は replay のルール指紋（形式の varint + hash の u32le）を持つ。
+// 形式4は replay のルール指紋（版のvarint + hashのu32le）と任意の崩壊の記録を持つ。
+// 形式3は本線の指紋付き射出のみと、Cの旧試作（数値版11/12、崩壊あり）がある。
 // 形式2は端末に保存済みの圧縮記録を読むために残す。ルール欄は数値1個（varint）。
 // 共通部分は seed / endTick / 入力数（varint）、続けて tick 差×4+種別（varint）と各入力。
 //   0: 角度の格子番号 (u32)。整数の直落とし速度は角度から復元。
 //   1: 格子に乗らない角度 (f64)。丸め前の直落とし速度は角度から復元。
 //   2: 角度・vx・vy (f64)。生の値をそのまま復元。
 //   3: 角度の格子番号 (u32) と整数の vx・vy。
-//      形式3は符号付き11ビットずつを3バイトに詰める。形式2は zigzag varint を2つ。
+//      指紋付きでは符号付き11ビットずつを3バイトに詰める。数値版ではzigzag varintを2つ。
 // 末尾は FNV-1a の u32le。検査値は通信中の破損検出用。
 
 import type { LaunchInput, SimulationPort } from '../contracts/game';
+import { NATIVE_ANGLES, PORTABLE_ANGLES, type AngleMath } from '../game/angle';
 import { DROP_SPEED } from '../game/constants';
 import { ANGLE_GRID } from '../game/predictor';
 import { MAX_REPLAY_TICKS } from '../replay/limits';
-import { rulesVersion } from '../replay/rules';
+import { NATIVE_REPLAY_FORMAT, NATIVE_REPLAY_RULES, rulesVersion } from '../replay/rules';
+import { expandLaunchInputs } from '../shared/input-timeline';
 import {
   base64UrlToBytes,
   bytesToBase64Url,
@@ -27,8 +30,11 @@ import {
 } from './coding';
 
 /** この文字列形式の版。形を変えたら +1 する。 */
-export const SHARE_FORMAT_VERSION = 3;
+export const SHARE_FORMAT_VERSION = 4;
 const LEGACY_FORMAT = 2;
+const PREVIOUS_FORMAT = 3;
+const OLD_C_SHARE_RULES = 11;
+const FIRST_PORTABLE_RULES_FORMAT = 13;
 export const SHARE_RULES_VERSION = rulesVersion();
 
 /** 貼り付けと読み込みで共通の文字数上限。 */
@@ -90,27 +96,33 @@ function gridIndex(angle: number): number | null {
   return gridAngle(k) === angle ? k : null;
 }
 
+function straightDrop(angle: number, angles: AngleMath): { vx: number; vy: number } {
+  const direction = angles.vector(angle);
+  return { vx: -direction.x * DROP_SPEED, vy: -direction.y * DROP_SPEED };
+}
+
 /** 丸めた「まっすぐ落とす」の速度（シミュレーションの quantizeLaunch と同じ丸め）。 */
-function roundedDrop(angle: number): { vx: number; vy: number } {
-  return { vx: Math.round(-Math.cos(angle) * DROP_SPEED) + 0, vy: Math.round(-Math.sin(angle) * DROP_SPEED) + 0 };
+function roundedDrop(angle: number, angles: AngleMath): { vx: number; vy: number } {
+  const { vx, vy } = straightDrop(angle, angles);
+  return { vx: Math.round(vx) + 0, vy: Math.round(vy) + 0 };
 }
 
 /** 格子の上の角度で、速度が丸めた「まっすぐ落とす」とビット一致するか。一致すれば格子の番号、しなければ null。 */
-function roundedDropIndex(input: LaunchInput): number | null {
+function roundedDropIndex(input: LaunchInput, angles: AngleMath): number | null {
   const k = gridIndex(input.originAngleRadians);
   if (k === null) return null;
-  const v = roundedDrop(input.originAngleRadians);
+  const v = roundedDrop(input.originAngleRadians, angles);
   return Object.is(input.vx, v.vx) && Object.is(input.vy, v.vy) ? k : null;
 }
 
 /** 「押して離す」で出る速度（核へまっすぐ、速さ DROP_SPEED）とビット一致するか。値で見るので出自を問わない。 */
-function isStraightDrop(input: LaunchInput): boolean {
-  const a = input.originAngleRadians;
+function isStraightDrop(input: LaunchInput, angles: AngleMath): boolean {
+  const v = straightDrop(input.originAngleRadians, angles);
   // Object.is で比べる: === は +0 と -0 を区別しないため、式が出す 0 の符号と逆の速度を持つ入力を
   // 「まっすぐ落とし」と誤認し、読み戻しで vy の 0 の符号がずれてしまう（角度 ±0 のときだけ起きる）
   return (
-    Object.is(input.vx, -Math.cos(a) * DROP_SPEED) &&
-    Object.is(input.vy, -Math.sin(a) * DROP_SPEED)
+    Object.is(input.vx, v.vx) &&
+    Object.is(input.vy, v.vy)
   );
 }
 
@@ -155,23 +167,26 @@ function encodeInner(args: EncodePlayArgs): string {
   if (typeof args !== 'object' || args === null) return '';
   const { rulesVersion, seed, inputs } = args;
   if (!Array.isArray(inputs) || inputs.length > MAX_INPUTS) return '';
-  // endTick の省略時は最後の入力の tick を使う（入力が無ければ doc どおり 0）。
+  // endTick の省略時は最後の射出または崩壊の tick を使う（入力が無ければ0）。
   // 最後の要素が型を越えた物（null・数など）なら NaN になり、後の整数チェックで弾く
   const last = inputs.length ? (inputs[inputs.length - 1] as LaunchInput | null | undefined) : undefined;
-  const lastTick = inputs.length === 0 ? 0 : typeof last === 'object' && last !== null ? last.tick : Number.NaN;
+  const lastTick = inputs.length === 0 ? 0 : typeof last === 'object' && last !== null ? Math.max(last.tick, last.collapseTick ?? last.tick) : Number.NaN;
   const endTick = args.endTick ?? lastTick;
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) return '';
   if (!Number.isInteger(endTick) || endTick < 0 || endTick > MAX_TICKS) return '';
 
   const legacy = typeof rulesVersion === 'number';
   const bytes: number[] = [legacy ? LEGACY_FORMAT : SHARE_FORMAT_VERSION];
+  let angles = NATIVE_ANGLES;
   if (legacy) {
     if (!Number.isInteger(rulesVersion) || rulesVersion < 0 || rulesVersion > 255) return '';
     writeVarint(bytes, rulesVersion);
   } else {
     const fingerprint = typeof rulesVersion === 'string' ? FINGERPRINT.exec(rulesVersion) : null;
     if (!fingerprint) return '';
-    writeVarint(bytes, Number(fingerprint[1]));
+    const format = Number(fingerprint[1]);
+    if (format >= FIRST_PORTABLE_RULES_FORMAT) angles = PORTABLE_ANGLES;
+    writeVarint(bytes, format);
     writeU32(bytes, Number.parseInt(fingerprint[2]!, 16));
   }
   writeVarint(bytes, seed);
@@ -187,7 +202,7 @@ function encodeInner(args: EncodePlayArgs): string {
     if (!Number.isFinite(angle) || !Number.isFinite(vx) || !Number.isFinite(vy)) return '';
     const head = (tick - prevTick) * 4;
     prevTick = tick;
-    const dropK = roundedDropIndex(input);
+    const dropK = roundedDropIndex(input, angles);
     const angleK = gridIndex(angle);
     const fitsVelocity = legacy || (
       vx >= -VELOCITY_BASE / 2 && vx < VELOCITY_BASE / 2 &&
@@ -196,7 +211,7 @@ function encodeInner(args: EncodePlayArgs): string {
     if (dropK !== null) {
       writeVarint(bytes, head + TAG_DROP_GRID);
       writeU32(bytes, dropK);
-    } else if (isStraightDrop(input)) {
+    } else if (isStraightDrop(input, angles)) {
       writeVarint(bytes, head + TAG_DROP);
       writeF64(bytes, angle);
     } else if (angleK !== null && isPlainInt(vx) && isPlainInt(vy) && fitsVelocity) {
@@ -217,6 +232,14 @@ function encodeInner(args: EncodePlayArgs): string {
     }
   }
 
+  if (!expandLaunchInputs(inputs, endTick)) return '';
+  // 崩壊を使った射出だけ、添字と射出からのtick差を末尾へ足す。
+  const collapses = inputs.flatMap((input, index) => input.collapseTick === undefined ? [] : [{ index, delay: input.collapseTick - input.tick }]);
+  if (collapses.length > 0) {
+    if (legacy) return '';
+    writeVarint(bytes, collapses.length);
+    for (const action of collapses) { writeVarint(bytes, action.index); writeVarint(bytes, action.delay); }
+  }
   const body = Uint8Array.from(bytes);
   const sum = fnv1a(body);
   const all = new Uint8Array(body.length + 4);
@@ -271,15 +294,22 @@ export function decodePlay(text: string): DecodePlayResult {
     if (fnv1a(body) !== sum) return fail('checksum');
     // ヘッダ（版 + 4 つの varint）は最小でも 5 バイト。それ未満は中身を読む以前に切れている
     if (body.length < 5) return fail('truncated');
-    const legacy = body[0] === LEGACY_FORMAT;
-    if (!legacy && body[0] !== SHARE_FORMAT_VERSION) return fail('badVersion');
+    const wireFormat = body[0];
+    if (wireFormat !== LEGACY_FORMAT && wireFormat !== PREVIOUS_FORMAT && wireFormat !== SHARE_FORMAT_VERSION) return fail('badVersion');
 
     const pos = { i: 1 };
     const format = readVarint(body, pos);
-    if (format === null || format > (legacy ? 255 : 999)) return fail('badData');
+    if (format === null) return fail('badData');
+    // 本線が形式3で発行した指紋はr3。Cは数値11（共有）または12（端末保存）を発行した。
+    const oldC = wireFormat === PREVIOUS_FORMAT && (format === OLD_C_SHARE_RULES || format === NATIVE_REPLAY_FORMAT);
+    const legacy = wireFormat === LEGACY_FORMAT || oldC;
+    const angles = !legacy && wireFormat === SHARE_FORMAT_VERSION && format >= FIRST_PORTABLE_RULES_FORMAT ? PORTABLE_ANGLES : NATIVE_ANGLES;
+    if (format > (legacy ? 255 : 999)) return fail('badData');
     const hash = legacy ? null : readU32(body, pos);
     if (!legacy && hash === null) return fail('truncated');
-    const rulesVersion = hash === null ? format : `r${format}.${hash.toString(16).padStart(8, '0')}`;
+    const rulesVersion = oldC && format === OLD_C_SHARE_RULES
+      ? NATIVE_REPLAY_RULES
+      : hash === null ? format : `r${format}.${hash.toString(16).padStart(8, '0')}`;
     const seed = readVarint(body, pos);
     const endTick = readVarint(body, pos);
     const count = readVarint(body, pos);
@@ -302,13 +332,12 @@ export function decodePlay(text: string): DecodePlayResult {
         const k = readU32(body, pos);
         if (k === null) return fail('truncated');
         angle = gridAngle(k);
-        ({ vx, vy } = roundedDrop(angle));
+        ({ vx, vy } = roundedDrop(angle, angles));
       } else if (tag === TAG_DROP) {
         const a = readF64(body, pos);
         if (a === null) return fail('truncated');
         angle = a;
-        vx = -Math.cos(angle) * DROP_SPEED;
-        vy = -Math.sin(angle) * DROP_SPEED;
+        ({ vx, vy } = straightDrop(angle, angles));
       } else if (tag === TAG_RAW) {
         const a = readF64(body, pos);
         const x = readF64(body, pos);
@@ -340,7 +369,19 @@ export function decodePlay(text: string): DecodePlayResult {
       inputs.push({ tick, originAngleRadians: angle, vx, vy });
       prevTick = tick;
     }
-    if (pos.i !== body.length) return fail('badData');
+    if (pos.i < body.length) {
+      if (wireFormat !== SHARE_FORMAT_VERSION && !oldC) return fail('badData');
+      const collapses = readVarint(body, pos);
+      if (collapses === null || collapses === 0 || collapses > inputs.length) return fail('badData');
+      let previous = -1;
+      for (let n = 0; n < collapses; n++) {
+        const index = readVarint(body, pos), delay = readVarint(body, pos);
+        if (index === null || delay === null || index <= previous || index >= inputs.length) return fail('badData');
+        const input = inputs[index]!;
+        inputs[index] = { ...input, collapseTick: input.tick + delay }; previous = index;
+      }
+    }
+    if (pos.i !== body.length || !expandLaunchInputs(inputs, endTick)) return fail('badData');
     return { ok: true, play: { rulesVersion, seed, endTick, inputs } };
   } catch {
     return fail('badData');

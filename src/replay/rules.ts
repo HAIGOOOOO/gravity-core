@@ -1,7 +1,11 @@
 import * as RULE_CONSTANTS from '../game/constants';
 
 /** 保存形式の版。記録の形や入力の種類が増えたら上げる。 */
-export const REPLAY_FORMAT = 3; // 3: 射出の値を丸める（2026-10-18）。丸める前の記録は再生しない
+export const REPLAY_FORMAT = 13; // 13: 盤面の角度計算を実行環境間でそろえる
+export const NATIVE_REPLAY_FORMAT = 12;
+const NATIVE_RULES_HASH = 'c3152231';
+export const NATIVE_REPLAY_RULES = `r${NATIVE_REPLAY_FORMAT}.${NATIVE_RULES_HASH}`;
+export type ReplayFormat = typeof REPLAY_FORMAT | typeof NATIVE_REPLAY_FORMAT;
 
 // ───────── ルールの版 ─────────
 // constants.ts が export する値のうち、再生の正しさに関係しない物
@@ -56,4 +60,12 @@ export function rulesVersion(): string {
   }
   versionCache = `r${REPLAY_FORMAT}.${hashText(parts.join('|'))}`;
   return versionCache;
+}
+
+/** 現行と、角度計算だけが異なる旧Cの指紋を識別する。次のルール変更時には互換性を再確認する。 */
+export function replayFormatForRules(version: unknown): ReplayFormat | null {
+  const current = rulesVersion();
+  if (version === current) return REPLAY_FORMAT;
+  if (version === NATIVE_REPLAY_RULES && current === `r13.${NATIVE_RULES_HASH}`) return NATIVE_REPLAY_FORMAT;
+  return null;
 }

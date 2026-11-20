@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUDIO, chainFrequency, createRateGate, masterVolume, mergeDuration, mergeFrequency } from './tuning';
+import { AUDIO, chainFrequency, createRateGate, masterVolume, mergeAccentDelay, mergeDuration, mergeFrequency } from './tuning';
 import { eventTones } from './tones';
 import { sampleEvent } from '../fixtures';
 
@@ -16,9 +16,15 @@ describe('音の高さ・長さと上限', () => {
     expect(mergeFrequency(6)).toBe(261.5);
     expect(mergeDuration(8)).toBeGreaterThan(mergeDuration(0));
   });
-  it('連鎖は 1 オクターブ上から、連鎖 1 ごとに全音上げる', () => {
-    expect(chainFrequency(0, 1)).toBe(1046);
-    expect(chainFrequency(0, 3) / chainFrequency(0, 2)).toBeCloseTo(2 ** (2 / 12));
+  it('合体する天体が成長しても、連鎖の旋律は5段目まで上がる', () => {
+    const stages = [1, 2, 3, 4, 5] as const;
+    const pitches = stages.map((stage, tier) => eventTones({ ...sampleEvent('merge', tier as 0 | 1 | 2 | 3 | 4, 0, 0, stage), chainStage: stage })
+      .find(tone => tone.wave === 'sine' && tone.pan === -0.35)?.frequency);
+    expect(pitches).toEqual(stages.map(chainFrequency));
+    expect(pitches.map(pitch => Math.round(pitch!))).toEqual([1046, 1174, 1318, 1567, 1759]);
+    expect(chainFrequency(6)).toBe(chainFrequency(5));
+    expect(stages.map(stage => mergeAccentDelay(0, stage))).toEqual([.065, .075, .10, .125, .16]);
+    expect(mergeAccentDelay(6, 1)).toBe(.14);
   });
   it('着地を区切った時間枠でなく、直近 0.25 秒に 4 回までにする', () => {
     const gate = createRateGate(AUDIO.landCount, AUDIO.landWindow);
@@ -30,14 +36,20 @@ describe('音の高さ・長さと上限', () => {
     gate.reset();
     expect(gate.accept(0.251)).toBe(true);
   });
-  it('速い着地を強め、合体・超新星の発振器数と無音の間を守る', () => {
+  it('速い着地を強め、連鎖を積み上げても発音の上限と超新星の無音を守る', () => {
     const low = eventTones({ ...sampleEvent('land'), impactSpeed: 100 })[0];
     const high = eventTones({ ...sampleEvent('land'), impactSpeed: 600 })[0];
     expect(high.gain).toBeGreaterThan(low.gain);
-    expect(eventTones(sampleEvent('merge', 2, 0, 0, 1))).toHaveLength(2);
-    expect(eventTones(sampleEvent('merge', 2, 0, 0, 3))).toHaveLength(3);
+    const small = eventTones(sampleEvent('merge', 2, 0, 0, 1));
+    const chain = eventTones(sampleEvent('merge', 2, 0, 0, 3));
+    const maximum = eventTones(sampleEvent('merge', 2, 0, 0, 5));
+    expect(small.some(tone => tone.wave === 'noise')).toBe(true);
+    expect(chain.length).toBeGreaterThan(small.length);
+    expect(maximum.length).toBeGreaterThan(chain.length);
+    expect(maximum.length).toBeLessThanOrEqual(AUDIO.maxVoices);
     const nova = eventTones(sampleEvent('supernova'));
-    expect(nova).toHaveLength(4);
-    expect(nova.every((tone) => tone.delay === 0.15 && tone.seconds === 1.2)).toBe(true);
+    expect(nova.length).toBeLessThanOrEqual(AUDIO.maxVoices);
+    expect(nova.every((tone) => tone.delay >= AUDIO.novaSilence)).toBe(true);
+    expect(nova.some(tone => (tone.endFrequency ?? 100) < 40)).toBe(true);
   });
 });

@@ -72,6 +72,13 @@
   <p><label><input id="all-scenes" type="checkbox" /> 全場面の図を並べる</label>　<label><input id="zoom" type="checkbox" /> 冒頭0.3秒を拡大</label></p>
   <main id="comparisons"></main>
   <section id="runtime-study" hidden><h2>本番の落とす音</h2><p>測定値は音量100%・比較補正なし。試聴には上の試聴音量だけを掛けます。単発RMSは無音を含む0.6秒、連射RMSは2.4秒全体です。波形は全カード共通±0.25、単発は冒頭0.15秒を表示します。Tier 0・4・連投は音量が安定した状態、最後は有効にした直後の一投です。</p><p id="runtime-live-report" role="status" style="white-space:pre-line"></p><canvas id="runtime-preview" hidden></canvas><p id="runtime-report" role="status" style="white-space: pre-line"></p><div id="runtime-samples" class="cards"></div></section>
+  <section aria-labelledby="chain-sound-title">
+    <h2 id="chain-sound-title">本番の合体・連鎖音</h2>
+    <button id="verify-chain-sound">効果音を測る・保存する</button>
+    <pre id="chain-sound-report" role="status"></pre>
+    <nav id="chain-sound-files" aria-label="効果音のWAV"></nav>
+  </section>
   <script type="module" src="../src/dev/sound-demo.ts"></script>
+  <script type="module" src="../src/dev/chain-sound-demo.ts"></script>
 </body>
 </html>

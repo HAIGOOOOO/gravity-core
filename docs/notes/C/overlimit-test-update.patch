@@ -1,0 +1,13 @@
+diff --git a/src/tools/overlimit.test.ts b/src/tools/overlimit.test.ts
+--- a/src/tools/overlimit.test.ts
++++ b/src/tools/overlimit.test.ts
+@@ -344,5 +344,8 @@
+     expect(m.summary.overRate).toBe(1);
+     expect(m.summary.episodeCount.min).toBeGreaterThanOrEqual(1);
+     expect(m.summary.firstOverSeconds.min).toBeGreaterThanOrEqual(1.19);
+-    expect(m.summary.openAtEndRate).toBe(1);
++    // 回転後の山は1回が限界外で終了し、もう1回は内側へ回復する。
++    expect(m.summaries.map(s => s.openAtEnd)).toEqual([true, false]);
++    expect(m.summary.openAtEndRate).toBe(0.5);
++    expect(m.summaries[1]!.episodes.some(e => e.endTick !== null)).toBe(true);
+   });

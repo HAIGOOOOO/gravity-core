@@ -1,0 +1,1746 @@
+{
+  "revision": "7ce2fdd5095e345a184807834fcd7f36d5714cf6",
+  "rulesVersion": "r13.c3152231",
+  "experiment": "production",
+  "suite": "mixed-input",
+  "seeds": [
+    1901,
+    1902,
+    1903,
+    1904,
+    1905,
+    1906,
+    1907,
+    1908,
+    1909,
+    1910,
+    1911,
+    1912
+  ],
+  "maxSeconds": 300,
+  "complete": true,
+  "summary": [
+    {
+      "strategy": "random",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 326045,
+      "seconds": 131.08333333333331,
+      "heatFromShots": 125,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 280115,
+      "seconds": 118.025,
+      "heatFromShots": 377.2750000000001,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four-wobble",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 305785,
+      "seconds": 121.30416666666667,
+      "heatFromShots": 386,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four-mixed",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 241305,
+      "seconds": 113.98333333333333,
+      "heatFromShots": 368,
+      "timedOut": 0
+    },
+    {
+      "strategy": "merge-safe",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 593900,
+      "seconds": 151.50833333333333,
+      "heatFromShots": 301,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four-wide",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 334110,
+      "seconds": 129.86666666666667,
+      "heatFromShots": 363,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four-margin",
+      "shotSpacingSeconds": 0.6666666666666666,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 266365,
+      "seconds": 148.4875,
+      "heatFromShots": 364,
+      "timedOut": 0
+    },
+    {
+      "strategy": "random-margin",
+      "shotSpacingSeconds": 0.6666666666666666,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 263335,
+      "seconds": 153.51666666666665,
+      "heatFromShots": 123,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four-interrupted",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 230710,
+      "seconds": 118.33333333333333,
+      "heatFromShots": 199,
+      "timedOut": 0
+    },
+    {
+      "strategy": "four-clumped",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 266530,
+      "seconds": 119.8125,
+      "heatFromShots": 380,
+      "timedOut": 0
+    },
+    {
+      "strategy": "fixed",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 19310,
+      "seconds": 27.295833333333334,
+      "heatFromShots": 438.12499999999613,
+      "timedOut": 0
+    },
+    {
+      "strategy": "curve-aim",
+      "shotSpacingSeconds": 0.5,
+      "maxTimingJitterSeconds": 0.15,
+      "score": 733945,
+      "seconds": 176.46666666666667,
+      "heatFromShots": 243,
+      "timedOut": 1
+    }
+  ],
+  "comparisons": [
+    {
+      "strategy": "four",
+      "reference": "random",
+      "ratio": 0.8591298747105461,
+      "pairedBootstrap95": [
+        0.7429124942017518,
+        1.104165971225423
+      ],
+      "wins": 5,
+      "ties": 0
+    },
+    {
+      "strategy": "four-wobble",
+      "reference": "random",
+      "ratio": 0.9378613381588431,
+      "pairedBootstrap95": [
+        0.7643973820343537,
+        1.2418538231857719
+      ],
+      "wins": 5,
+      "ties": 0
+    },
+    {
+      "strategy": "four-mixed",
+      "reference": "random",
+      "ratio": 0.7400972258430585,
+      "pairedBootstrap95": [
+        0.5893532924060214,
+        0.9436191875020863
+      ],
+      "wins": 2,
+      "ties": 0
+    },
+    {
+      "strategy": "merge-safe",
+      "reference": "random",
+      "ratio": 1.821527703231149,
+      "pairedBootstrap95": [
+        1.4802651865556584,
+        2.497277983100492
+      ],
+      "wins": 12,
+      "ties": 0
+    },
+    {
+      "strategy": "four-wide",
+      "reference": "random",
+      "ratio": 1.024735849345949,
+      "pairedBootstrap95": [
+        0.7977376561897946,
+        1.5089985988026131
+      ],
+      "wins": 7,
+      "ties": 0
+    },
+    {
+      "strategy": "four-margin",
+      "reference": "random-margin",
+      "ratio": 1.0115062562895172,
+      "pairedBootstrap95": [
+        0.7785069888101599,
+        1.3187718128700836
+      ],
+      "wins": 6,
+      "ties": 0
+    },
+    {
+      "strategy": "four-interrupted",
+      "reference": "random",
+      "ratio": 0.7076017114202028,
+      "pairedBootstrap95": [
+        0.617603346727583,
+        1.0737746668638373
+      ],
+      "wins": 4,
+      "ties": 0
+    },
+    {
+      "strategy": "four-clumped",
+      "reference": "random",
+      "ratio": 0.8174638470149826,
+      "pairedBootstrap95": [
+        0.585338985879761,
+        1.1838986665677564
+      ],
+      "wins": 4,
+      "ties": 0
+    },
+    {
+      "strategy": "fixed",
+      "reference": "random",
+      "ratio": 0.05922495361069791,
+      "pairedBootstrap95": [
+        0.03421928978245308,
+        0.09793230649754077
+      ],
+      "wins": 0,
+      "ties": 0
+    },
+    {
+      "strategy": "curve-aim",
+      "reference": "random",
+      "ratio": 2.251054302320232,
+      "pairedBootstrap95": [
+        1.6142690569887772,
+        3.9886129708276923
+      ],
+      "wins": 12,
+      "ties": 0
+    }
+  ],
+  "runs": [
+    {
+      "strategy": "random",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 343050,
+          "seconds": 137.68333333333334,
+          "heatFromShots": 150,
+          "rejects": 0,
+          "launches": 239,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 213440,
+          "seconds": 115.30833333333334,
+          "heatFromShots": 114,
+          "rejects": 0,
+          "launches": 202,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 363030,
+          "seconds": 122.6,
+          "heatFromShots": 126,
+          "rejects": 0,
+          "launches": 213,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 298720,
+          "seconds": 134.06666666666666,
+          "heatFromShots": 160,
+          "rejects": 0,
+          "launches": 232,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 356730,
+          "seconds": 136.28333333333333,
+          "heatFromShots": 122,
+          "rejects": 0,
+          "launches": 237,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 240490,
+          "seconds": 114.1,
+          "heatFromShots": 102,
+          "rejects": 0,
+          "launches": 200,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 309040,
+          "seconds": 134.46666666666667,
+          "heatFromShots": 122,
+          "rejects": 0,
+          "launches": 235,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 411380,
+          "seconds": 136.26666666666668,
+          "heatFromShots": 140,
+          "rejects": 0,
+          "launches": 238,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 369950,
+          "seconds": 124.08333333333333,
+          "heatFromShots": 132,
+          "rejects": 0,
+          "launches": 216,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 511390,
+          "seconds": 145.9,
+          "heatFromShots": 124,
+          "rejects": 0,
+          "launches": 253,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 189700,
+          "seconds": 95.1,
+          "heatFromShots": 108,
+          "rejects": 0,
+          "launches": 165,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 299570,
+          "seconds": 128.1,
+          "heatFromShots": 126,
+          "rejects": 0,
+          "launches": 224,
+          "bestTier": 7,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 416900,
+          "seconds": 135.05833333333334,
+          "heatFromShots": 424,
+          "rejects": 0,
+          "launches": 235,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 250190,
+          "seconds": 112.15,
+          "heatFromShots": 350,
+          "rejects": 0,
+          "launches": 197,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 272270,
+          "seconds": 111.175,
+          "heatFromShots": 350,
+          "rejects": 0,
+          "launches": 193,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 282970,
+          "seconds": 125.775,
+          "heatFromShots": 404,
+          "rejects": 0,
+          "launches": 218,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 501820,
+          "seconds": 147.21666666666667,
+          "heatFromShots": 469.8499999999997,
+          "rejects": 0,
+          "launches": 256,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 200570,
+          "seconds": 107.225,
+          "heatFromShots": 334,
+          "rejects": 0,
+          "launches": 187,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 249320,
+          "seconds": 117.58333333333333,
+          "heatFromShots": 370,
+          "rejects": 0,
+          "launches": 205,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 322580,
+          "seconds": 123.96666666666667,
+          "heatFromShots": 404,
+          "rejects": 0,
+          "launches": 217,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 277260,
+          "seconds": 117.43333333333334,
+          "heatFromShots": 376,
+          "rejects": 0,
+          "launches": 205,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 256390,
+          "seconds": 118.46666666666667,
+          "heatFromShots": 378.5500000000002,
+          "rejects": 0,
+          "launches": 207,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 284830,
+          "seconds": 114.48333333333333,
+          "heatFromShots": 362,
+          "rejects": 0,
+          "launches": 198,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 376720,
+          "seconds": 133.775,
+          "heatFromShots": 425.99999999999983,
+          "rejects": 0,
+          "launches": 234,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four-wobble",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 414360,
+          "seconds": 135.16666666666666,
+          "heatFromShots": 424,
+          "rejects": 1,
+          "launches": 235,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 340940,
+          "seconds": 129.48333333333332,
+          "heatFromShots": 416,
+          "rejects": 0,
+          "launches": 227,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 300090,
+          "seconds": 111.30833333333334,
+          "heatFromShots": 343.4499999999998,
+          "rejects": 1,
+          "launches": 194,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 213950,
+          "seconds": 113.59166666666667,
+          "heatFromShots": 362,
+          "rejects": 0,
+          "launches": 197,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 282030,
+          "seconds": 123.4,
+          "heatFromShots": 384,
+          "rejects": 0,
+          "launches": 214,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 369660,
+          "seconds": 138.575,
+          "heatFromShots": 444,
+          "rejects": 0,
+          "launches": 242,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 252880,
+          "seconds": 116.84166666666667,
+          "heatFromShots": 372.0499999999997,
+          "rejects": 0,
+          "launches": 204,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 311480,
+          "seconds": 119.20833333333333,
+          "heatFromShots": 388,
+          "rejects": 0,
+          "launches": 209,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 201540,
+          "seconds": 112.60833333333333,
+          "heatFromShots": 348,
+          "rejects": 0,
+          "launches": 196,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 334810,
+          "seconds": 132.78333333333333,
+          "heatFromShots": 422,
+          "rejects": 0,
+          "launches": 231,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 250470,
+          "seconds": 119.10833333333333,
+          "heatFromShots": 368,
+          "rejects": 0,
+          "launches": 206,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 352250,
+          "seconds": 132.80833333333334,
+          "heatFromShots": 430,
+          "rejects": 0,
+          "launches": 232,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four-mixed",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 259690,
+          "seconds": 123.075,
+          "heatFromShots": 398,
+          "rejects": 0,
+          "launches": 214,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 111380,
+          "seconds": 90.58333333333333,
+          "heatFromShots": 280,
+          "rejects": 0,
+          "launches": 160,
+          "bestTier": 6,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 358340,
+          "seconds": 138.80833333333334,
+          "heatFromShots": 438,
+          "rejects": 0,
+          "launches": 241,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 197690,
+          "seconds": 105.375,
+          "heatFromShots": 332,
+          "rejects": 0,
+          "launches": 183,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 210240,
+          "seconds": 98.58333333333333,
+          "heatFromShots": 302,
+          "rejects": 0,
+          "launches": 171,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 238500,
+          "seconds": 121.1,
+          "heatFromShots": 384,
+          "rejects": 0,
+          "launches": 211,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 361210,
+          "seconds": 127.325,
+          "heatFromShots": 412,
+          "rejects": 0,
+          "launches": 222,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 296770,
+          "seconds": 125.06666666666666,
+          "heatFromShots": 418,
+          "rejects": 0,
+          "launches": 219,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 202920,
+          "seconds": 94.45833333333333,
+          "heatFromShots": 286,
+          "rejects": 0,
+          "launches": 165,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 214670,
+          "seconds": 113.825,
+          "heatFromShots": 370,
+          "rejects": 0,
+          "launches": 198,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 244110,
+          "seconds": 112.9,
+          "heatFromShots": 352.51666666666654,
+          "rejects": 0,
+          "launches": 196,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 282680,
+          "seconds": 114.14166666666667,
+          "heatFromShots": 366,
+          "rejects": 0,
+          "launches": 200,
+          "bestTier": 7,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "merge-safe",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 459060,
+          "seconds": 136.43333333333334,
+          "heatFromShots": 286,
+          "rejects": 0,
+          "launches": 237,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 533840,
+          "seconds": 143.46666666666667,
+          "heatFromShots": 254,
+          "rejects": 0,
+          "launches": 252,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 756250,
+          "seconds": 153.35,
+          "heatFromShots": 316,
+          "rejects": 0,
+          "launches": 266,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 627230,
+          "seconds": 166.95,
+          "heatFromShots": 348,
+          "rejects": 0,
+          "launches": 289,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 512590,
+          "seconds": 149.66666666666666,
+          "heatFromShots": 264,
+          "rejects": 0,
+          "launches": 260,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 560570,
+          "seconds": 146.24166666666667,
+          "heatFromShots": 252,
+          "rejects": 0,
+          "launches": 255,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 979680,
+          "seconds": 220.28333333333333,
+          "heatFromShots": 432,
+          "rejects": 0,
+          "launches": 385,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 995520,
+          "seconds": 204.10833333333332,
+          "heatFromShots": 420,
+          "rejects": 0,
+          "launches": 357,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 434040,
+          "seconds": 123.35,
+          "heatFromShots": 206,
+          "rejects": 0,
+          "launches": 215,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 1585230,
+          "seconds": 277.15,
+          "heatFromShots": 572,
+          "rejects": 0,
+          "launches": 481,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 648770,
+          "seconds": 167.40833333333333,
+          "heatFromShots": 328,
+          "rejects": 0,
+          "launches": 291,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 543520,
+          "seconds": 140.50833333333333,
+          "heatFromShots": 266,
+          "rejects": 0,
+          "launches": 245,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four-wide",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 291530,
+          "seconds": 115.64166666666667,
+          "heatFromShots": 322,
+          "rejects": 0,
+          "launches": 201,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 447660,
+          "seconds": 144.45833333333334,
+          "heatFromShots": 394,
+          "rejects": 0,
+          "launches": 253,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 436890,
+          "seconds": 139.86666666666667,
+          "heatFromShots": 398,
+          "rejects": 0,
+          "launches": 243,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 515210,
+          "seconds": 156.13333333333333,
+          "heatFromShots": 438.6999999999998,
+          "rejects": 0,
+          "launches": 271,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 178390,
+          "seconds": 100.01666666666667,
+          "heatFromShots": 286,
+          "rejects": 0,
+          "launches": 174,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 434940,
+          "seconds": 134.76666666666668,
+          "heatFromShots": 368,
+          "rejects": 0,
+          "launches": 235,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 225400,
+          "seconds": 123.175,
+          "heatFromShots": 358,
+          "rejects": 0,
+          "launches": 215,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 287150,
+          "seconds": 123.73333333333333,
+          "heatFromShots": 351.88333333333367,
+          "rejects": 0,
+          "launches": 217,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 394300,
+          "seconds": 134.8,
+          "heatFromShots": 369.48333333333335,
+          "rejects": 0,
+          "launches": 235,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 288170,
+          "seconds": 120.725,
+          "heatFromShots": 328,
+          "rejects": 0,
+          "launches": 210,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 296540,
+          "seconds": 126.23333333333333,
+          "heatFromShots": 340.8999999999998,
+          "rejects": 0,
+          "launches": 219,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 371680,
+          "seconds": 133.5,
+          "heatFromShots": 370,
+          "rejects": 0,
+          "launches": 233,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four-margin",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 246350,
+          "seconds": 153.225,
+          "heatFromShots": 370,
+          "rejects": 0,
+          "launches": 206,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 157630,
+          "seconds": 129.91666666666666,
+          "heatFromShots": 306,
+          "rejects": 2,
+          "launches": 177,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 324370,
+          "seconds": 162.725,
+          "heatFromShots": 406,
+          "rejects": 0,
+          "launches": 220,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 487470,
+          "seconds": 200.175,
+          "heatFromShots": 496,
+          "rejects": 0,
+          "launches": 269,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 348230,
+          "seconds": 156.95833333333334,
+          "heatFromShots": 382,
+          "rejects": 0,
+          "launches": 211,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 258810,
+          "seconds": 143.625,
+          "heatFromShots": 358,
+          "rejects": 0,
+          "launches": 195,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 165520,
+          "seconds": 131.33333333333334,
+          "heatFromShots": 319.3666666666669,
+          "rejects": 0,
+          "launches": 178,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 370620,
+          "seconds": 184.46666666666667,
+          "heatFromShots": 468,
+          "rejects": 0,
+          "launches": 250,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 163280,
+          "seconds": 143.75,
+          "heatFromShots": 350,
+          "rejects": 0,
+          "launches": 194,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 273920,
+          "seconds": 157.9,
+          "heatFromShots": 390,
+          "rejects": 0,
+          "launches": 213,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 236610,
+          "seconds": 133.38333333333333,
+          "heatFromShots": 318,
+          "rejects": 0,
+          "launches": 179,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 274990,
+          "seconds": 142.39166666666668,
+          "heatFromShots": 344,
+          "rejects": 1,
+          "launches": 193,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "random-margin",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 343080,
+          "seconds": 167.9,
+          "heatFromShots": 132,
+          "rejects": 0,
+          "launches": 226,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 228150,
+          "seconds": 146,
+          "heatFromShots": 124,
+          "rejects": 0,
+          "launches": 198,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 268400,
+          "seconds": 156.81666666666666,
+          "heatFromShots": 126,
+          "rejects": 0,
+          "launches": 212,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 251750,
+          "seconds": 143.64166666666668,
+          "heatFromShots": 130,
+          "rejects": 0,
+          "launches": 193,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 176880,
+          "seconds": 142.50833333333333,
+          "heatFromShots": 86,
+          "rejects": 0,
+          "launches": 192,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 318850,
+          "seconds": 165.20833333333334,
+          "heatFromShots": 144,
+          "rejects": 0,
+          "launches": 223,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 176160,
+          "seconds": 127.00833333333334,
+          "heatFromShots": 102,
+          "rejects": 0,
+          "launches": 172,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 269830,
+          "seconds": 151.88333333333333,
+          "heatFromShots": 114,
+          "rejects": 0,
+          "launches": 206,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 258270,
+          "seconds": 155.15,
+          "heatFromShots": 110,
+          "rejects": 0,
+          "launches": 210,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 217680,
+          "seconds": 142.86666666666667,
+          "heatFromShots": 98,
+          "rejects": 0,
+          "launches": 193,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 412890,
+          "seconds": 172.40833333333333,
+          "heatFromShots": 122,
+          "rejects": 0,
+          "launches": 232,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 273610,
+          "seconds": 170.025,
+          "heatFromShots": 124,
+          "rejects": 0,
+          "launches": 230,
+          "bestTier": 7,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four-interrupted",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 389610,
+          "seconds": 131.88333333333333,
+          "heatFromShots": 224,
+          "rejects": 0,
+          "launches": 229,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 354610,
+          "seconds": 122.78333333333333,
+          "heatFromShots": 204,
+          "rejects": 0,
+          "launches": 216,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 231460,
+          "seconds": 103.98333333333333,
+          "heatFromShots": 172,
+          "rejects": 0,
+          "launches": 181,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 202640,
+          "seconds": 112.925,
+          "heatFromShots": 182.59999999999977,
+          "rejects": 0,
+          "launches": 196,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 207510,
+          "seconds": 115.30833333333334,
+          "heatFromShots": 196,
+          "rejects": 0,
+          "launches": 201,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 213410,
+          "seconds": 120.23333333333333,
+          "heatFromShots": 202,
+          "rejects": 0,
+          "launches": 210,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 143350,
+          "seconds": 93.99166666666666,
+          "heatFromShots": 156,
+          "rejects": 0,
+          "launches": 164,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 224400,
+          "seconds": 119.49166666666666,
+          "heatFromShots": 210,
+          "rejects": 0,
+          "launches": 209,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 252770,
+          "seconds": 117.175,
+          "heatFromShots": 188,
+          "rejects": 0,
+          "launches": 204,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 298900,
+          "seconds": 120.6,
+          "heatFromShots": 204,
+          "rejects": 0,
+          "launches": 210,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 229960,
+          "seconds": 113.55,
+          "heatFromShots": 185.16666666666652,
+          "rejects": 0,
+          "launches": 197,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 407350,
+          "seconds": 141.89166666666668,
+          "heatFromShots": 246,
+          "rejects": 1,
+          "launches": 248,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "four-clumped",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 424970,
+          "seconds": 131.08333333333334,
+          "heatFromShots": 414,
+          "rejects": 0,
+          "launches": 228,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 330390,
+          "seconds": 118.86666666666666,
+          "heatFromShots": 376,
+          "rejects": 0,
+          "launches": 209,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 152100,
+          "seconds": 95.76666666666667,
+          "heatFromShots": 288,
+          "rejects": 0,
+          "launches": 167,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 256660,
+          "seconds": 116.81666666666666,
+          "heatFromShots": 358,
+          "rejects": 0,
+          "launches": 202,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 225100,
+          "seconds": 110.15,
+          "heatFromShots": 346,
+          "rejects": 0,
+          "launches": 192,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 386740,
+          "seconds": 137.04166666666666,
+          "heatFromShots": 444,
+          "rejects": 0,
+          "launches": 239,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 157010,
+          "seconds": 104.80833333333334,
+          "heatFromShots": 326,
+          "rejects": 0,
+          "launches": 183,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 262030,
+          "seconds": 120.75833333333334,
+          "heatFromShots": 392,
+          "rejects": 0,
+          "launches": 211,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 271030,
+          "seconds": 122.14166666666667,
+          "heatFromShots": 384,
+          "rejects": 0,
+          "launches": 213,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 305480,
+          "seconds": 133.76666666666668,
+          "heatFromShots": 432,
+          "rejects": 0,
+          "launches": 233,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 307980,
+          "seconds": 131.56666666666666,
+          "heatFromShots": 416,
+          "rejects": 0,
+          "launches": 228,
+          "bestTier": 7,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 175350,
+          "seconds": 91.225,
+          "heatFromShots": 276,
+          "rejects": 0,
+          "launches": 159,
+          "bestTier": 7,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "fixed",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 6640,
+          "seconds": 18.208333333333332,
+          "heatFromShots": 265.6999999999995,
+          "rejects": 0,
+          "launches": 33,
+          "bestTier": 4,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 38520,
+          "seconds": 33.46666666666667,
+          "heatFromShots": 584.6666666666652,
+          "rejects": 0,
+          "launches": 60,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 24660,
+          "seconds": 32.833333333333336,
+          "heatFromShots": 501.23333333333005,
+          "rejects": 0,
+          "launches": 58,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 8900,
+          "seconds": 22.925,
+          "heatFromShots": 345.0833333333309,
+          "rejects": 0,
+          "launches": 41,
+          "bestTier": 4,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 27390,
+          "seconds": 34.95,
+          "heatFromShots": 573.9666666666644,
+          "rejects": 0,
+          "launches": 61,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 13710,
+          "seconds": 22.325,
+          "heatFromShots": 318.93333333333067,
+          "rejects": 0,
+          "launches": 40,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 33140,
+          "seconds": 29.666666666666668,
+          "heatFromShots": 584.4833333333257,
+          "rejects": 0,
+          "launches": 52,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1908,
+          "score": 18220,
+          "seconds": 25.566666666666666,
+          "heatFromShots": 415.4833333333281,
+          "rejects": 0,
+          "launches": 46,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 49930,
+          "seconds": 38.99166666666667,
+          "heatFromShots": 696.9499999999942,
+          "rejects": 0,
+          "launches": 68,
+          "bestTier": 6,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 13090,
+          "seconds": 22.458333333333332,
+          "heatFromShots": 430.26666666666273,
+          "rejects": 0,
+          "launches": 40,
+          "bestTier": 4,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 20400,
+          "seconds": 29.025,
+          "heatFromShots": 445.98333333332954,
+          "rejects": 0,
+          "launches": 51,
+          "bestTier": 5,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 7700,
+          "seconds": 22.175,
+          "heatFromShots": 306.8999999999975,
+          "rejects": 0,
+          "launches": 39,
+          "bestTier": 4,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "strategy": "curve-aim",
+      "runs": [
+        {
+          "seed": 1901,
+          "score": 590540,
+          "seconds": 151.95,
+          "heatFromShots": 232,
+          "rejects": 0,
+          "launches": 264,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1902,
+          "score": 517010,
+          "seconds": 147.875,
+          "heatFromShots": 142,
+          "rejects": 0,
+          "launches": 259,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1903,
+          "score": 492520,
+          "seconds": 146.44166666666666,
+          "heatFromShots": 140,
+          "rejects": 0,
+          "launches": 254,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1904,
+          "score": 1075350,
+          "seconds": 225.99166666666667,
+          "heatFromShots": 254,
+          "rejects": 0,
+          "launches": 391,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1905,
+          "score": 1105200,
+          "seconds": 224.61666666666667,
+          "heatFromShots": 260,
+          "rejects": 0,
+          "launches": 390,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1906,
+          "score": 1481770,
+          "seconds": 287.2083333333333,
+          "heatFromShots": 320,
+          "rejects": 0,
+          "launches": 501,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1907,
+          "score": 1603100,
+          "seconds": 300,
+          "heatFromShots": 332,
+          "rejects": 0,
+          "launches": 522,
+          "bestTier": 8,
+          "timedOut": true
+        },
+        {
+          "seed": 1908,
+          "score": 711770,
+          "seconds": 169.25,
+          "heatFromShots": 182,
+          "rejects": 0,
+          "launches": 296,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1909,
+          "score": 756120,
+          "seconds": 183.68333333333334,
+          "heatFromShots": 270,
+          "rejects": 0,
+          "launches": 319,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1910,
+          "score": 557100,
+          "seconds": 162.99166666666667,
+          "heatFromShots": 146,
+          "rejects": 0,
+          "launches": 283,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1911,
+          "score": 1153360,
+          "seconds": 235.65833333333333,
+          "heatFromShots": 318,
+          "rejects": 0,
+          "launches": 408,
+          "bestTier": 8,
+          "timedOut": false
+        },
+        {
+          "seed": 1912,
+          "score": 573780,
+          "seconds": 147.425,
+          "heatFromShots": 176,
+          "rejects": 0,
+          "launches": 258,
+          "bestTier": 8,
+          "timedOut": false
+        }
+      ]
+    }
+  ]
+}

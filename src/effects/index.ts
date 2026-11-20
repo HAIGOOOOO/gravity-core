@@ -7,6 +7,7 @@ import { REDUCED_RING_SECONDS } from './motion';
 import { createEffectPool, type EffectPool } from './pool';
 import { createPresentation } from './presentation';
 import { readTheme } from './theme';
+import { createCoolingReceipt } from './cooling';
 
 const pools = new WeakMap<HTMLCanvasElement, EffectPool>();
 
@@ -29,8 +30,10 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
   const events = createEventEffects(pool, theme);
   const presentation = createPresentation(shakeTarget, theme);
   const juice = createJuiceLayer();
+  const cooling = createCoolingReceipt();
 
   return {
+    timeScale: juice.timeScale,
     resize(cssSize) {
       fitCanvas(canvas, cssSize);
       Object.assign(theme, readTheme(canvas));
@@ -38,10 +41,11 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
     handleEvents(batch, snapshot) {
       void snapshot;
       for (const event of batch) {
-        events.handle(event);
+        if (event.kind !== 'merge' && event.kind !== 'supernova') events.handle(event);
         juice.handle(event);
+        cooling.handle(event);
         if (event.kind === 'merge' || event.kind === 'supernova') {
-          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova');
+          presentation.shake(event.sourceTier ?? 0, event.kind === 'supernova', event.chain ?? 1);
         }
       }
     },
@@ -50,6 +54,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       events.update(seconds);
       juice.update(seconds);
       presentation.update(seconds);
+      cooling.update(seconds);
     },
     draw() {
       if (!ctx) return;
@@ -61,6 +66,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       events.draw(ctx);
       drawPool(ctx, pool, theme);
       presentation.draw(ctx);
+      cooling.draw(ctx, theme);
       ctx.restore();
     },
     playGameOver() { presentation.gameOver(); },
@@ -81,6 +87,7 @@ export function createEffectsLayer(canvas: HTMLCanvasElement, shakeTarget: HTMLE
       events.clear();
       juice.clear();
       presentation.clear();
+      cooling.clear();
       pool.clear();
       if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);

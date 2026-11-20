@@ -1,11 +1,11 @@
 import type { Tier } from '../contracts/game';
-import { BOARD_SIZE, CORE_RADIUS, GAMEOVER_SECONDS } from '../game/constants';
+import { BOARD_SIZE, CORE_RADIUS, GAMEOVER_SECONDS, LIMIT_RADIUS } from '../game/constants';
 import { VISUAL } from './appearance';
 import { lifeProgress, safeDelta } from './motion';
 import type { EffectTheme } from './theme';
 
 const SHAKE_SECONDS = 0.1;
-const END_RADIUS = 120;
+const END_RADIUS = LIMIT_RADIUS * 0.85;
 const END_DIM = 0.6;
 
 export function shakeSize(tier: Tier, nova: boolean): number {
@@ -20,6 +20,7 @@ export function createPresentation(target: HTMLElement, theme: EffectTheme) {
   let originalTransform: string | null = null;
   let shakeLeft = 0;
   let shakePower = 0;
+  let shakeDuration = SHAKE_SECONDS;
   let endingAge = Infinity;
   let reduced = false;
 
@@ -31,13 +32,14 @@ export function createPresentation(target: HTMLElement, theme: EffectTheme) {
   }
 
   return {
-    shake(tier: Tier, nova: boolean): void {
-      const power = shakeSize(tier, nova);
+    shake(tier: Tier, nova: boolean, chain?: number): void {
+      const power = chain === undefined ? shakeSize(tier, nova) : nova ? 23 : 3 + Math.min(5, chain) * 2.6 + tier * .6;
       if (reduced || power === 0) return;
       // 連打の途中で現在の揺れを基準にすると位置がずれるため、最初の値だけ保存する。
       if (originalTransform === null) originalTransform = target.style.transform;
       shakePower = Math.max(shakePower, power);
-      shakeLeft = SHAKE_SECONDS;
+      shakeDuration = chain === undefined ? SHAKE_SECONDS : nova ? .55 : .18 + Math.min(5, chain) * .035;
+      shakeLeft = shakeDuration;
     },
     gameOver(): void { endingAge = reduced ? Infinity : 0; },
     update(seconds: number): void {
@@ -46,7 +48,7 @@ export function createPresentation(target: HTMLElement, theme: EffectTheme) {
       if (shakeLeft <= 0) return;
       shakeLeft = Math.max(0, shakeLeft - dt);
       if (shakeLeft === 0) { restore(); return; }
-      const power = shakePower * (shakeLeft / SHAKE_SECONDS);
+      const power = shakePower * (shakeLeft / shakeDuration);
       const x = (Math.random() * 2 - 1) * power;
       const y = (Math.random() * 2 - 1) * power;
       target.style.transform = `translate(${x}px, ${y}px) ${originalTransform ?? ''}`.trim();

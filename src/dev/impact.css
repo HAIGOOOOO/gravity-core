@@ -1,0 +1,21 @@
+:root { color-scheme: dark; color: #eeede8; background: #05060a; font: 15px "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1060px; margin: auto; padding: 20px 22px 40px; }
+header { display: flex; align-items: center; justify-content: space-between; }
+h1 { font-size: 26px; font-weight: 600; }
+a { color: #a9c2ff; }
+button { color: inherit; font: inherit; cursor: pointer; padding: 9px 12px; min-height: 44px; border: 1px solid #45484e; background: #05060a; }
+button[aria-pressed="true"] { border-bottom: 3px dotted #a9c2ff; }
+button:disabled { cursor: default; opacity: .5; }
+button:focus-visible, a:focus-visible { outline: 2px solid #a9c2ff; outline-offset: 3px; }
+#demo-controls, .playback { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 10px; }
+.playback label { display: inline-flex; align-items: center; gap: 5px; padding: 9px 0; }
+#status { font-family: ui-monospace, monospace; font-size: 13px; min-height: 20px; }
+.impact-stage { position: relative; width: min(100%, 640px); aspect-ratio: 1; margin: 12px auto; }
+.impact-stage canvas { width: 100%; height: 100%; position: absolute; inset: 0; }
+#effects { pointer-events: none; }
+#exports { display: flex; flex-wrap: wrap; gap: 16px; }
+video { width: min(100%, 720px); }
+.note, #record-status { font-size: 13px; color: #a8a79f; }
+@media (max-width:520px) { main { padding: 12px 14px 30px; } h1 { font-size: 21px; } header { gap: 12px; } button { font-size: 13px; } }

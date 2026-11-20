@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>合体の衝撃 | GRAVITY CORE</title></head>
+<body>
+<main>
+  <header><a href="../">ゲームで遊ぶ</a><h1>合体の衝撃</h1></header>
+  <div id="demo-controls" role="group" aria-label="場面">
+    <button data-scene="merge" aria-pressed="true">合体1回</button>
+    <button data-scene="chain" aria-pressed="false">実計算の5連鎖</button>
+    <button data-scene="nova" aria-pressed="false">超新星</button>
+  </div>
+  <div class="playback"><button id="again">最初から再生</button><button id="pause">一時停止</button><button id="freeze">衝撃波を止めて見る</button><button id="record">5秒を録画</button><label><input id="reduced" type="checkbox"> 動きを減らす</label></div>
+  <p id="status" role="status"></p>
+  <div class="impact-stage"><canvas id="board" aria-label="実際の物理計算の盤面"></canvas><canvas id="effects" aria-label="本体と共通の演出"></canvas></div>
+  <p id="record-status" role="status"></p><nav id="exports" aria-label="録画の保存"></nav>
+  <video id="recording" controls muted playsinline hidden></video>
+  <p class="note">固定した初期配置を本物の物理で動かし、ゲーム本体と同じ演出を呼びます。</p>
+</main>
+<script type="module" src="../src/dev/impact-demo.ts"></script>
+</body>
+</html>
