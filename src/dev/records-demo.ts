@@ -5,6 +5,7 @@ import { createBoardRenderer } from '../render';
 import { encodeReplayShare } from '../share';
 import type { RecordSample } from './records.worker';
 import { showLegacyComparison } from './records-legacy';
+import { select as selectHistorySample } from './records-history';
 
 const node = (id: string) => document.getElementById(id)!;
 const status = node('record-status');
@@ -29,6 +30,7 @@ function draw(): void {
 
 function show(sample: RecordSample, duration: 30 | 120, compareLegacy: boolean): void {
   selected = sample;
+  selectHistorySample(sample);
   const { snapshot, detail } = sample;
   node('record-score').textContent = `${detail.score.toLocaleString('ja-JP')}点`;
   node('record-tier').textContent = `到達した天体　${TIER_NAMES[detail.bestTier]}`;

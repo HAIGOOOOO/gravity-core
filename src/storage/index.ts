@@ -10,3 +10,5 @@ export type { RunDetailMeta, RunDetailV1, StoredRunDetail, StatsArchive } from '
 export { defaultStatsArchive, detailFromRecord, migrateStatsArchive, readRunDetail } from './archive';
 export { summarizeTrend } from './trend';
 export type { MetricTrend, RunTrend } from './trend';
+export { RUN_ARCHIVE_KEY, RUN_ARCHIVE_BACKUP_KEY, MAX_SAVED_REPLAYS, MAX_RUN_ARCHIVE_CHARS, createRunStore } from './runs';
+export type { SavedRunEntry, RunArchive, RunBundle, SaveRunResult, RunStore } from './runs';
