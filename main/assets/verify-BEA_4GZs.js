@@ -1,0 +1,1 @@
+import"./constants-BSqsUWnw.js";import"./simulation-BRI03I-E.js";import{c as e,l as t,u as n}from"./highlights-D6He4gIk.js";function r(n){let r=t(n);return r.ok&&r.play.rulesVersion!==e?{ok:!1,reason:`rulesMismatch`}:r}function i(t){return t.setup!==void 0||t.rulesVersion!==e?``:n(t)}export{i as n,r as t};
