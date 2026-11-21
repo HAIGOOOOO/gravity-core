@@ -9,7 +9,7 @@ import { STATS_KEY } from './history';
 import { SAVE_KEY } from './save';
 import { defaultSaveData } from './data';
 import { MAX_STATS_RUNS } from './stats';
-import { createRunStore, RUN_ARCHIVE_KEY, RUN_ARCHIVE_BACKUP_KEY, MAX_SAVED_REPLAYS, MAX_RUN_ARCHIVE_CHARS } from './runs';
+import { createRunStore, RUN_ARCHIVE_KEY, RUN_ARCHIVE_BACKUP_KEY, RUN_ARCHIVE_CORRUPT_KEY, MAX_SAVED_REPLAYS, MAX_RUN_ARCHIVE_CHARS } from './runs';
 
 function storage() {
   const values = new Map<string, string>();
@@ -35,13 +35,60 @@ const base = fixture();
 function identified(index: number) {
   const id = `run-${index}`;
   const playedAt = new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
-  return { record: { ...base.record, id, playedAt }, detail: { ...base.detail, id, playedAt }, replay: base.replay };
+  return { record: { ...base.record, id, playedAt }, detail: { ...base.detail, id, playedAt }, replay: base.replay, final: base.final };
 }
 
 describe('プレイを一つに保存する', () => {
-  it('同じidの記録・統計・再生を1キーに保存し、共有は再生から導出する', () => {
+  it('新形式保存後に旧キーへ増えたidも読取時に取り込み、旧キーとprimaryは変更しない', async () => {
     const disk = storage(); const store = createRunStore(disk);
-    expect(store.add(base)).toEqual({ ok: true, persisted: true });
+    await store.add(base);
+    const primary = disk.values.get(RUN_ARCHIVE_KEY);
+    const later = identified(2);
+    const oldStats = JSON.stringify({ version: 2, runs: [later.detail] });
+    const oldSave = JSON.stringify({ ...defaultSaveData(), records: [later.record] });
+    disk.values.set(STATS_KEY, oldStats); disk.values.set(SAVE_KEY, oldSave);
+    const reopened = createRunStore(disk);
+    expect(reopened.load().runs.map(row => row.id).sort()).toEqual([base.record.id, later.record.id].sort());
+    expect(reopened.get(later.record.id)).toMatchObject({ record: later.record, detail: later.detail, replay: null });
+    expect(disk.values.get(RUN_ARCHIVE_KEY)).toBe(primary);
+    expect(disk.values.get(STATS_KEY)).toBe(oldStats);
+    expect(disk.values.get(SAVE_KEY)).toBe(oldSave);
+  });
+
+  it('別タブが先にloadしても、同時保存した別idを両方残す', async () => {
+    const disk = storage(); const a = createRunStore(disk); const b = createRunStore(disk);
+    a.load(); b.load();
+    const results = await Promise.all([a.add(identified(1)), b.add(identified(2))]);
+    expect(results).toEqual([{ ok: true, persisted: true }, { ok: true, persisted: true }]);
+    expect(createRunStore(disk).load().runs.map(row => row.id)).toEqual(['run-1', 'run-2']);
+  });
+  it('記録と統計のbestTierを一緒に変えても最終盤面と違えば拒否する', async () => {
+    const store = createRunStore(storage()); await store.add(base);
+    expect(await store.add({ ...base,
+      record: { ...base.record, bestTier: base.record.bestTier + 1 },
+      detail: { ...base.detail, bestTier: base.detail.bestTier + 1 },
+    })).toEqual({ ok: false, reason: 'mismatch' });
+    expect(store.get(base.record.id)?.detail).toEqual(base.detail);
+  });
+  it('primaryが壊れても有効backupから復旧し、保存時も正常backupを維持する', async () => {
+    const disk = storage(); const original = createRunStore(disk);
+    await original.add(base);
+    const backup = disk.values.get(RUN_ARCHIVE_KEY)!;
+    disk.values.set(RUN_ARCHIVE_BACKUP_KEY, backup);
+    disk.values.set(RUN_ARCHIVE_KEY, '{broken');
+    const before = new Map(disk.values); const recovered = createRunStore(disk);
+    expect(recovered.get(base.record.id)?.detail).toEqual(base.detail);
+    expect(recovered.replay(base.record.id)).toEqual(base.replay);
+    expect(disk.values).toEqual(before);
+    expect(await recovered.add(identified(2))).toEqual({ ok: true, persisted: true });
+    expect(disk.values.get(RUN_ARCHIVE_BACKUP_KEY)).toBe(backup);
+    expect(disk.values.get(RUN_ARCHIVE_CORRUPT_KEY)).toBe('{broken');
+    expect(createRunStore(disk).load().runs).toHaveLength(2);
+  });
+
+  it('同じidの記録・統計・再生を1キーに保存し、共有は再生から導出する', async () => {
+    const disk = storage(); const store = createRunStore(disk);
+    expect(await store.add(base)).toEqual({ ok: true, persisted: true });
     expect([...disk.values.keys()]).toEqual([RUN_ARCHIVE_KEY]);
     const reopened = createRunStore(disk);
     expect(reopened.load().version).toBe(1);
@@ -55,35 +102,36 @@ describe('プレイを一つに保存する', () => {
     expect(reopened.replay('missing')).toBeNull();
     expect(reopened.share('missing')).toBe('');
   });
-  it('同じidは置き換え、sampleの指定も保持する', () => {
-    const store = createRunStore(storage()); store.add(base);
-    expect(store.add({ ...base, record: { ...base.record, name: 'RENAMED' }, sample: true }).ok).toBe(true);
+  it('同じidは置き換え、sampleの指定も保持する', async () => {
+    const store = createRunStore(storage()); await store.add(base);
+    expect((await store.add({ ...base, record: { ...base.record, name: 'RENAMED' }, sample: true })).ok).toBe(true);
     expect(store.load().runs).toHaveLength(1);
     expect(store.get(base.record.id)).toMatchObject({ record: { name: 'RENAMED' }, sample: true });
   });
   it.each(['id', 'seed', 'score', 'seconds', 'launches', 'merges', 'supernovas', 'maxChain'] as const)(
-    '%sが食い違う追加を拒否し、直前の保存を維持する', (field) => {
-      const disk = storage(); const store = createRunStore(disk); store.add(base);
+    '%sが食い違う追加を拒否し、直前の保存を維持する', async (field) => {
+      const disk = storage(); const store = createRunStore(disk); await store.add(base);
       const previous = disk.values.get(RUN_ARCHIVE_KEY);
       const changed = field === 'id' ? { ...base.detail, id: 'another' }
         : { ...base.detail, [field]: base.detail[field] + 1 };
-      expect(store.add({ ...base, detail: changed })).toEqual({ ok: false, reason: 'mismatch' });
+      expect(await store.add({ ...base, detail: changed })).toEqual({ ok: false, reason: 'mismatch' });
       expect(disk.values.get(RUN_ARCHIVE_KEY)).toBe(previous);
       expect(store.get(base.record.id)?.detail).toEqual(base.detail);
     });
-  it('再生側だけのseed・得点・statsの食い違いも拒否する', () => {
-    const store = createRunStore(storage()); store.add(base);
+  it('再生側だけのseed・得点・statsの食い違いも拒否する', async () => {
+    const store = createRunStore(storage()); await store.add(base);
     for (const replay of [
       { ...base.replay, seed: base.replay.seed + 1 },
       { ...base.replay, finalScore: base.replay.finalScore + 1 },
+      { ...base.replay, finalBodyCount: base.replay.finalBodyCount + 1 },
       { ...base.replay, stats: { ...base.replay.stats, launches: base.replay.stats.launches + 1 } },
-    ]) expect(store.add({ ...base, replay })).toEqual({ ok: false, reason: 'mismatch' });
+    ]) expect(await store.add({ ...base, replay })).toEqual({ ok: false, reason: 'mismatch' });
     expect(store.replay(base.record.id)).toEqual(base.replay);
   });
-  it('空idの壊れた記録を拒否する', () => {
-    expect(createRunStore(null).add({ ...base, record: { ...base.record, id: '' } })).toEqual({ ok: false, reason: 'invalid' });
+  it('空idの壊れた記録を拒否する', async () => {
+    expect(await createRunStore(null).add({ ...base, record: { ...base.record, id: '' } })).toEqual({ ok: false, reason: 'invalid' });
   });
-  it('履歴1000件を残し、再生は新しい100件だけ保持する', () => {
+  it('履歴1000件を残し、再生は新しい100件だけ保持する', async () => {
     const disk = storage();
     const runs = Array.from({ length: MAX_STATS_RUNS }, (_, i) => {
       const item = identified(i);
@@ -91,7 +139,7 @@ describe('プレイを一つに保存する', () => {
     });
     disk.values.set(RUN_ARCHIVE_KEY, JSON.stringify({ version: 1, runs }));
     const store = createRunStore(disk);
-    expect(store.add(identified(MAX_STATS_RUNS)).ok).toBe(true);
+    expect((await store.add(identified(MAX_STATS_RUNS))).ok).toBe(true);
     const rows = store.load().runs;
     expect(rows).toHaveLength(MAX_STATS_RUNS);
     expect(rows.filter(row => row.replay !== null)).toHaveLength(MAX_SAVED_REPLAYS);
@@ -99,7 +147,7 @@ describe('プレイを一つに保存する', () => {
     expect(store.replay('run-1')).toBeNull();
     expect(store.replay(`run-${MAX_STATS_RUNS}`)).not.toBeNull();
   });
-  it.each([1, 2])('旧統計の版%sと旧ランキングを移し、元キーと不明nullを保つ', (version) => {
+  it.each([1, 2])('旧統計の版%sと旧ランキングを移し、元キーと不明nullを保つ', async (version) => {
     const disk = storage();
     disk.values.set(STATS_KEY, JSON.stringify({ version, runs: [base.detail] }));
     const old = { ...base.record, id: 'legacy-only' };
@@ -111,26 +159,58 @@ describe('プレイを一つに保存する', () => {
     expect(store.get(old.id)?.detail).toMatchObject({ lands: null, maxImpactSpeed: null, mergesByTier: null });
     for (const [key, value] of originals) expect(disk.values.get(key)).toBe(value);
   });
-  it('壊れたcanonical JSONを退避して読み込みを継続する', () => {
+  it('読込は破損JSONも書き換えず、正常addで原文を退避してから保存する', async () => {
     const disk = storage(); disk.values.set(RUN_ARCHIVE_KEY, '{broken');
-    expect(createRunStore(disk).load().runs).toEqual([]);
+    const writes: string[] = [];
+    const store = createRunStore({ getItem: disk.getItem, setItem(key, value) { writes.push(key); disk.setItem(key, value); } });
+    expect(store.load().runs).toEqual([]);
+    expect(store.get('missing')).toBeNull();
+    expect(store.share('missing')).toBe('');
+    expect(writes).toEqual([]);
+    expect(await store.add(base)).toEqual({ ok: true, persisted: true });
+    expect(writes).toEqual([RUN_ARCHIVE_BACKUP_KEY, RUN_ARCHIVE_KEY]);
     expect(disk.values.get(RUN_ARCHIVE_BACKUP_KEY)).toBe('{broken');
   });
-  it('保存拒否時もメモリで続け、persisted:falseを返す', () => {
+  it('退避に失敗したらprimaryを維持し、メモリだけ継続する', async () => {
+    const disk = storage(); disk.values.set(RUN_ARCHIVE_KEY, '{broken');
+    const store = createRunStore({ getItem: disk.getItem, setItem(key, value) {
+      if (key === RUN_ARCHIVE_BACKUP_KEY) throw new Error('backup denied');
+      disk.setItem(key, value);
+    } });
+    expect(await store.add(base)).toEqual({ ok: true, persisted: false });
+    expect(disk.values.get(RUN_ARCHIVE_KEY)).toBe('{broken');
+    expect(store.replay(base.record.id)).toEqual(base.replay);
+  });
+  it('読取拒否時は書込だけ可能でも既存保存を上書きしない', async () => {
+    const writes: string[] = [];
+    const store = createRunStore({ getItem() { throw new Error('read denied'); }, setItem(key) { writes.push(key); } });
+    expect(await store.add(base)).toEqual({ ok: true, persisted: false });
+    expect(writes).toEqual([]);
+    expect(store.get(base.record.id)?.detail).toEqual(base.detail);
+  });
+  it('未来版は読込でもaddでも書き換えない', async () => {
+    const disk = storage(); const raw = JSON.stringify({ version: 2, runs: [] });
+    disk.values.set(RUN_ARCHIVE_KEY, raw);
+    const store = createRunStore(disk);
+    expect(store.load().runs).toEqual([]);
+    expect(await store.add(base)).toEqual({ ok: false, reason: 'invalid' });
+    expect([...disk.values.entries()]).toEqual([[RUN_ARCHIVE_KEY, raw]]);
+  });
+  it('保存拒否時もメモリで続け、persisted:falseを返す', async () => {
     const denied = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
     const store = createRunStore(denied);
-    expect(store.add(base)).toEqual({ ok: true, persisted: false });
+    expect(await store.add(base)).toEqual({ ok: true, persisted: false });
     expect(store.replay(base.record.id)).toEqual(base.replay);
     expect(store.get(base.record.id)?.detail).toEqual(base.detail);
   });
-  it('古いルールの記録を残すが共有文字列は作らない', () => {
+  it('古いルールの記録を残すが共有文字列は作らない', async () => {
     const store = createRunStore(storage());
     const replay = { ...base.replay, rulesVersion: 'r0.00000000' };
-    expect(store.add({ ...base, replay }).ok).toBe(true);
+    expect((await store.add({ ...base, replay })).ok).toBe(true);
     expect(store.replay(base.record.id)).toEqual(replay);
     expect(store.share(base.record.id)).toBe('');
   });
-  it('履歴本体だけで容量上限を超える時は追加を拒否し、既存保存を維持する', () => {
+  it('履歴本体だけで容量上限を超える時は追加を拒否し、既存保存を維持する', async () => {
     const disk = storage();
     const runs = Array.from({ length: MAX_STATS_RUNS }, (_, i) => {
       const item = identified(i);
@@ -142,7 +222,7 @@ describe('プレイを一つに保存する', () => {
     expect(previous.length).toBeGreaterThan(MAX_RUN_ARCHIVE_CHARS);
     disk.values.set(RUN_ARCHIVE_KEY, previous);
     const store = createRunStore(disk);
-    expect(store.add(identified(MAX_STATS_RUNS))).toEqual({ ok: false, reason: 'tooLarge' });
+    expect(await store.add(identified(MAX_STATS_RUNS))).toEqual({ ok: false, reason: 'tooLarge' });
     expect(disk.values.get(RUN_ARCHIVE_KEY)).toBe(previous);
   });
 });
