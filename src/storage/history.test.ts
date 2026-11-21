@@ -108,7 +108,7 @@ describe('統計アーカイブの保存', () => {
     store.add(recorder.finish(snap, { id: 'rec-1', playedAt: '2026-10-10T00:00:00.000Z', gameVersion: '0.1.0' }));
     const archive = store.load();
     expect(archive.runs.map((r) => r.id)).toEqual(['rec-1']);
-    expect(archive.runs[0]?.mergesByTier[0]).toBe(1);
+    expect(archive.runs[0]?.mergesByTier?.[0]).toBe(1);
     const trend = summarizeTrend(archive.runs, 10);
     expect(trend.totalCount).toBe(1);
     expect(trend.score.allTimeBest).toBe(100);
@@ -123,12 +123,12 @@ describe('統計アーカイブの保存', () => {
     const again = store.load();
     expect(again.runs).toHaveLength(1);
     expect(again.runs[0]?.score).toBe(100);
-    expect(again.runs[0]?.mergesByTier[0]).toBe(0);
+    expect(again.runs[0]?.mergesByTier?.[0]).toBe(0);
   });
   it('save も移し替えを通して、壊れた項目を捨ててから書く', () => {
     const store = createStatsStore(fakeStorage());
     store.save({
-      version: 1,
+      version: STATS_VERSION,
       runs: [detail('ok', '2026-10-10T00:00:00.000Z'), { id: 'bad' } as unknown as RunDetailV1],
     });
     expect(store.load().runs.map((r) => r.id)).toEqual(['ok']);
@@ -271,7 +271,7 @@ describe('統計アーカイブの移し替え', () => {
     expect(storage.values.get(STATS_BACKUP_KEY)).toBe('{broken');
     expect(JSON.parse(storage.values.get(STATS_KEY)!)).toEqual(JSON.parse(JSON.stringify(defaultStatsArchive())));
   });
-  it('旧 RunRecord の列を版 1 へ移し、元の値を退避して書き直す', () => {
+  it('旧RunRecord列を版2へ移し、元の値を退避して書き直す', () => {
     const raw = JSON.stringify({ version: 0, runs: [legacyRecord('old-1', '2026-10-10T00:00:00.000Z')] });
     const storage = fakeStorage(raw);
     const archive = createStatsStore(storage).load();
@@ -284,7 +284,7 @@ describe('統計アーカイブの移し替え', () => {
     expect(written.runs.map((r) => r.id)).toEqual(['old-1']);
   });
   it('移せない版の値は捨てて初期値にする', () => {
-    const storage = fakeStorage(JSON.stringify({ version: 2, runs: [{ id: 'x' }] }));
+    const storage = fakeStorage(JSON.stringify({ version: STATS_VERSION + 1, runs: [{ id: 'x' }] }));
     expect(createStatsStore(storage).load()).toEqual(defaultStatsArchive());
   });
 });

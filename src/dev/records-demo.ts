@@ -4,6 +4,8 @@ import { TICK_HZ, TIER_NAMES } from '../game/constants';
 import { createBoardRenderer } from '../render';
 import { encodeReplayShare } from '../share';
 import type { RecordSample } from './records.worker';
+import { showLegacyComparison } from './records-legacy';
+import { select as selectHistorySample } from './records-history';
 
 const node = (id: string) => document.getElementById(id)!;
 const status = node('record-status');
@@ -26,8 +28,9 @@ function draw(): void {
     reducedMotion: true, aimGuide: false, dimmed: false, aim: null });
 }
 
-function show(sample: RecordSample, duration: 30 | 120): void {
+function show(sample: RecordSample, duration: 30 | 120, compareLegacy: boolean): void {
   selected = sample;
+  selectHistorySample(sample);
   const { snapshot, detail } = sample;
   node('record-score').textContent = `${detail.score.toLocaleString('ja-JP')}点`;
   node('record-tier').textContent = `到達した天体　${TIER_NAMES[detail.bestTier]}`;
@@ -62,18 +65,23 @@ function show(sample: RecordSample, duration: 30 | 120): void {
   }
   (node('record-replay') as HTMLAnchorElement).href = `./replay.html#code=${encodeReplayShare(sample.record)}&sample=1`;
   view.hidden = false;
+  showLegacyComparison(detail);
+  (node('legacy-result') as HTMLDetailsElement).open = compareLegacy;
   renderer.resize(node('board').parentElement!.clientWidth);
   draw();
   const url = new URL(location.href);
   url.searchParams.set('sample', String(duration));
+  if (compareLegacy) url.searchParams.set('compare', 'legacy');
+  else url.searchParams.delete('compare');
   try { history.replaceState(null, '', url); }
   catch { /* URLを書けない環境でも、開いている見本の照合は続ける。 */ }
   const matches = detail.score === snapshot.score && detail.bestTier === snapshot.bestTierThisRun;
   status.textContent = matches ? '照合しました。得点と到達した天体は、ゲームが計算した結果と一致しています。'
     : '記録がゲームの結果と一致しません。下の照合表を確認してください。';
+  if (compareLegacy) node('legacy-result').scrollIntoView({ block: 'start' });
 }
 
-function open(seconds: 30 | 120): void {
+function open(seconds: 30 | 120, compareLegacy = false): void {
   stop();
   status.textContent = `${seconds === 30 ? '30秒' : '2分'}の見本を準備中…${selected ? '前の記録は表示したままです。' : ''}`;
   try {
@@ -82,7 +90,7 @@ function open(seconds: 30 | 120): void {
     cancel.hidden = false;
     current.onmessage = (event: MessageEvent<RecordSample>) => {
       if (worker !== current) return;
-      stop(); show(event.data, seconds);
+      stop(); show(event.data, seconds, compareLegacy);
     };
     current.onerror = current.onmessageerror = () => {
       if (worker !== current) return;
@@ -96,6 +104,7 @@ function open(seconds: 30 | 120): void {
 
 node('record-short').addEventListener('click', () => open(30));
 node('record-long').addEventListener('click', () => open(120));
+node('record-legacy').addEventListener('click', () => open(30, true));
 cancel.addEventListener('click', () => {
   stop(); status.textContent = `準備を中止しました。${selected ? '前の記録はそのままです。' : ''}`;
 });
@@ -105,4 +114,4 @@ new ResizeObserver(() => {
 }).observe(node('board').parentElement!);
 window.addEventListener('pagehide', stop);
 const initial = Number(new URLSearchParams(location.search).get('sample'));
-if (initial === 30 || initial === 120) open(initial);
+if (initial === 30 || initial === 120) open(initial, new URLSearchParams(location.search).get('compare') === 'legacy');

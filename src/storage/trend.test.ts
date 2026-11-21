@@ -147,8 +147,9 @@ describe('上達の移り変わり', () => {
     expect(trend.mergesByTier[0]?.delta).toBeCloseTo(2, 10);
     expect(trend.mergesByTier[0]?.allTimeBest).toBe(8);
     expect(trend.mergesByTier[3]?.allTimeBest).toBe(2);
-    // 内訳の無い Tier は 0 として数える
+    // newの実測0だけを数え、shortに無いTierは不明として除外する
     expect(trend.mergesByTier[5]?.average).toBeCloseTo(0, 10);
+    expect(trend.mergesByTier[5]?.recentKnownCount).toBe(1);
   });
   it('日時の読めない記録は並べ替えから外す', () => {
     const runs = [
@@ -189,9 +190,10 @@ describe('上達の移り変わり', () => {
     expect(trend.totalCount).toBe(2);
     expect(trend.score.delta).toBeCloseTo(200, 10);
     expect(trend.score.allTimeBest).toBe(300);
-    // 旧形に無い項目は 0 で移される
-    expect(trend.lands.average).toBeCloseTo(0, 10);
-    expect(trend.overLimitSeconds.allTimeBest).toBe(0);
+    // 旧形に無い項目は平均にも最大にも入れない
+    expect(trend.lands.average).toBeNull();
+    expect(trend.lands.recentKnownCount).toBe(0);
+    expect(trend.overLimitSeconds.allTimeBest).toBeNull();
   });
   it('指標の値が壊れていても、その指標だけ有限の値で計算し、ほかは全部使う', () => {
     const runs = [
@@ -204,6 +206,6 @@ describe('上達の移り変わり', () => {
     expect(trend.score.average).toBeCloseTo(100, 10); // NaN は平均に入れない（(100 + 100) / 2）
     expect(trend.score.allTimeBest).toBe(100);
     expect(trend.launches.average).toBeCloseTo(20, 10); // launches は 3 件とも有限（(10 + 40 + 10) / 3）
-    expect(trend.mergesByTier[0]?.average).toBeCloseTo(1 / 3, 10); // 内訳の無い記録は 0 として数える
+    expect(trend.mergesByTier[0]?.average).toBeCloseTo(1 / 2, 10); // 内訳の無い記録は分母にも入れない
   });
 });

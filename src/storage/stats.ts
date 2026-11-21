@@ -7,7 +7,7 @@ import type { GameEvent, GameSnapshot, RunStats, Tick, Tier } from '../contracts
 import { TICK_HZ, TIER_COUNT } from '../game/constants';
 
 /** 統計アーカイブの版。形を変えるときは 1 つ上げ、archive.ts の移し替えに足す。 */
-export const STATS_VERSION = 1;
+export const STATS_VERSION = 2;
 /** 残すプレイの件数。古い順に捨てる（1 件あたり数百バイトなので、端末の上限 5MB に十分収まる）。 */
 export const MAX_STATS_RUNS = 1000;
 
@@ -43,10 +43,22 @@ export type RunDetailV1 = Readonly<{
   mergesByTier: readonly number[];
 }>;
 
+/** 版2の保存。旧ランキングに無い項目は不明のnullで、実測した0とは区別する。 */
+export type StoredRunDetail = Readonly<Omit<RunDetailV1,
+  'lands' | 'overLimitSeconds' | 'overLimitEntries' | 'maxSingleScore' | 'maxImpactSpeed' | 'mergesByTier'
+> & {
+  lands: number | null;
+  overLimitSeconds: number | null;
+  overLimitEntries: number | null;
+  maxSingleScore: number | null;
+  maxImpactSpeed: number | null;
+  mergesByTier: readonly number[] | null;
+}>;
+
 export type StatsArchive = Readonly<{
   version: typeof STATS_VERSION;
   /** playedAt の古い順に並べる */
-  runs: RunDetailV1[];
+  runs: StoredRunDetail[];
 }>;
 
 /** 統計には含めず、呼び出し側が持っている情報（記録の識別用） */

@@ -36,7 +36,7 @@ function legacyRecord(id: string, playedAt = '2026-10-10T00:00:00.000Z', over: P
 }
 
 describe('版の移し替え', () => {
-  it('裸の RunRecord 列を版 1 の統計へ移す（分からない項目は 0）', () => {
+  it('裸のRunRecord列を版2へ移す（分からない項目はnull）', () => {
     const archive = migrateStatsArchive([
       legacyRecord('old-a', '2026-10-10T00:00:00.000Z'),
       legacyRecord('old-b', '2026-10-11T00:00:00.000Z', { score: 50, launches: 0 }),
@@ -45,8 +45,8 @@ describe('版の移し替え', () => {
     expect(archive.runs.map((r) => r.id)).toEqual(['old-a', 'old-b']);
     expect(archive.runs[0]?.maxChain).toBe(1);
     expect(archive.runs[0]?.scorePerLaunch).toBeCloseTo(20, 10);
-    expect(archive.runs[0]?.overLimitSeconds).toBe(0);
-    expect(archive.runs[0]?.mergesByTier).toHaveLength(TIER_COUNT);
+    expect(archive.runs[0]?.overLimitSeconds).toBeNull();
+    expect(archive.runs[0]?.mergesByTier).toBeNull();
     expect(archive.runs[1]?.scorePerLaunch).toBe(0);
   });
   it('records を持つ形（メインの保存と同じ形）からも移す', () => {
@@ -96,17 +96,17 @@ describe('版の移し替え', () => {
     expect(d.scorePerLaunch).toBe(0);
     expect(readRunDetail(d)).not.toBeNull();
   });
-  it.each([null, 42, 'broken', '{broken', { version: 2, runs: [] }, { version: 'x' }, [1, 2, 3], { runs: 'no' }])(
+  it.each([null, 42, 'broken', '{broken', { version: STATS_VERSION + 1, runs: [] }, { version: 'x' }, [1, 2, 3], { runs: 'no' }])(
     '移せない保存値 %j は捨てて初期値にする',
     (value) => {
       expect(migrateStatsArchive(value)).toEqual(defaultStatsArchive());
     },
   );
-  it('版 1 の記録で mergesByTier が無くても、0 埋めで拾う', () => {
+  it('版1の記録に無い合体の内訳は、不明として拾う', () => {
     const without = { ...detail('no-tier', '2026-10-10T00:00:00.000Z'), mergesByTier: undefined };
     const archive = migrateStatsArchive({ version: 1, runs: [without] });
     expect(archive.runs).toHaveLength(1);
-    expect(archive.runs[0]?.mergesByTier).toEqual(new Array<number>(TIER_COUNT).fill(0));
+    expect(archive.runs[0]?.mergesByTier).toBeNull();
   });
   it('detailFromRecord に null を渡しても落ちず、id は空のまま（保存側の検査で捨てられる）', () => {
     const d = detailFromRecord(null as unknown as RunRecord);
