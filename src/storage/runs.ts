@@ -11,6 +11,7 @@ import { browserStorage, SAVE_KEY, type StoragePort } from './save';
 import { MAX_STATS_RUNS, type StoredRunDetail } from './stats';
 import { createRunDatabase, isRunDatabaseOpenError, type RunDatabaseSnapshot } from './run-database';
 import { createRunJournal, type RunJournalItem } from './run-journal';
+import { withRunJournalLock } from './run-journal-lock';
 
 export const RUN_ARCHIVE_KEY = 'gravity-core:runs:v1';
 export const RUN_ARCHIVE_BACKUP_KEY = 'gravity-core:runs:backup';
@@ -28,6 +29,8 @@ export type SavedRunEntry = Readonly<{
   detail: StoredRunDetail;
   /** serializeReplayの可逆圧縮。古い履歴には再生が無い場合がある。 */
   replay: string | null;
+  /** 再生だけを外した理由。履歴と統計は残る。 */
+  replayOmitted?: 'capacity' | 'unavailable';
   sample: boolean;
 }>;
 export type RunArchive = Readonly<{ version: 1; runs: SavedRunEntry[] }>;
@@ -41,7 +44,7 @@ export type RunStoreOptions = Readonly<{
   localKeys?: () => readonly string[];
   removeLocalKey?: (key: string) => void;
 }>;
-export type SaveRunResult = { ok: true; persisted: boolean }
+export type SaveRunResult = { ok: true; persisted: boolean; replayOmitted?: 'capacity' | 'unavailable' }
   | { ok: false; reason: 'invalid' | 'mismatch' | 'tooLarge' };
 export interface RunStore {
   /** 履歴を表示するたびに待つ。別タブの確定済み保存も読み直す。addも内部で待つ。 */
@@ -85,7 +88,9 @@ function readEntry(value: unknown): SavedRunEntry | null {
   const replay = typeof value.replay === 'string' ? parseReplay(value.replay) : null;
   return { id: detail.id, record, detail,
     replay: replay && matchesReplay(detail, replay) ? value.replay as string : null,
-    sample: value.sample === true };
+    sample: value.sample === true,
+    ...(!replay && (value.replayOmitted === 'capacity' || value.replayOmitted === 'unavailable')
+      ? { replayOmitted: value.replayOmitted } : {}) };
 }
 
 function normalize(values: readonly SavedRunEntry[]): RunArchive {
@@ -146,7 +151,7 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
   const journal = journalKeys ? createRunJournal({
     keys: () => { try { return journalKeys(); } catch (error) { readFailed = true; throw error; } },
     read, write, remove: removeLocalKey,
-  }) : null;
+  }, readEntry) : null;
   let pendingItems: RunJournalItem[] = [];
   function journalRuns(): SavedRunEntry[] {
     pendingItems = journal?.read() ?? [];
@@ -223,9 +228,14 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
     localArchive = memory;
     return true;
   }
-  function saveLocal(raw: string, entry: SavedRunEntry): boolean {
+  function saveLocal(raw: string): boolean {
     if (!journal) return mirror(raw); // 同一実行元の試験用StoragePort。
-    if (readFailed || !journal.append(entry)) return false;
+    if (readFailed) return false;
+    // 前に失敗した分も保存する。今回の1件だけを書いて全件を保存済みにしない。
+    for (const pending of unsaved.values()) {
+      const entry = memory.runs.find(run => run.id === pending.id) ?? pending;
+      if (!journal.append(entry)) return false;
+    }
     // 古い履歴の原本とbackupは消さない。追記口だけを保持上限へそろえる。
     const rows = journal.read();
     const readable = rows.map(item => readEntry(item.value)).filter((value): value is SavedRunEntry => value !== null);
@@ -288,10 +298,11 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
         const retained = new Set(next.runs.map(run => run.id));
         for (const id of unsaved.keys()) if (!retained.has(id)) unsaved.delete(id);
         proposed = raw; included = new Map(unsaved);
-        const persisted = persist && saveLocal(raw, saved);
+        const persisted = persist && saveLocal(raw);
         if (persisted) { unsaved.clear(); state = 'ready'; }
         else if (!readFailed) state = 'unsaved';
-        return { ok: true, persisted };
+        const replayOmitted = memory.runs.find(run => run.id === entry.id)?.replayOmitted;
+        return { ok: true, persisted, ...(persisted && replayOmitted ? { replayOmitted } : {}) };
       };
       const guarded = (persist = true, refreshFirst = true): SaveRunResult => {
         try { return commit(persist, refreshFirst); } catch { return { ok: false, reason: 'invalid' }; }
@@ -325,7 +336,10 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
           }
         }
       }
-      const pending = writeQueue.then(() => guarded(), () => guarded());
+      const local = () => journal
+        ? withRunJournalLock(`${options.databaseName ?? 'gravity-core:runs'}:journal`, () => guarded(), () => guarded(false), typeof window !== 'undefined')
+        : guarded();
+      const pending = writeQueue.then(local, local);
       writeQueue = pending;
       return pending;
     },

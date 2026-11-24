@@ -5,7 +5,7 @@ import { aimVelocity } from '../shared/launch';
 import { createReplayRecord, serializeReplay } from '../replay/record';
 import { createRunRecorder } from './recorder';
 import { createSaveStore, SAVE_KEY } from './save';
-import { RUN_JOURNAL_PREFIX } from './run-journal';
+import { MAX_RUN_JOURNAL_CHARS, RUN_JOURNAL_PREFIX } from './run-journal';
 import { defaultSaveData } from './data';
 import { createRunStore, RUN_ARCHIVE_KEY } from './runs';
 import type { RunDatabaseChange, RunDatabaseSnapshot } from './run-database';
@@ -52,6 +52,129 @@ function quotaStorage() {
 beforeEach(() => { mock.mode = 'success'; mock.current = undefined; vi.stubGlobal('indexedDB', {}); });
 afterEach(() => vi.unstubAllGlobals());
 describe('DBのopen失敗だけ端末保存へ切り替える', () => {
+  it('一度未保存になったAも、次のBの保存成功後に読み戻せる', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'retry-unsaved', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const original = disk.setItem; disk.setItem = () => { throw new Error('temporarily denied'); };
+    expect(await store.add(bundle)).toEqual({ ok: true, persisted: false });
+    disk.setItem = original;
+    const id = 'next-B';
+    expect(await store.add({ ...bundle, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } }))
+      .toEqual({ ok: true, persisted: true });
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.load().runs.map(row => row.id).sort()).toEqual([bundle.record.id, id].sort());
+  });
+
+  it('大きい再生の追加だけ拒否された時、予算内に戻せる既存再生は復元する', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'restore-old-replay', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const large = { ...bundle, replay: { ...bundle.replay, rulesVersion: 'v'.repeat(600_000) } };
+    expect(await store.add(large)).toEqual({ ok: true, persisted: true });
+    const before = new Map(disk.values), original = disk.setItem;
+    disk.setItem = (key, value) => {
+      if (!before.has(key) && disk.values.has(key)) throw new Error('replay write denied');
+      original(key, value);
+    };
+    const id = 'new-summary';
+    expect(await store.add({ ...large, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } }))
+      .toEqual({ ok: true, persisted: true, replayOmitted: 'unavailable' });
+    for (const [key, raw] of before) expect(disk.values.get(key)).toBe(raw);
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.load().runs).toHaveLength(2);
+    expect(reload.replay(bundle.record.id)?.rulesVersion).toBe(large.replay.rulesVersion);
+    expect(reload.get(id)).toMatchObject({ replay: null, replayOmitted: 'unavailable' });
+  });
+
+  it('新規キーが拒否された時は容量整理前の既存再生と原文を残す', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'new-key-rejected', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const large = { ...bundle, replay: { ...bundle.replay, rulesVersion: 'v'.repeat(600_000) } };
+    expect(await store.add(large)).toEqual({ ok: true, persisted: true });
+    const before = new Map(disk.values);
+    const original = disk.setItem;
+    disk.setItem = (key, value) => { if (!before.has(key)) throw new Error('QuotaExceededError'); original(key, value); };
+    const id = 'new-rejected';
+    expect(await store.add({ ...large, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } }))
+      .toEqual({ ok: true, persisted: false });
+    expect(disk.values).toEqual(before);
+    expect(store.status()).toBe('unsaved');
+    expect(store.get(id)?.detail.id).toBe(id);
+  });
+
+  it('履歴の確保後に再生の追加が拒否されても、履歴と理由は読み戻せる', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const original = disk.setItem;
+    disk.setItem = (key, value) => {
+      if (key.startsWith(RUN_JOURNAL_PREFIX) && disk.values.has(key)) throw new Error('write denied');
+      original(key, value);
+    };
+    const options = { databaseName: 'replay-write-rejected', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    expect(await store.add(bundle)).toEqual({ ok: true, persisted: true, replayOmitted: 'unavailable' });
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.get(bundle.record.id)).toMatchObject({ record: bundle.record, detail: bundle.detail, replay: null, replayOmitted: 'unavailable' });
+  });
+
+  it('journal満杯でも古い再生から外し、得点・設定と全件の統計を保存できる', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    disk.setItem(RUN_ARCHIVE_KEY, JSON.stringify({ version: 1, runs: [] }));
+    disk.setItem('old-backup', 'keep-original');
+    disk.setItem('other-feature', 'x'.repeat(1_500_000));
+    const options = { databaseName: 'bounded-journal', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    // 形が正しい大きな再生。実際に長時間遊んだ記録という主張には使わない。
+    for (let i = 0; i < 6; i++) {
+      const id = `large-${i}`, playedAt = new Date(Date.UTC(2026, 10, 24, 0, i)).toISOString();
+      expect(await store.add({ ...bundle, record: { ...bundle.record, id, playedAt },
+        detail: { ...bundle.detail, id, playedAt }, replay: { ...bundle.replay, rulesVersion: 'v'.repeat(400_000) } }))
+        .toEqual({ ok: true, persisted: true });
+      const chars = [...disk.values].filter(([key]) => key.startsWith(RUN_JOURNAL_PREFIX))
+        .reduce((sum, [key, value]) => sum + key.length + value.length, 0);
+      expect(chars).toBeLessThanOrEqual(MAX_RUN_JOURNAL_CHARS);
+      const data = defaultSaveData(); data.bestScore = 987654 + i; data.settings.volume = 33 + i;
+      createSaveStore(disk).save(data);
+      expect(createSaveStore(disk).load()).toMatchObject({ bestScore: 987654 + i, settings: { volume: 33 + i } });
+    }
+    const reloaded = createRunStore(disk, options); await reloaded.ready();
+    expect(reloaded.load().runs).toHaveLength(6);
+    expect(reloaded.get('large-0')).toMatchObject({ replay: null, replayOmitted: 'capacity', detail: { ...bundle.detail, id: 'large-0' } });
+    expect(reloaded.replay('large-5')).not.toBeNull();
+    expect(disk.values.get('old-backup')).toBe('keep-original');
+    expect(disk.values.get(RUN_ARCHIVE_KEY)).toBe(JSON.stringify({ version: 1, runs: [] }));
+  });
+
+  it('再生1件だけでjournal上限を超えても履歴を残し、再生を外した理由を返す', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'one-large-replay', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    expect(await store.add({ ...bundle, replay: { ...bundle.replay, rulesVersion: 'v'.repeat(1_010_000) } }))
+      .toEqual({ ok: true, persisted: true, replayOmitted: 'capacity' });
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.get(bundle.record.id)).toMatchObject({ replay: null, replayOmitted: 'capacity', record: bundle.record, detail: bundle.detail });
+  });
+
+  it('読めない原文だけで上限を超えている時は原文を残し、新しい記録は未保存にする', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const key = RUN_JOURNAL_PREFIX + 'broken-original', raw = 'x'.repeat(MAX_RUN_JOURNAL_CHARS);
+    disk.setItem(key, raw);
+    const store = createRunStore(disk, { databaseName: 'full-corrupt', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: key => { disk.values.delete(key); } });
+    await store.ready();
+    expect(await store.add(bundle)).toEqual({ ok: true, persisted: false });
+    expect(store.get(bundle.record.id)?.detail).toEqual(bundle.detail);
+    expect(store.status()).toBe('unsaved'); expect(disk.values.get(key)).toBe(raw);
+    expect([...disk.values.keys()].filter(key => key.startsWith(RUN_JOURNAL_PREFIX))).toEqual([key]);
+  });
+
   it('読めないjournal原文は正常DB保存が成功しても削除しない', async () => {
     const disk = quotaStorage(); const key = RUN_JOURNAL_PREFIX + 'unreadable-nonce';
     const raw = JSON.stringify({ order: 1, value: { broken: true } }); disk.values.set(key, raw);
