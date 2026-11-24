@@ -6,7 +6,9 @@ Codexアプリの「GRAVITY CORE・担当Bを続ける」（ID `gravity-core-b`�
 
 旧Windows予約 `GravityCore_Codex_无名之辈` は重複を防ぐため無効化し、設定は残した。11/22〜23の通常実行では、進捗ファイルの変更とbuildはできたが、GitのFETCH_HEAD・index.lockへの書込拒否とschannelの資格情報エラーで更新・commit・pushができなかった。制限された実行環境と整合するが、個々の原因の切り分けを完了したという主張はしない。
 
-アプリ予約のACTIVE・3時間間隔・このチャットへの紐付けと、旧予約のDisabledを確認した。新しい予約が通常の開発とpushを1巡完了することは、次の実行後に確認する。下のCLI補正と診断成功は過去の記録で、現在の予約では別CLIを起動しない。
+アプリ予約のACTIVE・3時間間隔・このチャットへの紐付けと、旧予約のDisabledを確認した。**11/24 16:19開始のアプリ予約で通常作業を1巡できた。** 最新main3fc60deの取得、記録11の5周目の実装、独立した実ブラウザ審査、最終746件・型・本番/見本build・ownership、commit `9237716` のpush、[PR #14](https://github.com/HAIGOOOOO/gravity-core/pull/14)作成まで完了。私用ログは`.git/session-nov24/heartbeat-final-checks/`と`heartbeat-review/`へ保存した。
+
+これは診断だけの応答ではなく、今回の通常作業の実績。今後の全予約の成功を保証するものではない。下のCLI補正と診断成功は過去の記録で、現在の予約では別CLIを起動しない。旧Windows予約は無効のままとする。
 
 ## 以前のCLI起動の記録
 
