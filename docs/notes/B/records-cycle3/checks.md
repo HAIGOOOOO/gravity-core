@@ -6,7 +6,7 @@
 
 `createRunStore()` は `RunRecord`・`StoredRunDetail`・`ReplayRecord`を同じIDの1件にまとめる。到達した天体も照合するため、同じ終了時点の `GameSnapshot`も渡す。共有文字列は再生から導出し、別の保存として重複させない。
 
-ブラウザはIndexedDBの同じreadwrite transactionで最新データの読込・ID統合・保存を行う。画面側は最初に `await store.ready()`、終了時の呼出しは `await store.add({ record, detail, replay, final })`。`ok:true`でも `persisted:false`なら、保存できたと表示せずページ内だけの保持と伝える。localStorageの値は旧保存との互換用の写しで、これだけを正として別タブの保存を上書きしない。
+ブラウザはIndexedDBの同じreadwrite transactionで最新データの読込・ID統合・保存を行う。画面側は表示するたびに `await store.ready()`、終了時の呼出しは `await store.add({ record, detail, replay, final })`。`ok:true`でも `persisted:false`なら、保存できたと表示せずページ内だけの保持と伝える。11/24の4周目では、通常のDB保存中のlocalStorageへの写しを止めた。open失敗時の切替と結果は [4周目](../records-cycle4/checks.md)を参照。
 
 ## 審査で直した★
 

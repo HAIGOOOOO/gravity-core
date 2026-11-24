@@ -9,7 +9,8 @@ import { readRecord } from './data';
 import { STATS_KEY } from './history';
 import { browserStorage, SAVE_KEY, type StoragePort } from './save';
 import { MAX_STATS_RUNS, type StoredRunDetail } from './stats';
-import { createRunDatabase, type RunDatabaseSnapshot } from './run-database';
+import { createRunDatabase, isRunDatabaseOpenError, type RunDatabaseSnapshot } from './run-database';
+import { createRunJournal, type RunJournalItem } from './run-journal';
 
 export const RUN_ARCHIVE_KEY = 'gravity-core:runs:v1';
 export const RUN_ARCHIVE_BACKUP_KEY = 'gravity-core:runs:backup';
@@ -33,12 +34,17 @@ export type RunArchive = Readonly<{ version: 1; runs: SavedRunEntry[] }>;
 export type RunBundle = Readonly<{
   record: RunRecord; detail: StoredRunDetail; replay: ReplayRecord; final: GameSnapshot; sample?: boolean;
 }>;
-export type RunStoreStatus = 'ready' | 'recovered' | 'future' | 'unreadable';
-export type RunStoreOptions = Readonly<{ databaseName?: string }>;
+export type RunStoreStatus = 'ready' | 'recovered' | 'future' | 'unreadable' | 'unsaved';
+export type RunStoreOptions = Readonly<{
+  databaseName?: string;
+  /** 独自の保存口を使う時は、その口のキーだけを列挙・削除する。 */
+  localKeys?: () => readonly string[];
+  removeLocalKey?: (key: string) => void;
+}>;
 export type SaveRunResult = { ok: true; persisted: boolean }
   | { ok: false; reason: 'invalid' | 'mismatch' | 'tooLarge' };
 export interface RunStore {
-  /** ブラウザの履歴を表示する前に待つ。addは内部でも待ち合わせる。 */
+  /** 履歴を表示するたびに待つ。別タブの確定済み保存も読み直す。addも内部で待つ。 */
   ready(): Promise<void>;
   load(): RunArchive;
   get(id: string): SavedRunEntry | null;
@@ -78,7 +84,7 @@ function readEntry(value: unknown): SavedRunEntry | null {
   // 壊れた再生だけを外し、元の履歴と不明項目は残す。
   const replay = typeof value.replay === 'string' ? parseReplay(value.replay) : null;
   return { id: detail.id, record, detail,
-    replay: replay && matchesReplay(detail, replay) ? serializeReplay(replay) || null : null,
+    replay: replay && matchesReplay(detail, replay) ? value.replay as string : null,
     sample: value.sample === true };
 }
 
@@ -127,13 +133,25 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
   let memory = empty(), initialized = false, readFailed = false;
   let state: RunStoreStatus = 'ready';
   let currentRaw: string | null | undefined;
+  let localArchive: RunArchive | null = null;
   let pendingBackup: { key: string; raw: string } | null = null;
   const unsaved = new Map<string, SavedRunEntry>();
   let nativeStorage = false;
   try { nativeStorage = typeof window !== 'undefined' && storage === window.localStorage; } catch { /* 拒否時はメモリで続ける。 */ }
-  const database = nativeStorage || options.databaseName ? createRunDatabase(options.databaseName ?? 'gravity-core:runs') : null;
+  let database = nativeStorage || options.databaseName ? createRunDatabase(options.databaseName ?? 'gravity-core:runs') : null;
   const read = (key: string): string | null => { try { return storage?.getItem(key) ?? null; } catch { readFailed = true; return null; } };
   const write = (key: string, value: string): boolean => { try { if (!storage) return false; storage.setItem(key, value); return true; } catch { return false; } };
+  const journalKeys = options.localKeys ?? (nativeStorage ? () => Object.keys(window.localStorage) : null);
+  const removeLocalKey = options.removeLocalKey ?? (nativeStorage ? (key: string) => window.localStorage.removeItem(key) : undefined);
+  const journal = journalKeys ? createRunJournal({
+    keys: () => { try { return journalKeys(); } catch (error) { readFailed = true; throw error; } },
+    read, write, remove: removeLocalKey,
+  }) : null;
+  let pendingItems: RunJournalItem[] = [];
+  function journalRuns(): SavedRunEntry[] {
+    pendingItems = journal?.read() ?? [];
+    return pendingItems.map(item => readEntry(item.value)).filter((entry): entry is SavedRunEntry => entry !== null);
+  }
   function decode(raw: string | null): unknown {
     try { return raw && raw.length <= MAX_READ_CHARS ? JSON.parse(raw) as unknown : null; }
     catch { return null; }
@@ -152,6 +170,7 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
         state = 'future'; return;
       }
       const primary = archive(decoded);
+      localArchive = primary;
       if (raw === null) memory = empty();
       else if (primary) memory = primary;
       else {
@@ -166,7 +185,7 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
     }
     if (state === 'future') return;
     // 本体が旧キーへ書く期間も、新しく増えたIDを見失わない。新形式の同IDが優先。
-    memory = normalize([...legacyRuns(read).runs, ...memory.runs, ...unsaved.values()]);
+    memory = normalize([...legacyRuns(read).runs, ...memory.runs, ...journalRuns(), ...unsaved.values()]);
     if (readFailed) state = 'unreadable';
   }
   function initialize(): void { if (!initialized) refresh(); }
@@ -174,18 +193,24 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
     const decoded = typeof snapshot.current === 'string' ? decode(snapshot.current) : snapshot.current;
     if (object(decoded) && typeof decoded.version === 'number' && decoded.version > VERSION) { state = 'future'; return false; }
     if (state === 'future') return false;
-    const primary = archive(decoded);
+    const primary = typeof snapshot.current === 'string' && snapshot.current === currentRaw
+      ? localArchive : archive(decoded);
     const backup = primary ? null : archive(typeof snapshot.backup === 'string' ? decode(snapshot.backup) : snapshot.backup);
     if (primary || backup) {
-      memory = normalize([...legacyRuns(read).runs, ...(primary ?? backup)!.runs, ...unsaved.values()]);
-      state = primary ? 'ready' : 'recovered';
+      memory = normalize([...legacyRuns(read).runs, ...(localArchive?.runs ?? []), ...(primary ?? backup)!.runs,
+        ...journalRuns(), ...unsaved.values()]);
+      state = unsaved.size ? 'unsaved' : primary ? 'ready' : 'recovered';
     } else if (snapshot.current !== undefined) state = 'unreadable';
     return Boolean(primary);
   }
   async function ready(): Promise<void> {
-    if (!database) { initialize(); return; }
+    if (!database) { refresh(); return; }
     refresh();
-    try { fromDatabase(await database.read()); } catch { state = 'unreadable'; }
+    try { fromDatabase(await database.read()); }
+    catch (error) {
+      if (isRunDatabaseOpenError(error)) { database = null; refresh(); }
+      else state = 'unreadable';
+    }
   }
   function mirror(raw: string): boolean {
     if (readFailed) return false;
@@ -195,6 +220,29 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
     }
     if (!write(RUN_ARCHIVE_KEY, raw)) return false;
     currentRaw = raw;
+    localArchive = memory;
+    return true;
+  }
+  function saveLocal(raw: string, entry: SavedRunEntry): boolean {
+    if (!journal) return mirror(raw); // 同一実行元の試験用StoragePort。
+    if (readFailed || !journal.append(entry)) return false;
+    // 古い履歴の原本とbackupは消さない。追記口だけを保持上限へそろえる。
+    const rows = journal.read();
+    const readable = rows.map(item => readEntry(item.value)).filter((value): value is SavedRunEntry => value !== null);
+    memory = normalize([...memory.runs, ...readable]);
+    const latest = new Map<string, RunJournalItem>();
+    for (const item of rows) { const value = readEntry(item.value); if (value) latest.set(value.id, item); }
+    const retained = new Map(memory.runs.map(value => [value.id, value]));
+    journal.retain(rows, value => {
+      const clean = readEntry(value);
+      if (!clean) return value;
+      const target = retained.get(clean.id);
+      if (!target) return null;
+      return target.replay === null ? { ...clean, replay: null } : clean;
+    });
+    journal.acknowledge(rows.filter(item => {
+      const value = readEntry(item.value); return value && latest.get(value.id)?.key !== item.key;
+    }));
     return true;
   }
   function replay(id: string): ReplayRecord | null {
@@ -240,8 +288,9 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
         const retained = new Set(next.runs.map(run => run.id));
         for (const id of unsaved.keys()) if (!retained.has(id)) unsaved.delete(id);
         proposed = raw; included = new Map(unsaved);
-        const persisted = persist && mirror(raw);
+        const persisted = persist && saveLocal(raw, saved);
         if (persisted) { unsaved.clear(); state = 'ready'; }
+        else if (!readFailed) state = 'unsaved';
         return { ok: true, persisted };
       };
       const guarded = (persist = true, refreshFirst = true): SaveRunResult => {
@@ -249,25 +298,31 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
       };
       if (database) {
         let result: SaveRunResult = { ok: false, reason: 'invalid' };
+        let imported: RunJournalItem[] = [];
         try {
           result = await database.update(snapshot => {
             refresh();
             const currentIsValid = fromDatabase(snapshot);
+            imported = pendingItems.filter(item => readEntry(item.value) !== null);
             result = guarded(false, false);
             return { result, ...(result.ok ? { write: proposed, currentIsValid } : {}) };
           });
           if (result.ok) {
-            // 正はtransactionで確定済み。旧保存との互換用の写しが失敗しても、正は残る。
-            mirror(proposed);
+            // 正はDBに確定済み。localStorageへ複製して最高点・設定の空きを奪わない。
             for (const [id, value] of included) if (unsaved.get(id) === value) unsaved.delete(id);
+            journal?.acknowledge(imported);
             state = 'ready';
             return { ok: true, persisted: true };
           }
           return result;
-        } catch {
-          // DBが使えない時は、他タブを上書きする保存へ切り替えずメモリで続ける。
-          state = 'unreadable';
-          return result.ok ? { ok: true, persisted: false } : guarded(false);
+        } catch (error) {
+          if (isRunDatabaseOpenError(error)) database = null;
+          else {
+            // 開けたDBのtransaction失敗を、別の保存口で成功扱いにしない。
+            const fallback = result.ok ? { ok: true as const, persisted: false } : guarded(false);
+            if (fallback.ok && !readFailed) state = 'unsaved';
+            return fallback;
+          }
         }
       }
       const pending = writeQueue.then(() => guarded(), () => guarded());
