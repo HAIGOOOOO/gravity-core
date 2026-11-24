@@ -35,10 +35,22 @@ export function createRunJournal<T extends JournalEntry>(port: {
     try { if (port.read(item.key) === item.raw) port.remove?.(item.key); } catch { /* 次回にも読める原文を残す。 */ }
   }
   // 壊れた原文は予算に数えるが触らない。縮小できない時は新しい保存を成功扱いにしない。
-  function room(pending: RunJournalItem | null): RunJournalItem | null | false {
+  type Compacted = { item: RunJournalItem; raw: string };
+  function restore(changes: readonly Compacted[]): void {
+    for (const { item, raw } of [...changes].reverse()) {
+      try {
+        if (port.read(item.key) === raw && usage() + item.raw.length - raw.length <= MAX_RUN_JOURNAL_CHARS) {
+          port.write(item.key, item.raw);
+        }
+      } catch { /* 復元も拒否された場合は、保存済みの履歴を保つ。 */ }
+    }
+  }
+  function room(pending: RunJournalItem | null, compacted?: Compacted[]): RunJournalItem | null | false {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const rows = read();
-      let chars = usage() + (pending ? pending.key.length + pending.raw.length : 0);
+      const rows = read().filter(item => item.key !== pending?.key);
+      const replacing = pending ? port.read(pending.key) : null;
+      let chars = usage() + (pending ? pending.raw.length - (replacing?.length ?? 0)
+        + (replacing === null ? pending.key.length : 0) : 0);
       const changes = new Map<RunJournalItem, string>();
       for (const item of [...rows, ...(pending ? [pending] : [])]) {
         if (chars <= MAX_RUN_JOURNAL_CHARS) break;
@@ -55,9 +67,12 @@ export function createRunJournal<T extends JournalEntry>(port: {
       for (const [item, raw] of changes) {
         if (port.read(item.key) !== item.raw) continue;
         if (!port.write(item.key, raw)) return false;
+        compacted?.push({ item, raw });
       }
       // 別ページが更新した原文を上書きしない。実際の合計で書込前にもう一度判定する。
-      if (usage() + (pending ? pending.key.length + pending.raw.length : 0) <= MAX_RUN_JOURNAL_CHARS) return pending;
+      const current = pending ? port.read(pending.key) : null;
+      if (usage() + (pending ? pending.raw.length - (current?.length ?? 0)
+        + (current === null ? pending.key.length : 0) : 0) <= MAX_RUN_JOURNAL_CHARS) return pending;
     }
     return false;
   }
@@ -68,9 +83,17 @@ export function createRunJournal<T extends JournalEntry>(port: {
         const prior = read();
         const order = Math.max(Date.now(), (prior.at(-1)?.order ?? 0) + 1);
         const key = RUN_JOURNAL_PREFIX + crypto.randomUUID();
-        const pending = room({ key, raw: JSON.stringify({ order, value }), order, value });
-        if (!pending || !port.write(key, pending.raw)) return false;
-        // Web Locksのない環境でも、並行追記後の合計を再確認する。
+        // 新規キーが拒否される場合は、既存の再生を一切削らない。
+        // 先にこの1件の履歴だけを確保し、その後に再生の予算を割り当てる。
+        const summary = { ...value, replay: null, replayOmitted: 'unavailable' };
+        const staged = { key, raw: JSON.stringify({ order, value: summary }), order, value: summary };
+        if (!port.write(key, staged.raw)) return false;
+        const compacted: Compacted[] = [];
+        const pending = room({ key, raw: JSON.stringify({ order, value }), order, value }, compacted);
+        if (!pending) { remove(staged); restore(compacted); return false; }
+        // 再生の追加が拒否されても、先に確保した履歴は残す。
+        if (!port.write(key, pending.raw)) restore(compacted);
+        // 更新後の実際の合計も確認し、超過した保存を成功扱いにしない。
         if (room(null) === false) {
           const raw = port.read(key);
           if (raw !== null) remove({ ...pending, raw });

@@ -52,6 +52,76 @@ function quotaStorage() {
 beforeEach(() => { mock.mode = 'success'; mock.current = undefined; vi.stubGlobal('indexedDB', {}); });
 afterEach(() => vi.unstubAllGlobals());
 describe('DBのopen失敗だけ端末保存へ切り替える', () => {
+  it('一度未保存になったAも、次のBの保存成功後に読み戻せる', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'retry-unsaved', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const original = disk.setItem; disk.setItem = () => { throw new Error('temporarily denied'); };
+    expect(await store.add(bundle)).toEqual({ ok: true, persisted: false });
+    disk.setItem = original;
+    const id = 'next-B';
+    expect(await store.add({ ...bundle, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } }))
+      .toEqual({ ok: true, persisted: true });
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.load().runs.map(row => row.id).sort()).toEqual([bundle.record.id, id].sort());
+  });
+
+  it('大きい再生の追加だけ拒否された時、予算内に戻せる既存再生は復元する', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'restore-old-replay', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const large = { ...bundle, replay: { ...bundle.replay, rulesVersion: 'v'.repeat(600_000) } };
+    expect(await store.add(large)).toEqual({ ok: true, persisted: true });
+    const before = new Map(disk.values), original = disk.setItem;
+    disk.setItem = (key, value) => {
+      if (!before.has(key) && disk.values.has(key)) throw new Error('replay write denied');
+      original(key, value);
+    };
+    const id = 'new-summary';
+    expect(await store.add({ ...large, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } }))
+      .toEqual({ ok: true, persisted: true, replayOmitted: 'unavailable' });
+    for (const [key, raw] of before) expect(disk.values.get(key)).toBe(raw);
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.load().runs).toHaveLength(2);
+    expect(reload.replay(bundle.record.id)?.rulesVersion).toBe(large.replay.rulesVersion);
+    expect(reload.get(id)).toMatchObject({ replay: null, replayOmitted: 'unavailable' });
+  });
+
+  it('新規キーが拒否された時は容量整理前の既存再生と原文を残す', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'new-key-rejected', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const large = { ...bundle, replay: { ...bundle.replay, rulesVersion: 'v'.repeat(600_000) } };
+    expect(await store.add(large)).toEqual({ ok: true, persisted: true });
+    const before = new Map(disk.values);
+    const original = disk.setItem;
+    disk.setItem = (key, value) => { if (!before.has(key)) throw new Error('QuotaExceededError'); original(key, value); };
+    const id = 'new-rejected';
+    expect(await store.add({ ...large, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } }))
+      .toEqual({ ok: true, persisted: false });
+    expect(disk.values).toEqual(before);
+    expect(store.status()).toBe('unsaved');
+    expect(store.get(id)?.detail.id).toBe(id);
+  });
+
+  it('履歴の確保後に再生の追加が拒否されても、履歴と理由は読み戻せる', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const original = disk.setItem;
+    disk.setItem = (key, value) => {
+      if (key.startsWith(RUN_JOURNAL_PREFIX) && disk.values.has(key)) throw new Error('write denied');
+      original(key, value);
+    };
+    const options = { databaseName: 'replay-write-rejected', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    expect(await store.add(bundle)).toEqual({ ok: true, persisted: true, replayOmitted: 'unavailable' });
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.get(bundle.record.id)).toMatchObject({ record: bundle.record, detail: bundle.detail, replay: null, replayOmitted: 'unavailable' });
+  });
+
   it('journal満杯でも古い再生から外し、得点・設定と全件の統計を保存できる', async () => {
     mock.mode = 'open'; const disk = quotaStorage();
     disk.setItem(RUN_ARCHIVE_KEY, JSON.stringify({ version: 1, runs: [] }));

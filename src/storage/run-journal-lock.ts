@@ -1,9 +1,11 @@
 // localStorageの予算確認と追記を、同じoriginの別ページと順に行う。
-export function withRunJournalLock<T>(name: string, work: () => T, unsaved: () => T): Promise<T> {
+export function withRunJournalLock<T>(name: string, work: () => T, unsaved: () => T, requireLock = true): Promise<T> {
   let locks: LockManager | undefined;
   try { locks = typeof navigator === 'undefined' ? undefined : navigator.locks; }
   catch { return Promise.resolve(unsaved()); }
-  if (!locks) return Promise.resolve(work());
+  // 別タブの古い読取値では予算を予約できない。非対応ブラウザで保存済みとは返さない。
+  // ブラウザ外のStoragePortは、呼出元の同一実行元queueで順に処理する。
+  if (!locks) return Promise.resolve(requireLock ? unsaved() : work());
   return new Promise(resolve => {
     const controller = new AbortController();
     let settled = false;

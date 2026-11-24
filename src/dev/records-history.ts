@@ -55,7 +55,8 @@ async function render(): Promise<void> {
     const code = store.share(entry.id);
     if (!entry.replay) {
       const note = document.createElement('p');
-      note.textContent = entry.replayOmitted === 'capacity' ? '保存容量を空けるため再生を外しました。得点と詳しい記録は残っています。' : '再生なし';
+      note.textContent = entry.replayOmitted === 'capacity' ? '保存容量を空けるため再生を外しました。得点と詳しい記録は残っています。'
+        : entry.replayOmitted === 'unavailable' ? '再生データは保存できませんでした。得点と詳しい記録は残っています。' : '再生なし';
       item.append(note);
     }
     if (code) {
@@ -86,6 +87,7 @@ save.addEventListener('click', async () => {
           : '見本の記録を読み取れないため、保存できませんでした。'
       : result.persisted ? result.replayOmitted === 'capacity'
         ? '見本の得点と詳しい記録を保存しました。容量を空けるため再生は外しています。'
+        : result.replayOmitted === 'unavailable' ? '見本の得点と詳しい記録を保存しました。再生データは保存できませんでした。'
         : '自動の見本をこの端末の見本用履歴に保存しました。'
         : '端末には保存できないため、このページを開いている間だけ保持します。';
     page = 0; await render();

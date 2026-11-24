@@ -29,8 +29,8 @@ export type SavedRunEntry = Readonly<{
   detail: StoredRunDetail;
   /** serializeReplayの可逆圧縮。古い履歴には再生が無い場合がある。 */
   replay: string | null;
-  /** 予備の保存口の容量確保で再生だけを外した。履歴と統計は残る。 */
-  replayOmitted?: 'capacity';
+  /** 再生だけを外した理由。履歴と統計は残る。 */
+  replayOmitted?: 'capacity' | 'unavailable';
   sample: boolean;
 }>;
 export type RunArchive = Readonly<{ version: 1; runs: SavedRunEntry[] }>;
@@ -44,7 +44,7 @@ export type RunStoreOptions = Readonly<{
   localKeys?: () => readonly string[];
   removeLocalKey?: (key: string) => void;
 }>;
-export type SaveRunResult = { ok: true; persisted: boolean; replayOmitted?: 'capacity' }
+export type SaveRunResult = { ok: true; persisted: boolean; replayOmitted?: 'capacity' | 'unavailable' }
   | { ok: false; reason: 'invalid' | 'mismatch' | 'tooLarge' };
 export interface RunStore {
   /** 履歴を表示するたびに待つ。別タブの確定済み保存も読み直す。addも内部で待つ。 */
@@ -89,7 +89,8 @@ function readEntry(value: unknown): SavedRunEntry | null {
   return { id: detail.id, record, detail,
     replay: replay && matchesReplay(detail, replay) ? value.replay as string : null,
     sample: value.sample === true,
-    ...(!replay && value.replayOmitted === 'capacity' ? { replayOmitted: 'capacity' as const } : {}) };
+    ...(!replay && (value.replayOmitted === 'capacity' || value.replayOmitted === 'unavailable')
+      ? { replayOmitted: value.replayOmitted } : {}) };
 }
 
 function normalize(values: readonly SavedRunEntry[]): RunArchive {
@@ -227,9 +228,14 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
     localArchive = memory;
     return true;
   }
-  function saveLocal(raw: string, entry: SavedRunEntry): boolean {
+  function saveLocal(raw: string): boolean {
     if (!journal) return mirror(raw); // 同一実行元の試験用StoragePort。
-    if (readFailed || !journal.append(entry)) return false;
+    if (readFailed) return false;
+    // 前に失敗した分も保存する。今回の1件だけを書いて全件を保存済みにしない。
+    for (const pending of unsaved.values()) {
+      const entry = memory.runs.find(run => run.id === pending.id) ?? pending;
+      if (!journal.append(entry)) return false;
+    }
     // 古い履歴の原本とbackupは消さない。追記口だけを保持上限へそろえる。
     const rows = journal.read();
     const readable = rows.map(item => readEntry(item.value)).filter((value): value is SavedRunEntry => value !== null);
@@ -292,7 +298,7 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
         const retained = new Set(next.runs.map(run => run.id));
         for (const id of unsaved.keys()) if (!retained.has(id)) unsaved.delete(id);
         proposed = raw; included = new Map(unsaved);
-        const persisted = persist && saveLocal(raw, saved);
+        const persisted = persist && saveLocal(raw);
         if (persisted) { unsaved.clear(); state = 'ready'; }
         else if (!readFailed) state = 'unsaved';
         const replayOmitted = memory.runs.find(run => run.id === entry.id)?.replayOmitted;
@@ -331,7 +337,7 @@ export function createRunStore(storage: StoragePort | null = browserStorage(), o
         }
       }
       const local = () => journal
-        ? withRunJournalLock(`${options.databaseName ?? 'gravity-core:runs'}:journal`, () => guarded(), () => guarded(false))
+        ? withRunJournalLock(`${options.databaseName ?? 'gravity-core:runs'}:journal`, () => guarded(), () => guarded(false), typeof window !== 'undefined')
         : guarded();
       const pending = writeQueue.then(local, local);
       writeQueue = pending;

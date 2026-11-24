@@ -3,11 +3,15 @@ import { withRunJournalLock } from './run-journal-lock';
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('予備の保存口を待ち続けない', () => {
-  it('Web Locksが無い環境でも保存を試し、UUID追記を使える', async () => {
+  it('Web Locksが無いブラウザでは、容量予約なしで書かず未保存を返す', async () => {
     vi.stubGlobal('navigator', {});
     const work = vi.fn(() => 'saved'), unsaved = vi.fn(() => 'unsaved');
-    expect(await withRunJournalLock('fallback', work, unsaved)).toBe('saved');
-    expect(work).toHaveBeenCalledOnce(); expect(unsaved).not.toHaveBeenCalled();
+    expect(await withRunJournalLock('fallback', work, unsaved)).toBe('unsaved');
+    expect(work).not.toHaveBeenCalled(); expect(unsaved).toHaveBeenCalledOnce();
+  });
+  it('ブラウザ外のStoragePortは呼出元のqueueで保存する', async () => {
+    vi.stubGlobal('navigator', {});
+    expect(await withRunJournalLock('port', () => 'saved', () => 'unsaved', false)).toBe('saved');
   });
   it('待機が3秒を超えたら未保存で返し、遅れて来た実行権では書かない', async () => {
     vi.useFakeTimers();
