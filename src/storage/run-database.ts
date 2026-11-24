@@ -3,22 +3,35 @@ export type RunDatabaseSnapshot = Readonly<{ current: unknown; backup: unknown }
 export type RunDatabaseChange<T> = Readonly<{ result: T; write?: string; currentIsValid?: boolean }>;
 const STORE = 'archives';
 const CURRENT = 'current', BACKUP = 'backup', CORRUPT = 'corrupt';
+export const RUN_DATABASE_OPEN_TIMEOUT_MS = 3000;
+export class RunDatabaseOpenError extends Error {
+  constructor(cause: unknown) { super('database open unavailable', { cause }); this.name = 'RunDatabaseOpenError'; }
+}
+export const isRunDatabaseOpenError = (error: unknown): error is RunDatabaseOpenError => error instanceof RunDatabaseOpenError;
 
 export function createRunDatabase(name: string) {
   let opening: Promise<IDBDatabase> | null = null;
   function open(): Promise<IDBDatabase> {
     if (opening) return opening;
     opening = new Promise((resolve, reject) => {
-      const request = indexedDB.open(name);
-      let failed = false;
+      let settled = false;
+      const fail = (cause: unknown) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer); reject(new RunDatabaseOpenError(cause));
+      };
+      const timer = setTimeout(() => fail(new Error('database open timeout')), RUN_DATABASE_OPEN_TIMEOUT_MS);
+      let request: IDBOpenDBRequest;
+      try { request = indexedDB.open(name); } catch (error) { fail(error); return; }
       request.onupgradeneeded = () => {
+        if (settled) { try { request.transaction?.abort(); } catch { /* 時間切れ後は作らない。 */ } return; }
         if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE);
       };
-      request.onerror = () => { failed = true; reject(request.error ?? new Error('database unavailable')); };
-      request.onblocked = () => { failed = true; reject(new Error('database blocked')); };
+      request.onerror = () => fail(request.error ?? new Error('database unavailable'));
+      request.onblocked = () => fail(new Error('database blocked'));
       request.onsuccess = () => {
         const db = request.result;
-        if (failed) { db.close(); return; }
+        if (settled) { db.close(); return; }
+        settled = true; clearTimeout(timer);
         db.onversionchange = () => { db.close(); opening = null; };
         resolve(db);
       };

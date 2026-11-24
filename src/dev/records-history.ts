@@ -8,7 +8,11 @@ const prefix = 'gravity-core:records-demo:';
 const store = createRunStore(storage === null ? null : {
   getItem(key) { return key === STATS_KEY || key === SAVE_KEY ? null : storage.getItem(prefix + key); },
   setItem(key, value) { storage.setItem(prefix + key, value); },
-}, { databaseName: 'gravity-core:records-demo:runs' });
+}, {
+  databaseName: 'gravity-core:records-demo:runs',
+  localKeys: () => storage === null ? [] : Object.keys(window.localStorage).filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length)),
+  removeLocalKey: key => { if (storage !== null) window.localStorage.removeItem(prefix + key); },
+});
 const node = (id: string) => document.getElementById(id)!;
 const save = node('record-save') as HTMLButtonElement;
 const status = node('record-save-status');
@@ -35,7 +39,8 @@ async function render(): Promise<void> {
   next.disabled = (page + 1) * 20 >= archive.runs.length;
   node('record-history-state').textContent = state === 'future' ? '新しい版の保存があり、この版では開けません'
     : state === 'recovered' ? '退避した記録を表示しています。保存ボタンを押すまで元の保存は変更しません'
-      : state === 'unreadable' ? 'この端末の保存を読み取れません。このページを開いている間だけ保持します。' : '';
+      : state === 'unreadable' ? 'この端末の保存を読み取れません。このページを開いている間だけ保持します。'
+        : state === 'unsaved' ? 'まだ端末に保存できていない記録があります。このページを開いている間は保持します。' : '';
   node('record-history-count').textContent = state === 'future' ? ''
     : `見本の履歴は全${archive.runs.length}件。新しい順の${archive.runs.length ? page * 20 + 1 : 0}〜${Math.min((page + 1) * 20, archive.runs.length)}件を表示します。`;
   const list = node('record-history-list');
