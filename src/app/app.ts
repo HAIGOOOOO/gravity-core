@@ -28,7 +28,7 @@ import { createPointerInput } from '../input';
 import { createBoardRenderer } from '../render';
 import { createReplayCapture, type CapturedReplay, type ReplayRecord } from '../replay';
 import { encodeReplayShare } from '../share';
-import { createRankingStore, createSaveStore } from '../storage';
+import { createRankingStore, createRunRecorder, createRunStore, createSaveStore } from '../storage';
 import { createHud, createLayout, createOverlays } from '../ui';
 import { STRINGS, resultText } from '../ui/strings';
 
@@ -71,6 +71,9 @@ export function startApp(): AppHandle {
   let lastReplay: ReplayRecord | null = null;
   // 遊んでいる間に出来事と保存点を貯め、結果の時に物理を回し直さない（担当 B の createReplayCapture）
   let capture: ReturnType<typeof createReplayCapture> | null = null;
+  // 担当 B の記録 11: 履歴・詳しい統計・再生を同じ ID で 1 件に保存する。終了の直後に 1 回だけ add する
+  const runStore = createRunStore();
+  const runRecorder = createRunRecorder();
   let lastCapture: CapturedReplay | null = null;
   let acc = 0;
   const timeGovernor = createTimeGovernor();
@@ -141,6 +144,7 @@ export function startApp(): AppHandle {
 
   function startRun(): void {
     capture = createReplayCapture(newSeed());
+    runRecorder.reset();
     sim = capture.simulation;
     prev = sim.getSnapshot();
     aim = null;
@@ -173,6 +177,11 @@ export function startApp(): AppHandle {
     result = { record, isBest, rank: null };
     lastCapture = capture ? capture.finish() : null;
     lastReplay = lastCapture ? lastCapture.record : null;
+    if (lastReplay) {
+      const detail = runRecorder.finish(snap, { id: record.id, playedAt: record.playedAt, gameVersion: record.gameVersion });
+      // 保存に失敗しても遊びは止めない（store は失敗をページ内に持ち、次の保存で書き直す）
+      void runStore.add({ record, detail, replay: lastReplay, final: snap }).catch(() => undefined);
+    }
     void ranking.submit(record, sim.getInputLog()).then(({ rank }) => {
       const hints = save.hints;
       save = saveStore.load();
@@ -242,7 +251,11 @@ export function startApp(): AppHandle {
         prev = sim.getSnapshot();
         const events = sim.stepFixed();
         // タイトルの後ろで動かしている盤面は見せるだけ（演出も記録もしない）
-        if (state === 'playing') handleEvents(events, prev);
+        if (state === 'playing') {
+          // 終了の出来事は handleEvents の中で finishRun を呼ぶので、先に数えておく
+          runRecorder.feed(events);
+          handleEvents(events, prev);
+        }
         acc -= DT;
         steps++;
       }
