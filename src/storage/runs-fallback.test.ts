@@ -52,6 +52,30 @@ function quotaStorage() {
 beforeEach(() => { mock.mode = 'success'; mock.current = undefined; vi.stubGlobal('indexedDB', {}); });
 afterEach(() => vi.unstubAllGlobals());
 describe('DBのopen失敗だけ端末保存へ切り替える', () => {
+  it('未保存A/Bの途中でBだけ失敗しても、次の再試行と読み戻しでは同じIDが1件になる', async () => {
+    mock.mode = 'open'; const disk = quotaStorage();
+    const options = { databaseName: 'partial-retry', localKeys: () => [...disk.values.keys()],
+      removeLocalKey: (key: string) => { disk.values.delete(key); } };
+    const store = createRunStore(disk, options); await store.ready();
+    const original = disk.setItem;
+    const named = (id: string) => ({ ...bundle, record: { ...bundle.record, id }, detail: { ...bundle.detail, id } });
+    disk.setItem = () => { throw new Error('denied'); };
+    expect(await store.add(named('A'))).toEqual({ ok: true, persisted: false });
+    disk.setItem = (key, value) => {
+      if (JSON.parse(value).value?.id === 'B') throw new Error('B denied');
+      original(key, value);
+    };
+    expect(await store.add(named('B'))).toEqual({ ok: true, persisted: false });
+    expect([...disk.values.keys()].filter(key => key.startsWith(RUN_JOURNAL_PREFIX))).toHaveLength(1);
+    disk.setItem = original;
+    expect(await store.add(named('C'))).toEqual({ ok: true, persisted: true });
+    const reload = createRunStore(disk, options); await reload.ready();
+    expect(reload.load().runs.map(row => row.id)).toEqual(['A', 'B', 'C']);
+    const rows = [...disk.values].filter(([key]) => key.startsWith(RUN_JOURNAL_PREFIX));
+    expect(rows).toHaveLength(3);
+    expect(rows.map(([, raw]) => JSON.parse(raw).value.id).sort()).toEqual(['A', 'B', 'C']);
+  });
+
   it('一度未保存になったAも、次のBの保存成功後に読み戻せる', async () => {
     mock.mode = 'open'; const disk = quotaStorage();
     const options = { databaseName: 'retry-unsaved', localKeys: () => [...disk.values.keys()],
