@@ -16,10 +16,10 @@
 <body><main>
 <p class="sub"><a href="../">全体の一覧へ</a></p>
 <h1>担当 B: 続ける（再生・図鑑・記録）</h1>
-<p class="sub">更新 2026-11-24 17:03（676a390　docs(B): 第5周の提出とアプリ予約の通常実行を記録）</p>
+<p class="sub">更新 2026-11-27 09:49（0743497　docs(B): 第5周の公開確認と履歴画面への引継ぎ）</p>
 
-<h2>いま</h2><div class="card">方針の版11、最新main3fc60deを取り込み済み。PR #13は取り込まれ、リーダーが18e6c94で本体終了へ接続した。5周目で最優先のjournal容量上限100万文字を実装し、書込拒否時の旧再生保持と未保存分の再試行も修正して[PR #14](https://github.com/HAIGOOOOO/gravity-core/pull/14)へ提出した。最終746件・型・本番/見本build・ownershipが通過。1000履歴/100再生の読込中央値はDB37.4ms／journal36.8ms。Web LocksもDBも使えないブラウザは未保存としてページ内保持に制限する。時計巻戻り・transaction無応答と本体履歴の導線は残りで、記録11全体の合格とは扱わない。</div>
-<h2>つぎ</h2><div class="card">PR #14の後はtransactionのread/add時間切れと時計巻戻りを修正。本体の履歴の見せ方案を出し、リーダーと接続後に公開mainの遊ぶ→再読込→履歴から同じ再生を確認する。src/appはリーダー担当。</div>
+<h2>いま</h2><div class="card">方針の版11、最新main d6aea93を取り込み済み。5周目の[PR #14](https://github.com/HAIGOOOOO/gravity-core/pull/14)はmain c5a968aへ取り込まれ、リーダーの11/24 18:20レビューで★★容量修正とWeb Locksなしの制限が了承された。最終746件・型・本番/見本build・ownershipとGitHub check/previewが通過。1000履歴/100再生の読込中央値はDB37.4ms／journal36.8ms。11/27に公開の通常保存とopen無応答時の保存→再読込→再生終端11,850点も再確認した。本体履歴はまだなく、記録11全体の合格とは扱わない。</div>
+<h2>つぎ</h2><div class="card">最新レビューの順で、履歴画面の見本をsrc/devに先に作る。行の並び・再生の入口・再生なしの説明を見せ、リーダーが決めてから本体へつなぐ。再生なしは履歴の行に「再生なし（得点と記録は残っています）」の1行、結果画面には出さない。次周の★は未保存分の途中失敗/再試行で同IDが1件にまとまる試験、transactionのread/add時間切れ、時計巻戻り。src/appはリーダー担当。</div>
 
 <h2>触ってみる</h2>
 <p class="links">
