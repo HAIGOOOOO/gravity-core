@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>履歴画面の見本 — GRAVITY CORE</title>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">GRAVITY CORE / 履歴画面の見本</p>
+    <h1>プレイの記録</h1>
+    <p class="intro">自動プレイの30秒時点を並べた画面の見本です。あなたの記録は読み書きしません。</p>
+  </header>
+  <nav id="demo-controls" aria-label="画面の案と状態">
+    <button type="button" data-view="recent" aria-pressed="true" disabled>A 新しい順</button>
+    <button type="button" data-view="days" aria-pressed="false" disabled>B 日ごと</button>
+    <button type="button" data-view="focus" aria-pressed="false" disabled>C 1件ずつ</button>
+    <button type="button" data-state="empty" disabled>空の例</button>
+    <button type="button" data-state="error" disabled>読めない例</button>
+    <button type="button" data-reset disabled>一覧へ戻る</button>
+  </nav>
+  <p id="proposal-note" class="proposal">A案：直前のプレイから見返す。</p>
+  <p id="history-status" role="status">自動の見本を準備しています。</p>
+  <button type="button" id="history-retry" hidden>もう一度準備する</button>
+  <section aria-labelledby="history-heading" aria-busy="true" id="history-region">
+    <h2 id="history-heading" tabindex="-1">新しい順</h2>
+    <div id="history-content"></div>
+    <nav id="history-pages" aria-label="履歴のページ" hidden>
+      <button type="button" id="history-previous">前の20件</button>
+      <span id="history-page"></span>
+      <button type="button" id="history-next">次の20件</button>
+    </nav>
+  </section>
+  <footer>自動プレイの途中経過を使っています。日時と再生の有無は、並び方を確かめるための例です。</footer>
+</main>
+<script type="module" src="/src/dev/history-demo.ts"></script>
+</body>
+</html>
