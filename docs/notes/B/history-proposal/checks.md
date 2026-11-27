@@ -45,3 +45,9 @@
 残る案の弱点は1000件から目的の日へ直接絞れないこと。今回の選定用の案には検索・日付移動を足していない。比較した[Chromeの履歴](https://support.google.com/chrome/answer/95589?hl=ja)のような探し方は、選定後の改善候補にする。初見の誤認を避け、途中経過であることは冒頭にも明記した。容量の理由を行ごとに分ける提案は、リーダーの1文へまとめる指示を優先して採らない。
 
 transactionのread/add時間切れ、時計巻戻り、本体の履歴への接続はまだ。この見本の提出を記録11全体の合格とは扱わない。人の見た目の合否、スマホ実機は未確認。
+
+## 公開確認
+
+[PR #15](https://github.com/HAIGOOOOO/gravity-core/pull/15)を下書きから提出へ切り替え、実装`4f9ef10`のGitHub check/preview成功後に確認した。最初は公開反映前の404だったため、HTTP200と最終buildと同じ`history-B3e9NI0L.js`を確認してから操作した。
+
+11/27 10:16の公開390pxで、A/B各6行・再生なし2行、C1行を確認。Cの2件目は`history-preview-1`・再生なし1文・リンク0・詳細フォーカスが一致。履歴ページの通常保存APIアクセス0、確認用の原文を保持、文書幅390px、例外0。入口から再生した末尾は11,850点。[自動動画](https://haigooooo.github.io/gravity-core/team-b/videos/history.webm)も13.44秒・960×720で再生できた。生の結果は`.git/session-nov27/public.json`。
